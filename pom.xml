@@ -8,11 +8,11 @@
         <version>3.4.1</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.codewithmosh</groupId>
-    <artifactId>store</artifactId>
+    <groupId>com.beaconculinary</groupId>
+    <artifactId>beacon-culinary-api</artifactId>
     <version>1.0.0</version>
-    <name>store</name>
-    <description>store</description>
+    <name>beacon-culinary-api</name>
+    <description>beacon-culinary-api</description>
     <url/>
     <licenses>
         <license/>
@@ -59,6 +59,10 @@
         </dependency>
         <dependency>
             <artifactId>flyway-mysql</artifactId>
+            <groupId>org.flywaydb</groupId>
+        </dependency>
+        <dependency>
+            <artifactId>flyway-sqlserver</artifactId>
             <groupId>org.flywaydb</groupId>
         </dependency>
         <dependency>
@@ -123,9 +127,9 @@
             <version>4.0.0</version>
         </dependency>
         <dependency>
-            <groupId>com.stripe</groupId>
-            <artifactId>stripe-java</artifactId>
-            <version>29.0.0</version>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <version>13.2.1.jre11</version>
         </dependency>
 
     </dependencies>
@@ -154,13 +158,26 @@
             <plugin>
                 <groupId>org.flywaydb</groupId>
                 <artifactId>flyway-maven-plugin</artifactId>
-                <version>10.15.0</version>
+                <version>10.20.1</version>
                 <configuration>
-                    <url>jdbc:mysql://localhost:3306/store_api?createDatabaseIfNotExist=true</url>
-                    <user>root</user>
-                    <password>MyPassword!</password>
+                    <url>jdbc:sqlserver://localhost:1433;databaseName=Ecommerce;encrypt=false;trustServerCertificate=true</url>
+                    <user>sa</user> <!-- your SQL login -->
+                    <password>Delvin2011</password>
+                    <schemas>dbo</schemas>
                     <cleanDisabled>false</cleanDisabled>
                 </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.microsoft.sqlserver</groupId>
+                        <artifactId>mssql-jdbc</artifactId>
+                        <version>13.2.1.jre11</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.flywaydb</groupId>
+                        <artifactId>flyway-sqlserver</artifactId>
+                        <version>10.20.1</version>
+                    </dependency>
+                </dependencies>
             </plugin>
 
             <plugin>

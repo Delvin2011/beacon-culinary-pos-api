@@ -1,0 +1,16 @@
+.git
+.idea
+.run
+.mvn
+.claude
+target/classes
+target/test-classes
+target/generated-sources
+target/maven-*
+target/surefire-reports
+src
+.env
+.env.example
+*.md
+metadatafiles
+script.sql

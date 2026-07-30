@@ -1,8 +1,14 @@
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/store_api?createDatabaseIfNotExist=true
-    username: root
-    password: MyPassword!
+    url: jdbc:sqlserver://localhost:1433;databaseName=Ecommerce;encrypt=false;trustServerCertificate=true
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    username: sa
+    password: Delvin2011
   jpa:
     show-sql: true
-websiteUrl: http://localhost:4242
+  flyway:
+    enabled: false
+    locations: classpath:db.migration
+
+cookie:
+  secure: false

@@ -1,3 +1,2 @@
-alter table users
-    add role varchar(20) default 'USER' not null;
-
+ALTER TABLE [users]
+    ADD [role] VARCHAR(20) NOT NULL CONSTRAINT DF_users_role DEFAULT 'USER';
