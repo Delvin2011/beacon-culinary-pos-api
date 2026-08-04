@@ -12,4 +12,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     int findMaxOrderNumberForDate(@Param("orderDate") LocalDate orderDate);
 
     List<Order> findByOrderDateOrderByOrderNumberDesc(LocalDate orderDate);
+
+    List<Order> findByOrderDateAndStatusInOrderByCreatedAtAsc(LocalDate orderDate, List<OrderStatus> statuses);
 }

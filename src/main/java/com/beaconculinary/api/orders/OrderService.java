@@ -24,6 +24,7 @@ public class OrderService {
     private final DailyComponentStockRepository dailyComponentStockRepository;
     private final OrderRepository orderRepository;
     private final OrderMapper orderMapper;
+    private final OrderStatusEventPublisher orderStatusEventPublisher;
     private final Clock clock;
 
     @Transactional
@@ -127,6 +128,9 @@ public class OrderService {
         order.setTotal(total);
 
         orderRepository.save(order);
+        // The implicit null -> PENDING transition — retrofits this order onto the KDS stream
+        // the instant it's paid, with no polling needed on the kitchen side.
+        orderStatusEventPublisher.publish(order, null);
 
         return orderMapper.toDto(order);
     }

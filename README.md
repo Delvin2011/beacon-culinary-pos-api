@@ -108,16 +108,21 @@ http://localhost:8080/swagger-ui.html
 ## 🔑 Seed data & test credentials
 
 `V13__seed_menu_and_users.sql` seeds two users for local/dev use, and
-`V14__add_pin_auth_to_users.sql` adds PINs for them plus a third, PIN-only cashier:
+`V14__add_pin_auth_to_users.sql` adds PINs for them plus a third, PIN-only cashier.
+`V34__reset_dev_credentials_to_654321.sql` then resets every password/PIN below to the
+same `654321` value for now:
 
 | Role | Email | Password | PIN |
 |---|---|---|---|
-| Cashier | `cashier@canteen.local` | `Cashier@123` | `1234` |
-| Admin | `admin@canteen.local` | `Admin@123` | `9999` |
-| Cashier B | `cashierb@canteen.local` | `CashierB@123` | `5678` |
+| Cashier | `cashier@canteen.local` | `654321` | `654321` |
+| Admin | `admin@canteen.local` | `654321` | `654321` |
+| Cashier B | `cashierb@canteen.local` | `654321` | `654321` |
+| Kitchen Station | — (PIN-only kiosk) | — | `654321` |
 
 "Cashier B" exists only so tests (and manual QA) have two real cashiers to exercise
-shift-ownership rules with — see [Shifts](#shifts-shifts) below.
+shift-ownership rules with — see [Shifts](#shifts-shifts) below. "Kitchen Station"
+(`V32__seed_kitchen_kiosk_user.sql`, Stage 2.1) is a single shared kiosk account for the
+kitchen display, not a per-staff-member login — email/password aren't a real login path for it.
 
 `meal_periods` is seeded directly by its own creation migration (`V17`) — Breakfast
 (07:00–10:00) and Lunch (12:00–14:30) always exist. `meal_catalog`/`component_catalog`
@@ -136,7 +141,7 @@ POST /auth/pin-login
 
 **Request body**:
 ```json
-{ "cashierId": 3, "pin": "9999" }
+{ "cashierId": 3, "pin": "654321" }
 ```
 
 **Response body**:
@@ -224,7 +229,7 @@ menu/order model; `V17`–`V22` create the current Stage 1.2 catalog/daily-plann
 
 | Table | Purpose |
 |---|---|
-| `users` | Account records — name, email, password hash, `pin_hash`, `active`, `role` (`USER` \| `CASHIER` \| `ADMIN`). |
+| `users` | Account records — name, email, password hash, `pin_hash`, `active`, `role` (`USER` \| `CASHIER` \| `ADMIN` \| `KITCHEN`). |
 | `addresses` | One-to-many addresses per user (`user_id` FK). Not currently exposed via REST. |
 | `profiles` | 1:1 extension of `users` (bio, phone, DOB, loyalty points). Not currently exposed via REST. |
 | `shifts` | A cashier's till session — `cashier_id`, `opening_float`, `opened_at`, `closed_at` (nullable), `status` (`OPEN`/`CLOSED`). No reconciliation math yet — that's a later stage. |
@@ -234,6 +239,9 @@ menu/order model; `V17`–`V22` create the current Stage 1.2 catalog/daily-plann
 | `meal_catalog_components` | Informational composition of a `meal_catalog` entry (which components it's *usually* made of) — display only, not a pricing/stock relationship. |
 | `daily_meal_options` | A specific date + meal period's dish, created from a `meal_catalog` entry. **Snapshots** `name`/`description`/`price` at creation time and tracks `planned_portions`/`portions_remaining`. A later catalog price change never rewrites an already-planned day. |
 | `daily_component_stock` | A specific date + meal period's extra-portion pool for one component, created from a `component_catalog` entry (snapshots `extra_price`, tracks `buffer_quantity`/`buffer_remaining`). **Not** linked to any specific `daily_meal_options` row — any dish's line can draw from it. |
+| `orders` | A paid POS sale — `order_number` (per-day, per-shift `cashier_id`), pricing snapshot (`subtotal`/`total`/`amount_tendered`/`change_due`), and `status` (`PENDING` → `IN_PROGRESS` → `DONE` → `COLLECTED`, or `VOIDED`/`REFUNDED` — Stage 2.1 widened this from Phase 1's single `CONFIRMED` value). |
+| `order_lines` / `order_line_extras` | Snapshotted line items and their extras — price/name captured at order time, immune to later catalog changes. |
+| `order_status_events` | Stage 2.1 audit trail — one row per status transition, including the implicit `null → PENDING` at order creation. `from_status`/`to_status`/`changed_by`/`changed_at`. Powers the sold-out/timing reporting (Stage 2.4) and the void/refund audit (Stage 2.6) — nothing reads it yet besides the KDS write path itself. |
 
 No replenishment table/endpoint exists anywhere in this schema — once
 `portions_remaining`/`buffer_remaining` hits zero for a day, it stays zero by design.
@@ -245,7 +253,7 @@ No replenishment table/endpoint exists anywhere in this schema — once
 ### Authentication (`auth`)
 - Stateless JWT auth (`SessionCreationPolicy.STATELESS`) — no server-side sessions.
 - `POST /auth/login` authenticates via Spring Security's `AuthenticationManager` (BCrypt-hashed passwords), then issues a short-lived **access token** (15 min) in the response body and a long-lived **refresh token** (7 days) as an `HttpOnly`, `Secure` cookie scoped to `/auth/refresh`.
-- `POST /auth/pin-login` — PIN-based login for cashiers/admins (`{ "cashierId": 4, "pin": "1234" }`), issuing the same access-token/refresh-cookie pair as `/auth/login`. Compares the submitted PIN against a pre-computed dummy BCrypt hash when `cashierId` doesn't exist, so an unknown ID and a wrong PIN are both indistinguishable `401`s.
+- `POST /auth/pin-login` — PIN-based login for cashiers/admins (`{ "cashierId": 4, "pin": "654321" }`), issuing the same access-token/refresh-cookie pair as `/auth/login`. Compares the submitted PIN against a pre-computed dummy BCrypt hash when `cashierId` doesn't exist, so an unknown ID and a wrong PIN are both indistinguishable `401`s.
 - `POST /auth/refresh` reads the refresh-token cookie and mints a new access token.
 - `GET /auth/me` returns the currently authenticated user.
 - `JwtAuthenticationFilter` runs once per request, validates the `Authorization: Bearer` header, and populates the `SecurityContext` with the user's ID and a `ROLE_<role>` authority — no DB lookup on every request, the JWT claims (`email`, `name`, `role`) carry the identity.
@@ -258,6 +266,8 @@ Each feature module contributes its own `SecurityRules` bean instead of one mono
 | `GET /meal-periods`, `GET /menu/today` | Public |
 | `/admin/**` (includes `/admin/meal-catalog`, `/admin/component-catalog`, `/admin/daily-options`, `/admin/daily-component-stock`) | `ADMIN` only |
 | `/shifts/**` | `CASHIER` or `ADMIN` |
+| `/kitchen/**` | `KITCHEN` or `ADMIN` |
+| `/public/board/**` | Public |
 | `POST /users` | Public (registration) |
 | `GET /users/cashiers` | Public |
 | `POST /auth/login`, `POST /auth/pin-login`, `POST /auth/refresh` | Public |
@@ -287,6 +297,50 @@ Two deliberately separate layers:
   just a status flip in this stage. Orders don't yet require an open shift either —
   that dependency is enforced starting in Stage 1.3.
 
+### Kitchen Status Screen (`kitchen`, Stage 2.1)
+- Order lifecycle is now `PENDING → IN_PROGRESS → DONE → COLLECTED`, with `VOIDED`/`REFUNDED`
+  reserved for Stage 2.6. This stage only implements/exercises `PENDING → IN_PROGRESS → DONE`;
+  `COLLECTED` is Stage 2.3's endpoint, and void/refund are Stage 2.6's.
+- `GET /kitchen/orders` — today's `PENDING`/`IN_PROGRESS` orders, oldest first, full
+  line/extra detail (`OrderSummaryDto`, `orders` package) for KOT-equivalent display.
+- `PATCH /kitchen/orders/{id}/status` — `{ "status": "IN_PROGRESS" | "DONE" }`. Only the two
+  forward, one-step transitions above are allowed; anything else (skip, backward, or
+  targeting `COLLECTED`/`VOIDED`/`REFUNDED` from this endpoint) is `400`.
+- `GET /kitchen/orders/stream` — SSE stream of order-created/status-change events, same
+  `OrderSummaryDto` shape as the REST response wrapped in `{ eventType, order }`
+  (`ORDER_CREATED` | `STATUS_CHANGED`), so later stages (e.g. the public display) can reuse
+  this exact wire format instead of a second serialization.
+- The audit trail (`OrderStatusEvent`) and the SSE fan-out (`OrderEventBroadcaster`) live in
+  the `orders` package, not `kitchen` — they're generic order-lifecycle infrastructure that
+  later stages build on directly, not a kitchen-specific concern. `OrderStatusEventPublisher`
+  is the single choke point that writes the audit row and broadcasts together, so the two can
+  never go out of sync; `POST /orders` (order creation) and the kitchen `PATCH` both go
+  through it.
+- `KITCHEN` is a single shared kiosk account (`Kitchen Station`, seeded by
+  `V32__seed_kitchen_kiosk_user.sql`), not a per-staff-member login — it uses the existing
+  PIN-login endpoint from Stage 1.1 unchanged.
+
+### Public Display Board (`board`, Stage 2.2)
+- `GET /public/board/today` and `GET /public/board/stream` — fully public, no auth, no role
+  check (`PublicBoardSecurityRules` permits both explicitly). First genuinely unauthenticated
+  surface in the app.
+- Deliberately minimal response shape — `{ orderNumber, status }` per order, no line items, no
+  internal order id, no cashier/customer data of any kind. Same three-status filter as the
+  kitchen screen (`PENDING`/`IN_PROGRESS`/`DONE`) — `VOIDED`/`REFUNDED` (Stage 2.6) are excluded
+  by construction, since they're simply never in that filter list, not by an explicit check.
+- Doesn't duplicate Stage 2.1's status-tracking mechanism. `OrderStatusEventPublisher` (in
+  `orders`) no longer calls any broadcaster directly — it writes the audit row and then
+  publishes one Spring `ApplicationEvent` (`OrderStatusStreamEvent`) carrying the full order
+  detail. `KitchenService` and `PublicBoardService` each have their own `@EventListener`
+  reacting to that same event: kitchen relays it verbatim onto its own SSE channel, the board
+  reduces it down to `{ orderNumber, status }` first. One publish call, two independent
+  listeners, two separate SSE channels (`OrderEventBroadcaster` for kitchen,
+  `PublicBoardEventBroadcaster` for the board) — so the two streams can't drift out of sync,
+  and a later stage can add its own listener without ever touching `orders` again.
+- `COLLECTED` (Stage 2.3) removing an order from the board isn't implemented yet — a `DONE`
+  order just stays on the feed; that's explicitly the frontend's display-windowing concern for
+  now, not the backend's.
+
 ### Users (`users`)
 - `POST /users` self-registration: rejects duplicate emails, BCrypt-hashes the password, and defaults `role` to `USER`. (Cashier/admin accounts are provisioned via the seed migration or direct DB access, not self-registration.)
 - `PUT /users/{id}`, `DELETE /users/{id}`, `POST /users/{id}/change-password` require authentication but currently rely on the global `authenticated()` fallback rather than an explicit "self or admin" ownership check.
@@ -301,17 +355,21 @@ Two deliberately separate layers:
 ## 🧪 Tests
 
 `./mvnw test` runs the integration suite (`MenuIntegrationTests`, `AuthPinLoginIntegrationTests`,
-`ShiftIntegrationTests`, `UserCashiersIntegrationTests`, plus `BeaconCulinaryApiApplicationTests`)
-against a real SQL Server database via `MockMvc` and the actual `/auth/login`/`/auth/pin-login`
-flows. `MenuIntegrationTests` builds its own catalog fixtures through the real admin
-endpoints (no catalog seed data exists yet) and covers snapshot-on-create, catalog price
-changes not retroacting onto already-created daily options, and cross-dish extras
-visibility. A `Clock` bean (overridden with a `MutableClock` in tests where needed) makes
-shift-close-timestamp assertions deterministic. There's currently no `POST /orders` test
-coverage — that endpoint doesn't exist until Stage 1.3. Since Flyway isn't wired into the
-app's own startup (`spring.flyway.enabled: false` in `application-dev.yaml` — see
-[Database](#3-database)), running the tests requires the migrations to already be applied
-via `./mvnw flyway:migrate` first.
+`ShiftIntegrationTests`, `UserCashiersIntegrationTests`, `OrderIntegrationTests`,
+`KitchenIntegrationTests`, `PublicBoardIntegrationTests`, plus
+`BeaconCulinaryApiApplicationTests`) against a real SQL
+Server database via `MockMvc` and the actual `/auth/login`/`/auth/pin-login` flows.
+`MenuIntegrationTests` builds its own catalog fixtures through the real admin endpoints (no
+catalog seed data exists yet) and covers snapshot-on-create, catalog price changes not
+retroacting onto already-created daily options, and cross-dish extras visibility.
+`KitchenIntegrationTests` covers the full `PENDING`/`IN_PROGRESS`/`DONE` transition matrix
+(including the disallowed skip/backward/`COLLECTED` cases), cross-day queue scoping, role
+enforcement, and an SSE assertion that a `PATCH` broadcasts a `STATUS_CHANGED` event to a
+connected stream. A `Clock` bean (overridden with a `MutableClock` in tests where needed)
+makes shift-close-timestamp and meal-period-window assertions deterministic. Since Flyway
+isn't wired into the app's own startup (`spring.flyway.enabled: false` in
+`application-dev.yaml` — see [Database](#3-database)), running the tests requires the
+migrations to already be applied via `./mvnw flyway:migrate` first.
 
 ---
 

@@ -46,6 +46,8 @@ class OrderIntegrationTests {
     @Autowired
     private OrderRepository orderRepository;
     @Autowired
+    private OrderStatusEventRepository orderStatusEventRepository;
+    @Autowired
     private ShiftRepository shiftRepository;
     @Autowired
     private DailyMealOptionRepository dailyMealOptionRepository;
@@ -70,7 +72,7 @@ class OrderIntegrationTests {
         clock.setTime(LocalTime.of(12, 30)); // inside the Lunch window (12:00-14:30)
         adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
         cashierToken = AuthTestHelper.loginAsCashier(mockMvc);
-        cashierBToken = AuthTestHelper.loginWithPin(mockMvc, AuthTestHelper.CASHIER_B_ID, "5678");
+        cashierBToken = AuthTestHelper.loginWithPin(mockMvc, AuthTestHelper.CASHIER_B_ID, "654321");
         lunchId = periodId("lunch");
         breakfastId = periodId("breakfast");
         allDayId = periodId("all day");
@@ -78,6 +80,7 @@ class OrderIntegrationTests {
 
     @AfterEach
     void tearDown() {
+        orderStatusEventRepository.deleteAll();
         orderRepository.deleteAll();
         dailyComponentStockRepository.deleteAll();
         dailyMealOptionRepository.deleteAll();
@@ -456,7 +459,7 @@ class OrderIntegrationTests {
         mockMvc.perform(post("/orders/" + orderId + "/mark-print-failed").header("Authorization", "Bearer " + cashierToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.printFailed").value(true))
-                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.total").value(50.00));
     }
 

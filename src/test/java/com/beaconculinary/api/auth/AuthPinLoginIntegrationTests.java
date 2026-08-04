@@ -11,7 +11,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Exercises POST /auth/pin-login against the seed data from V14__add_pin_auth_to_users.sql. */
+/** Exercises POST /auth/pin-login against the seed data from V14__add_pin_auth_to_users.sql,
+ * as reset by V34__reset_dev_credentials_to_654321.sql. */
 @SpringBootTest
 @AutoConfigureMockMvc
 class AuthPinLoginIntegrationTests {
@@ -20,7 +21,7 @@ class AuthPinLoginIntegrationTests {
 
     @Test
     void correctPin_returnsAccessToken() throws Exception {
-        var body = "{\"cashierId\":" + AuthTestHelper.CASHIER_A_ID + ",\"pin\":\"1234\"}";
+        var body = "{\"cashierId\":" + AuthTestHelper.CASHIER_A_ID + ",\"pin\":\"654321\"}";
 
         mockMvc.perform(post("/auth/pin-login").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk());

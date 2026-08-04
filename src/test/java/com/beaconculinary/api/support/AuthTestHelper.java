@@ -16,13 +16,14 @@ public class AuthTestHelper {
     public static final long CASHIER_A_ID = 2L;
     public static final long ADMIN_ID = 3L;
     public static final long CASHIER_B_ID = 4L;
+    public static final long KITCHEN_ID = 5L;
 
     public static String loginAsCashier(MockMvc mockMvc) throws Exception {
-        return login(mockMvc, "cashier@canteen.local", "Cashier@123");
+        return login(mockMvc, "cashier@canteen.local", "654321");
     }
 
     public static String loginAsAdmin(MockMvc mockMvc) throws Exception {
-        return login(mockMvc, "admin@canteen.local", "Admin@123");
+        return login(mockMvc, "admin@canteen.local", "654321");
     }
 
     private static String login(MockMvc mockMvc, String email, String password) throws Exception {
@@ -30,6 +31,10 @@ public class AuthTestHelper {
         var response = mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON).content(body))
                 .andReturn().getResponse().getContentAsString();
         return MAPPER.readTree(response).get("token").asText();
+    }
+
+    public static String loginAsKitchen(MockMvc mockMvc) throws Exception {
+        return loginWithPin(mockMvc, KITCHEN_ID, "654321");
     }
 
     public static String loginWithPin(MockMvc mockMvc, long cashierId, String pin) throws Exception {
