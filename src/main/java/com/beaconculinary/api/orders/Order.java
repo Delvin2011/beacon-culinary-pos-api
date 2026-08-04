@@ -38,7 +38,7 @@ public class Order {
 
     @Column(name = "status")
     @Enumerated(EnumType.STRING)
-    private OrderStatus status = OrderStatus.CONFIRMED;
+    private OrderStatus status = OrderStatus.PENDING;
 
     @Column(name = "payment_method")
     @Enumerated(EnumType.STRING)

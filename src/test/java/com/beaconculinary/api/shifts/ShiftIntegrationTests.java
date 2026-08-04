@@ -38,7 +38,7 @@ class ShiftIntegrationTests {
     @BeforeEach
     void setUp() throws Exception {
         cashierAToken = AuthTestHelper.loginAsCashier(mockMvc);
-        cashierBToken = AuthTestHelper.loginWithPin(mockMvc, AuthTestHelper.CASHIER_B_ID, "5678");
+        cashierBToken = AuthTestHelper.loginWithPin(mockMvc, AuthTestHelper.CASHIER_B_ID, "654321");
         adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
     }
 
