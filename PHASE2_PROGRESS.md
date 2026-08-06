@@ -177,3 +177,211 @@ all 10 `KitchenIntegrationTests` passing unchanged after the `OrderStatusEventPu
 refactor, confirming the event-based relay behaves identically to the direct call it replaced.
 
 ---
+
+## Stage 2.6 — Backend: Admin-Gated Voids & Refunds — ✅ Complete
+
+**What was built**
+- Four migrations (`V35`–`V38`): `orders.original_total` (immutable snapshot, backfilled from
+  the existing `total` column, then tightened to `NOT NULL`) and `orders.extras_adjusted`
+  (guard flag); `order_line_extras.adjusted` (rows flagged, never deleted, so the original
+  order detail stays reconstructable); `order_adjustments` (the audit trail —
+  `scope`/`action`/`reason_code`/`note`/`amount`/`requested_by`/`authorized_by`); and
+  `authorization_tokens` (`token`, `admin_id`, `expires_at`, `used`).
+- New `admin` package pieces: `AuthorizationToken` entity/repository and
+  `AdminAuthorizationService`. `POST /admin/authorize` checks the submitted PIN against every
+  active `ADMIN` (reusing Stage-1-era `UserRepository.findByActiveTrueAndRoleIn`, no new query
+  needed), and on a match mints a 60-second single-use token (`SecureRandom` → 32 bytes →
+  URL-safe base64). `AdminSecurityRules` carves out just this one `/admin/**` path for
+  `CASHIER`/`ADMIN`; every other admin endpoint stays `ADMIN`-only, unchanged.
+- New `orders` package pieces: `OrderAdjustment` entity/repository,
+  `OrderAdjustmentScope`/`Action`/`ReasonCode` enums, a third `OrderEventType.ORDER_UPDATED`,
+  and `OrderAdjustmentService` driving `POST /orders/{id}/adjustments`. `VOID` vs `REFUND` is
+  derived from the order's current status at request time (`PENDING` → `VOID`, else `REFUND`)
+  — never a client-supplied field. `WHOLE_ORDER` zeroes the order, restores stock for every
+  not-already-adjusted line/extra on a `VOID`, and terminalizes the order. `EXTRAS_ONLY`
+  restores only the affected extras' component stock, flags those `order_line_extras` rows
+  `adjusted`, and leaves the order's status and base-meal stock untouched.
+- Stock restoration reuses the exact decrement pattern from order creation, just additive:
+  `DailyMealOptionRepository.incrementPortionsRemaining`/
+  `DailyComponentStockRepository.incrementBufferRemaining` are the same conditional-`UPDATE`
+  shape as `decrementPortionsRemaining`/`decrementBufferRemaining` minus the `WHERE ... >=`
+  guard, since restoring stock can never oversell.
+- `GET /orders/{id}` (Stage 1.4) now returns `originalTotal` alongside the still-mutable
+  `total`, plus an `adjustments` array — no new endpoint needed, the existing `OrderMapper`
+  just grew a `toDto(OrderAdjustment)` method.
+- Event wiring reuses Stage 2.1's infrastructure rather than adding a parallel one:
+  `WHOLE_ORDER` calls the existing `OrderStatusEventPublisher.publish()` (same audit-row +
+  `STATUS_CHANGED` broadcast the kitchen `PATCH` already uses), so the kitchen and public
+  boards drop the order for free — both already filter to non-terminal statuses, so nothing
+  about the filters needed to change for this stage. `EXTRAS_ONLY` instead calls
+  `orders.OrderEventBroadcaster.broadcast()` directly with the new `ORDER_UPDATED` event,
+  bypassing the shared `ApplicationEventPublisher` entirely — the only way to reach the kitchen
+  stream without also triggering `PublicBoardService`'s listener, since both listen on the same
+  application-event channel.
+- `OrderSummaryMapper` now filters out `adjusted` extras when building the `extras` list for a
+  line. Because this one mapper backs `GET /kitchen/orders` *and* all three SSE event bodies
+  (`ORDER_CREATED`/`STATUS_CHANGED`/`ORDER_UPDATED`), voided/refunded extras disappear from the
+  kitchen ticket everywhere at once with no second code path to keep in sync.
+
+**Decisions made**
+- Token consumption runs in its own transaction. `AdminAuthorizationService.consumeToken()` is
+  `@Transactional(propagation = REQUIRES_NEW)`, called from inside
+  `OrderAdjustmentService.adjustOrder()`'s own `@Transactional` method. This is what actually
+  makes the spec's "if the adjustment fails validation later in this method, the token should
+  not be consumable a second time" true — had `consumeToken()` shared the caller's transaction,
+  a later exception (bad order date, terminal order, `OTHER` without a note, ...) would roll
+  back the token deletion right along with everything else, silently un-burning it and defeating
+  the whole point of "forces a fresh PIN entry on retry."
+- `EXTRAS_ONLY`'s two failure modes are checked in a specific order to land on the right status
+  code. `order.extrasAdjusted` (order-level) is checked *first* and throws `409` immediately;
+  only if that's `false` does the code compute the unadjusted-extras list and throw `400` on
+  empty. Built the other way round first — checking "any unadjusted extras?" before the
+  order-level flag — and a genuine second `EXTRAS_ONLY` call returned `400` instead of the
+  spec's `409`, because after a first successful adjustment both signals go true together
+  (every extra is individually `adjusted` *and* `order.extrasAdjusted` is set) so the wrong one
+  was winning. Caught by the `secondExtrasOnlyAdjustment_returns409` test before landing.
+- `AuthorizationToken`/`AdminAuthorizationService` live in `admin`, not a new `auth` package —
+  matches the `/admin/authorize` URL namespace and the existing precedent that `AdminSecurityRules`
+  already owns all of `/admin/**`. `OrderAdjustmentService` (in `orders`) depends on it the same
+  directional way `kitchen`/`board` already depend on `orders`' shared infrastructure — no new
+  package cycle.
+- `OrderAdjustmentRepository` was added even though nothing outside `OrderAdjustmentService`
+  queries it yet — same role `OrderStatusEventRepository` played from Stage 2.1 on: a thin
+  marker repository that exists mainly so integration tests can assert against adjustment rows
+  directly instead of only through the JSON response.
+
+**Tests** — `OrderAdjustmentIntegrationTests` (16): valid/invalid admin PIN on
+`POST /admin/authorize` (`401` doesn't reveal which admins exist); a cashier's own PIN cannot
+self-authorize; `WHOLE_ORDER` void on a `PENDING` order restores both base-portion and extra
+stock, zeroes the total, and drops the order from both the kitchen queue and the public board;
+`WHOLE_ORDER` refund on a `DONE` order leaves stock untouched; `EXTRAS_ONLY` void on a `PENDING`
+order restores only the extra's component stock (base portions untouched), reduces the total by
+exactly the extras' sum, and fires `ORDER_UPDATED` on the kitchen SSE stream; `EXTRAS_ONLY`
+refund on a `DONE` order reduces the total with no stock change and no kitchen event; a second
+`EXTRAS_ONLY` attempt is `409` and leaves the first adjustment's effects unchanged; any
+adjustment on an already-terminal order is `409`; an adjustment on a prior-day order is `400`;
+`reasonCode = OTHER` is `400` without a `note` and succeeds with one; a token is rejected on
+reuse; a token is rejected once expired, even though never used; a request that fails validation
+(`OTHER` without a note) still burns the token, so the retry needs a fresh authorize call;
+`WHOLE_ORDER` after a prior `EXTRAS_ONLY` on the same order succeeds with `amount` reflecting
+only the remaining post-extras total, and doesn't double-restore the extra's stock; and
+`GET /orders/{id}` returns the adjustment history plus `originalTotal` alongside the reduced
+`total`, with the affected `order_line_extras` row showing `adjusted: true`.
+
+**Verified live** — migrations applied against the real dev SQL Server DB via the Flyway CLI
+directly (the `dev` profile runs with `spring.flyway.enabled: false`, same as every prior stage,
+so schema changes here were applied out-of-band rather than via app startup). `V35` initially
+failed with `Invalid column name 'original_total'` — SQL Server compiles a `.sql` script as one
+batch, so `ALTER TABLE ... ADD` followed immediately by a statement referencing that new column
+fails unless split across batches (the same class of issue `V30` dodged with dynamic `EXEC` SQL);
+fixed by inserting `GO` separators between the `ADD COLUMN`, the backfill `UPDATE`, and the
+`NOT NULL` tightening. Full suite: 69 tests, 0 failures, no regressions in any earlier stage.
+
+---
+
+## Stage 2.5 — Backend: Cash Drawer Reconciliation & Shift Close — ✅ Complete
+
+**What was built**
+- Three migrations (`V39`–`V41`): `shifts.closing_cash`/`expected_cash`/`variance`/
+  `variance_reason_code` (checked)/`variance_note`/`variance_authorized_by` (FK `users`, all
+  nullable — populated only on close, and only the variance columns only when non-zero);
+  `idx_shifts_single_open`, a filtered unique index (`CREATE UNIQUE INDEX ... WHERE status =
+  'OPEN'`) widening Stage 1.1's per-cashier "one open shift" rule to a system-wide one; and
+  `order_adjustments.shift_id` (FK `shifts`, backfilled from each adjustment's order's own
+  `shift_id` for any pre-existing rows, then tightened to `NOT NULL`) — split across `GO`
+  batches the same way `V35` (Stage 2.6) had to be, since the backfill `UPDATE` references the
+  column the same script just added.
+- `ShiftService.openShift()` no longer runs an app-level "does this cashier already have a
+  shift open" check — it just inserts and lets `idx_shifts_single_open` reject a second
+  concurrent `OPEN` row, translating the resulting `DataIntegrityViolationException` into the
+  same `409 ShiftAlreadyOpenException` the endpoint already returned. `saveAndFlush()` (not
+  `save()`) is required here — otherwise the `INSERT` wouldn't execute until the transaction's
+  own commit-time flush, by which point it's too late for this method's `try/catch` to see it.
+- `GET /shifts/{id}/summary` (new, read-only, doesn't close anything) and `POST
+  /shifts/{id}/close` (rewritten) both share a private `computeCashBreakdown()` helper
+  implementing the spec's attribution formula: `expected_cash = opening_float + SUM(orders
+  .original_total WHERE shift_id = this AND payment_method = CASH) − SUM(order_adjustments
+  .amount WHERE shift_id = this)`. Both endpoints stay `CASHIER` (own shift only via a shared
+  `loadShiftForCaller()` ownership check) / `ADMIN` (any), matching Stage 1.1's existing rule —
+  no `ShiftSecurityRules` changes needed.
+- `POST /shifts/{id}/close` now takes `{ countedCash, varianceAuthorization? }`.
+  `varianceAuthorization` (`{ reasonCode, note?, authorizationToken }`) is required only when
+  `countedCash != expectedCash` (compared via `BigDecimal.compareTo`, not `equals`, so `500` and
+  `500.00` count as equal); when required but missing, `400`. Reuses Stage 2.6's exact
+  `AdminAuthorizationService.consumeToken()` — no second authorization pathway — so the token is
+  validated/burned in its own `REQUIRES_NEW` transaction before the `reasonCode = OTHER` +
+  missing-`note` check, meaning a request that fails that later validation still burns the token
+  (same "forces a fresh PIN entry on retry" behavior Stage 2.6 established). On success,
+  `closingCash`/`expectedCash`/`variance` are always persisted (snapshotted, not left to be
+  recomputed later); the three variance-specific columns stay `null` on a zero-variance close.
+- `OrderAdjustmentService.adjustOrder()` gained one line: it now looks up whichever `Shift` is
+  currently `OPEN` (`ShiftRepository.findFirstByStatus`) and sets it as the new
+  `OrderAdjustment.shift` — the shift open at authorization time, not `order.shift`. Trivial to
+  make correct because `idx_shifts_single_open` guarantees at most one candidate. No open shift
+  at adjustment time throws the same `NoOpenShiftException` order creation already uses (already
+  wired to `409` in `OrderController`) — a void/refund is cash-drawer activity same as a sale, so
+  it needs an active till the same way.
+
+**Decisions made**
+- **The global constraint has a load-bearing side effect on `OrderService`, not just
+  `ShiftService`**: `OrderService.createOrder()` looks up an open shift scoped to `o.cashier =
+  currentUser`, not "any open shift" — so once `idx_shifts_single_open` is live, only *one*
+  cashier system-wide can be mid-shift (and therefore able to sell) at any given moment. That's
+  the intended "one shift, one till" model, but it broke two pre-existing
+  `OrderIntegrationTests` concurrency tests (`concurrentOrdersForLastPortion_exactlyOneSucceeds`,
+  `concurrentOrdersForLastSharedExtraUnit_acrossDifferentLines_exactlyOneSucceeds`) that opened
+  shifts for *two different* cashiers to race two simultaneous orders — that setup is no longer
+  reachable at all (the second `openShift` call now itself returns `409`). Fixed by racing two
+  concurrent requests from the *same* cashier/shift instead — the thing actually under test is
+  the conditional-decrement race guard on `daily_meal_options`/`daily_component_stock`, which two
+  requests on one shift exercise identically to two requests on two shifts.
+- `orderCount` in the summary DTO counts *all* orders on the shift (`OrderRepository
+  .countByShiftId`), not just cash ones — `PaymentMethod` only has a `CASH` value today so the
+  two are numerically identical, but "how many orders did this shift ring up" reads as the more
+  natural definition than "how many cash orders," and doesn't need revisiting if a second payment
+  method is ever added.
+- `ShiftService.openShift()`'s try/catch is narrowly scoped to `DataIntegrityViolationException`
+  around the `saveAndFlush()` call specifically — not a broader catch around the whole method —
+  so a genuine unrelated persistence failure isn't silently reinterpreted as "shift already
+  open."
+- Chose `saveAndFlush()` over `save()` deliberately after confirming Hibernate's `IDENTITY`
+  generator normally forces an immediate `INSERT` at `persist()` time anyway (it needs the
+  generated key back right away) — `saveAndFlush()` isn't masking a batching issue, it's making
+  the "the exception surfaces inside this try block" guarantee explicit and independent of that
+  Hibernate implementation detail.
+- New `ShiftCloseCashAttributionIntegrationTests` class (rather than folding into
+  `ShiftIntegrationTests`) specifically for the two scenarios that need real orders/adjustments
+  (expected-cash math, cross-shift attribution) — mirrors why Stage 2.6 needed the full
+  meal-catalog/order-creation setup `OrderAdjustmentIntegrationTests` carries and
+  `ShiftIntegrationTests` never did. Every other Stage 2.5 scenario (global constraint,
+  ownership, variance authorization flows, already-closed) needs no orders at all: with an empty
+  shift, `expectedCash == openingFloat`, so sending any other `countedCash` is enough to produce
+  a controllable nonzero variance without touching the menu/order machinery.
+
+**Tests** — 19 new (`ShiftIntegrationTests` 17, `ShiftCloseCashAttributionIntegrationTests` 2):
+opening a second shift while one is open is `409` for both the same cashier (Stage 1.1's
+original case) and a *different* cashier (Stage 2.5's widened case); a zero-variance close
+succeeds with no `varianceAuthorization` and leaves the three variance columns absent from the
+response; closing another cashier's shift is `403`, closing an already-`CLOSED` shift is `409`;
+`GET /shifts/{id}/summary` on a fresh shift reflects `openingFloat` only, and is `403` for a
+non-owner non-admin; a nonzero variance with no `varianceAuthorization` is `400`; `OTHER` with no
+`note` is `400`; a complete valid authorization succeeds with `closingCash`/`expectedCash`
+/`variance`/`varianceReasonCode`/`varianceNote`/`varianceAuthorizedById` all persisted and
+returned; a token reused across two different shift closes is `401`; an expired token is `401`
+even though unused; a request that fails the `OTHER`-without-`note` check still burns the token
+(retry needs a fresh authorize call). Separately: expected-cash math verified end-to-end against
+2 real cash sales plus a same-shift `WHOLE_ORDER` void and a same-shift `EXTRAS_ONLY` refund; and
+cross-shift attribution verified by closing shift A, opening shift B, refunding a shift-A order
+while B is open, and confirming shift A's `adjustmentsTotal`/`expectedCash` are untouched while
+shift B's absorb the refund. Full suite: 81 tests, 0 failures — including both fixed
+`OrderIntegrationTests` concurrency tests passing unchanged in intent (same race, same-cashier
+setup) after the global single-open-shift constraint made their original two-cashier setup
+impossible.
+
+**Verified live** — migrations applied against the real dev SQL Server DB via the Flyway CLI
+directly, same out-of-band pattern as every prior stage (`spring.flyway.enabled: false` under the
+`dev` profile). Checked for pre-existing stray `OPEN` shifts before applying `V40` (none existed
+in the dev DB, so the filtered unique index's `CREATE INDEX` succeeded without needing a data
+cleanup step first — a real deployment with duplicate `OPEN` rows would need one).
+
+---

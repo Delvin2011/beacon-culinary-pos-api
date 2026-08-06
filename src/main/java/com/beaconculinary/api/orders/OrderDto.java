@@ -20,7 +20,9 @@ public class OrderDto {
     private BigDecimal changeDue;
     private BigDecimal subtotal;
     private BigDecimal total;
+    private BigDecimal originalTotal;
     private LocalDateTime createdAt;
     private boolean printFailed;
     private List<OrderLineDto> lines;
+    private List<OrderAdjustmentDto> adjustments;
 }

@@ -13,6 +13,10 @@ public interface OrderMapper {
     @Mapping(target = "name", source = "dailyMealOption.name")
     OrderLineDto toDto(OrderLine line);
 
+    @Mapping(target = "requestedById", source = "requestedBy.id")
+    @Mapping(target = "authorizedById", source = "authorizedBy.id")
+    OrderAdjustmentDto toDto(OrderAdjustment adjustment);
+
     @Mapping(target = "shiftId", source = "shift.id")
     @Mapping(target = "cashierId", source = "cashier.id")
     OrderDto toDto(Order order);

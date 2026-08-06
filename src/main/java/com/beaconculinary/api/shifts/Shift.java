@@ -34,4 +34,25 @@ public class Shift {
     @Column(name = "status")
     @Enumerated(EnumType.STRING)
     private ShiftStatus status;
+
+    @Column(name = "closing_cash")
+    private BigDecimal closingCash;
+
+    @Column(name = "expected_cash")
+    private BigDecimal expectedCash;
+
+    @Column(name = "variance")
+    private BigDecimal variance;
+
+    @Column(name = "variance_reason_code")
+    @Enumerated(EnumType.STRING)
+    private ShiftVarianceReasonCode varianceReasonCode;
+
+    @Column(name = "variance_note")
+    private String varianceNote;
+
+    // The admin whose PIN authorized a nonzero variance close.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variance_authorized_by")
+    private User varianceAuthorizedBy;
 }

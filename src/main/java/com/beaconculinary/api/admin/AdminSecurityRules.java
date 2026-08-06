@@ -2,6 +2,7 @@ package com.beaconculinary.api.admin;
 
 import com.beaconculinary.api.common.SecurityRules;
 import com.beaconculinary.api.users.Role;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
 import org.springframework.stereotype.Component;
@@ -10,6 +11,10 @@ import org.springframework.stereotype.Component;
 public class AdminSecurityRules implements SecurityRules {
     @Override
     public void configure(AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry registry) {
-        registry.requestMatchers("/admin/**").hasRole(Role.ADMIN.name());
+        // A cashier at the till submits whichever admin's PIN is presented — Stage 2.6's
+        // manager-override flow — so this one /admin/** path is deliberately not admin-only.
+        registry
+            .requestMatchers(HttpMethod.POST, "/admin/authorize").hasAnyRole(Role.CASHIER.name(), Role.ADMIN.name())
+            .requestMatchers("/admin/**").hasRole(Role.ADMIN.name());
     }
 }

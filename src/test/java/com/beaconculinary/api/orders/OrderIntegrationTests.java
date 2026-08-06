@@ -62,7 +62,6 @@ class OrderIntegrationTests {
 
     private String adminToken;
     private String cashierToken;
-    private String cashierBToken;
     private long lunchId;
     private long breakfastId;
     private long allDayId;
@@ -72,7 +71,6 @@ class OrderIntegrationTests {
         clock.setTime(LocalTime.of(12, 30)); // inside the Lunch window (12:00-14:30)
         adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
         cashierToken = AuthTestHelper.loginAsCashier(mockMvc);
-        cashierBToken = AuthTestHelper.loginWithPin(mockMvc, AuthTestHelper.CASHIER_B_ID, "654321");
         lunchId = periodId("lunch");
         breakfastId = periodId("breakfast");
         allDayId = periodId("all day");
@@ -265,8 +263,10 @@ class OrderIntegrationTests {
         var beefId = createComponent("Beef", "15.00");
         var mealId = createMealCatalog("Potatoes & Beef", "50.00", beefId);
         var optionId = createDailyOption(lunchId, mealId, 1);
+        // Stage 2.5's global single-open-shift constraint means only one cashier can have a
+        // shift open system-wide, so this race is now exercised as two concurrent requests
+        // from the one open shift rather than two different cashiers' shifts.
         openShift(cashierToken);
-        openShift(cashierBToken);
 
         var body = orderJson(new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
 
@@ -274,7 +274,7 @@ class OrderIntegrationTests {
                 () -> mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                                 .contentType(MediaType.APPLICATION_JSON).content(body))
                         .andReturn().getResponse().getStatus(),
-                () -> mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierBToken)
+                () -> mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                                 .contentType(MediaType.APPLICATION_JSON).content(body))
                         .andReturn().getResponse().getStatus()
         );
@@ -294,8 +294,10 @@ class OrderIntegrationTests {
         var optionAId = createDailyOption(lunchId, mealAId, 10);
         var optionBId = createDailyOption(lunchId, mealBId, 10);
         var chickenStockId = createDailyComponentStock(lunchId, chickenId, 1);
+        // Stage 2.5's global single-open-shift constraint means only one cashier can have a
+        // shift open system-wide, so this race is now exercised as two concurrent requests
+        // from the one open shift rather than two different cashiers' shifts.
         openShift(cashierToken);
-        openShift(cashierBToken);
 
         var bodyA = orderJson(new BigDecimal("100.00"),
                 new LineReq(optionAId, 1, List.of(new ExtraReq(chickenStockId, 1))));
@@ -306,7 +308,7 @@ class OrderIntegrationTests {
                 () -> mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                                 .contentType(MediaType.APPLICATION_JSON).content(bodyA))
                         .andReturn().getResponse().getStatus(),
-                () -> mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierBToken)
+                () -> mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                                 .contentType(MediaType.APPLICATION_JSON).content(bodyB))
                         .andReturn().getResponse().getStatus()
         );

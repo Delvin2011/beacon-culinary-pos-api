@@ -126,6 +126,7 @@ public class OrderService {
         order.setChangeDue(changeDue);
         order.setSubtotal(subtotal);
         order.setTotal(total);
+        order.setOriginalTotal(total);
 
         orderRepository.save(order);
         // The implicit null -> PENDING transition — retrofits this order onto the KDS stream

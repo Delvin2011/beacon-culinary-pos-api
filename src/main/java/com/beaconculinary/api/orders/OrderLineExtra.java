@@ -34,4 +34,9 @@ public class OrderLineExtra {
 
     @Column(name = "line_total")
     private BigDecimal lineTotal;
+
+    // Stage 2.6 — flagged (not deleted) by an EXTRAS_ONLY adjustment, so the original order
+    // detail remains reconstructable.
+    @Column(name = "adjusted")
+    private boolean adjusted = false;
 }

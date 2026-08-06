@@ -13,4 +13,10 @@ public class ShiftDto {
     private LocalDateTime openedAt;
     private LocalDateTime closedAt;
     private ShiftStatus status;
+    private BigDecimal closingCash;
+    private BigDecimal expectedCash;
+    private BigDecimal variance;
+    private ShiftVarianceReasonCode varianceReasonCode;
+    private String varianceNote;
+    private Long varianceAuthorizedById;
 }

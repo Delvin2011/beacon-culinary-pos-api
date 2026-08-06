@@ -117,12 +117,26 @@ same `654321` value for now:
 | Cashier | `cashier@canteen.local` | `654321` | `654321` |
 | Admin | `admin@canteen.local` | `654321` | `654321` |
 | Cashier B | `cashierb@canteen.local` | `654321` | `654321` |
-| Kitchen Station | — (PIN-only kiosk) | — | `654321` |
+| Kitchen Station | — (PIN-only kiosk) | *no password login* | `654321` |
 
 "Cashier B" exists only so tests (and manual QA) have two real cashiers to exercise
 shift-ownership rules with — see [Shifts](#shifts-shifts) below. "Kitchen Station"
 (`V32__seed_kitchen_kiosk_user.sql`, Stage 2.1) is a single shared kiosk account for the
-kitchen display, not a per-staff-member login — email/password aren't a real login path for it.
+kitchen display, not a per-staff-member login.
+
+**Kitchen Station has no working password — it can only log in via `POST /auth/pin-login`.**
+Its `password` column is deliberately filled with a dummy/unusable BCrypt hash (the same one
+`AuthService` uses for its constant-time PIN-miss comparison), so `POST /auth/login` will
+always reject it regardless of what's typed as the password. Use the PIN endpoint instead:
+`POST /auth/pin-login { "cashierId": <id>, "pin": "654321" }`.
+
+**`cashierId` (and every other user id) is a DB auto-increment value, not something the
+migrations pin down — it can differ between environments.** Don't hardcode the ids from this
+table across environments; look them up per-environment instead: `GET /users` (any
+authenticated user) or `GET /users/cashiers` (public, but `CASHIER`/`ADMIN` only — it excludes
+`KITCHEN`, so the kitchen id needs `GET /users` or a DB lookup). For example, local dev seeds
+Kitchen Station at id `5`, but a from-scratch/production database can easily land it at a
+different id depending on what else was seeded first.
 
 `meal_periods` is seeded directly by its own creation migration (`V17`) — Breakfast
 (07:00–10:00) and Lunch (12:00–14:30) always exist. `meal_catalog`/`component_catalog`

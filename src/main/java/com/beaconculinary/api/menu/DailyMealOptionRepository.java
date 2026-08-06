@@ -19,4 +19,12 @@ public interface DailyMealOptionRepository extends JpaRepository<DailyMealOption
     @Query("UPDATE DailyMealOption o SET o.portionsRemaining = o.portionsRemaining - :quantity " +
             "WHERE o.id = :id AND o.portionsRemaining >= :quantity")
     int decrementPortionsRemaining(@Param("id") Long id, @Param("quantity") int quantity);
+
+    /**
+     * Stage 2.6 — additive restoration on a VOID adjustment. No oversell risk here since we're
+     * only ever increasing stock, so unlike the decrement there's no conditional WHERE guard.
+     */
+    @Modifying
+    @Query("UPDATE DailyMealOption o SET o.portionsRemaining = o.portionsRemaining + :quantity WHERE o.id = :id")
+    void incrementPortionsRemaining(@Param("id") Long id, @Param("quantity") int quantity);
 }

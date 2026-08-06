@@ -12,4 +12,5 @@ public class OrderLineExtraDto {
     private BigDecimal priceDelta;
     private Integer quantity;
     private BigDecimal lineTotal;
+    private boolean adjusted;
 }

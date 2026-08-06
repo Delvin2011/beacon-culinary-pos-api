@@ -19,4 +19,12 @@ public interface DailyComponentStockRepository extends JpaRepository<DailyCompon
     @Query("UPDATE DailyComponentStock s SET s.bufferRemaining = s.bufferRemaining - :quantity " +
             "WHERE s.id = :id AND s.bufferRemaining >= :quantity")
     int decrementBufferRemaining(@Param("id") Long id, @Param("quantity") int quantity);
+
+    /**
+     * Stage 2.6 — additive restoration on a VOID adjustment. No oversell risk here since we're
+     * only ever increasing stock, so unlike the decrement there's no conditional WHERE guard.
+     */
+    @Modifying
+    @Query("UPDATE DailyComponentStock s SET s.bufferRemaining = s.bufferRemaining + :quantity WHERE s.id = :id")
+    void incrementBufferRemaining(@Param("id") Long id, @Param("quantity") int quantity);
 }

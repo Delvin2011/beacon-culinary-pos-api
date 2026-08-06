@@ -1,5 +1,6 @@
 package com.beaconculinary.api.orders;
 
+import com.beaconculinary.api.admin.InvalidAuthorizationTokenException;
 import com.beaconculinary.api.common.ErrorDto;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
@@ -15,6 +16,7 @@ import java.util.List;
 @RequestMapping("/orders")
 public class OrderController {
     private final OrderService orderService;
+    private final OrderAdjustmentService orderAdjustmentService;
 
     @PostMapping
     public ResponseEntity<OrderDto> createOrder(
@@ -41,6 +43,14 @@ public class OrderController {
         return orderService.markPrintFailed(id);
     }
 
+    @PostMapping("/{id}/adjustments")
+    public ResponseEntity<OrderDto> adjustOrder(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateOrderAdjustmentRequest request) {
+        var order = orderAdjustmentService.adjustOrder(id, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(order);
+    }
+
     @ExceptionHandler(OrderNotFoundException.class)
     public ResponseEntity<Void> handleOrderNotFound() {
         return ResponseEntity.notFound().build();
@@ -59,5 +69,15 @@ public class OrderController {
     @ExceptionHandler(InvalidOrderRequestException.class)
     public ResponseEntity<ErrorDto> handleInvalidRequest(InvalidOrderRequestException ex) {
         return ResponseEntity.badRequest().body(new ErrorDto(ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidAuthorizationTokenException.class)
+    public ResponseEntity<ErrorDto> handleInvalidAuthorizationToken(InvalidAuthorizationTokenException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorDto(ex.getMessage()));
+    }
+
+    @ExceptionHandler({OrderAlreadyAdjustedException.class, ExtrasAlreadyAdjustedException.class})
+    public ResponseEntity<ErrorDto> handleAdjustmentConflict(RuntimeException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage()));
     }
 }

@@ -56,6 +56,14 @@ public class Order {
     @Column(name = "total")
     private BigDecimal total;
 
+    // Immutable snapshot of the total at creation, for audit — unlike total, this never changes.
+    @Column(name = "original_total")
+    private BigDecimal originalTotal;
+
+    // Guards against an EXTRAS_ONLY adjustment being applied twice to the same order.
+    @Column(name = "extras_adjusted")
+    private boolean extrasAdjusted = false;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -64,4 +72,7 @@ public class Order {
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderLine> lines = new ArrayList<>();
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderAdjustment> adjustments = new ArrayList<>();
 }
