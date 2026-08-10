@@ -150,11 +150,16 @@ class OrderAdjustmentIntegrationTests {
     private record LineReq(long dailyMealOptionId, int quantity, List<ExtraReq> extras) {
     }
 
-    private record OrderReq(BigDecimal amountTendered, List<LineReq> lines) {
+    private record PaymentReq(String method, BigDecimal amount, BigDecimal amountTendered) {
     }
 
-    private long placeOrder(BigDecimal amountTendered, LineReq... lines) throws Exception {
-        var body = MAPPER.writeValueAsString(new OrderReq(amountTendered, List.of(lines)));
+    private record OrderReq(List<PaymentReq> payments, List<LineReq> lines) {
+    }
+
+    // amount must equal the order's total exactly (Stage 4 Part A) — amountTendered can be
+    // larger, none of this file's assertions depend on the exact change-due figure.
+    private long placeOrder(BigDecimal amount, LineReq... lines) throws Exception {
+        var body = MAPPER.writeValueAsString(new OrderReq(List.of(new PaymentReq("CASH", amount, new BigDecimal("100.00"))), List.of(lines)));
         var response = mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -185,7 +190,7 @@ class OrderAdjustmentIntegrationTests {
             openShift(cashierToken);
             shiftOpened = true;
         }
-        var orderId = placeOrder(new BigDecimal("100.00"),
+        var orderId = placeOrder(new BigDecimal("62.00"),
                 new LineReq(optionId, 1, List.of(new ExtraReq(chickenStockId, 1))));
         return new OrderSetup(orderId, optionId, chickenStockId);
     }

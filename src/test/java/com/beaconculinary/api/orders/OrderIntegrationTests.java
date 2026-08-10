@@ -34,7 +34,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Exercises the Stage 1.3 POST /orders endpoint and Stage 1.4 order-visibility endpoints against a real SQL Server database. */
+/** Exercises the Stage 1.3 POST /orders endpoint (Stage 4's payments[] contract) and Stage 1.4
+ * order-visibility endpoints against a real SQL Server database. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(ClockTestConfig.class)
@@ -155,20 +156,29 @@ class OrderIntegrationTests {
     private record LineReq(long dailyMealOptionId, int quantity, List<ExtraReq> extras) {
     }
 
-    private record OrderReq(BigDecimal amountTendered, List<LineReq> lines) {
+    private record PaymentReq(String method, BigDecimal amount, BigDecimal amountTendered) {
     }
 
-    private long placeOrder(String token, BigDecimal amountTendered, LineReq... lines) throws Exception {
-        var body = orderJson(amountTendered, lines);
+    private record OrderReq(List<PaymentReq> payments, List<LineReq> lines) {
+    }
+
+    // amount must equal the order's total exactly (Stage 4 Part A) — amountTendered defaults to
+    // the same value (no change) unless a test needs to exercise change-due specifically.
+    private String orderJson(BigDecimal amount, LineReq... lines) throws Exception {
+        return orderJson(amount, amount, lines);
+    }
+
+    private String orderJson(BigDecimal amount, BigDecimal amountTendered, LineReq... lines) throws Exception {
+        return MAPPER.writeValueAsString(new OrderReq(List.of(new PaymentReq("CASH", amount, amountTendered)), List.of(lines)));
+    }
+
+    private long placeOrder(String token, BigDecimal amount, LineReq... lines) throws Exception {
+        var body = orderJson(amount, lines);
         var response = mockMvc.perform(post("/orders").header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return MAPPER.readTree(response).get("id").asLong();
-    }
-
-    private String orderJson(BigDecimal amountTendered, LineReq... lines) throws Exception {
-        return MAPPER.writeValueAsString(new OrderReq(amountTendered, List.of(lines)));
     }
 
     @Test
@@ -178,14 +188,18 @@ class OrderIntegrationTests {
         var optionId = createDailyOption(lunchId, mealId, 10);
         openShift(cashierToken);
 
-        var body = orderJson(new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var body = orderJson(new BigDecimal("50.00"), new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
 
         mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.subtotal").value(50.00))
                 .andExpect(jsonPath("$.total").value(50.00))
-                .andExpect(jsonPath("$.changeDue").value(50.00))
+                .andExpect(jsonPath("$.payments.length()").value(1))
+                .andExpect(jsonPath("$.payments[0].method").value("CASH"))
+                .andExpect(jsonPath("$.payments[0].amount").value(50.00))
+                .andExpect(jsonPath("$.payments[0].amountTendered").value(100.00))
+                .andExpect(jsonPath("$.payments[0].changeDue").value(50.00))
                 .andExpect(jsonPath("$.lines.length()").value(1))
                 .andExpect(jsonPath("$.lines[0].lineTotal").value(50.00))
                 .andExpect(jsonPath("$.orderNumber").exists());
@@ -202,7 +216,7 @@ class OrderIntegrationTests {
         var chickenStockId = createDailyComponentStock(lunchId, chickenId, 5);
         openShift(cashierToken);
 
-        var body = orderJson(new BigDecimal("100.00"),
+        var body = orderJson(new BigDecimal("62.00"),
                 new LineReq(optionId, 1, List.of(new ExtraReq(chickenStockId, 1))));
 
         mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
@@ -226,7 +240,7 @@ class OrderIntegrationTests {
         var optionBId = createDailyOption(lunchId, mealBId, 10);
         openShift(cashierToken);
 
-        var body = orderJson(new BigDecimal("200.00"),
+        var body = orderJson(new BigDecimal("145.00"),
                 new LineReq(optionAId, 2, List.of()),
                 new LineReq(optionBId, 1, List.of()));
 
@@ -245,12 +259,12 @@ class OrderIntegrationTests {
         var optionId = createDailyOption(lunchId, mealId, 1);
         openShift(cashierToken);
 
-        var firstBody = orderJson(new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var firstBody = orderJson(new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
         mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                         .contentType(MediaType.APPLICATION_JSON).content(firstBody))
                 .andExpect(status().isCreated());
 
-        var secondBody = orderJson(new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var secondBody = orderJson(new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
         mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                         .contentType(MediaType.APPLICATION_JSON).content(secondBody))
                 .andExpect(status().isConflict());
@@ -268,7 +282,7 @@ class OrderIntegrationTests {
         // from the one open shift rather than two different cashiers' shifts.
         openShift(cashierToken);
 
-        var body = orderJson(new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var body = orderJson(new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
 
         var results = runConcurrently(
                 () -> mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
@@ -299,9 +313,9 @@ class OrderIntegrationTests {
         // from the one open shift rather than two different cashiers' shifts.
         openShift(cashierToken);
 
-        var bodyA = orderJson(new BigDecimal("100.00"),
+        var bodyA = orderJson(new BigDecimal("62.00"),
                 new LineReq(optionAId, 1, List.of(new ExtraReq(chickenStockId, 1))));
-        var bodyB = orderJson(new BigDecimal("100.00"),
+        var bodyB = orderJson(new BigDecimal("57.00"),
                 new LineReq(optionBId, 1, List.of(new ExtraReq(chickenStockId, 1))));
 
         var results = runConcurrently(
@@ -334,7 +348,9 @@ class OrderIntegrationTests {
         var optionId = createDailyOption(lunchId, mealId, 10);
         openShift(cashierToken);
 
-        var body = orderJson(new BigDecimal("10.00"), new LineReq(optionId, 1, List.of()));
+        // amount matches the order total (50.00) so the sum check passes; amountTendered
+        // (10.00) is what's under test here — less than the CASH payment's own amount.
+        var body = orderJson(new BigDecimal("50.00"), new BigDecimal("10.00"), new LineReq(optionId, 1, List.of()));
 
         mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -350,7 +366,7 @@ class OrderIntegrationTests {
         var mealId = createMealCatalog("Potatoes & Beef", "50.00", beefId);
         var optionId = createDailyOption(lunchId, mealId, 10);
 
-        var body = orderJson(new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var body = orderJson(new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
 
         mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -366,7 +382,7 @@ class OrderIntegrationTests {
 
         clock.setTime(LocalTime.of(6, 0)); // before Lunch opens
 
-        var body = orderJson(new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var body = orderJson(new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
 
         mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -381,7 +397,7 @@ class OrderIntegrationTests {
 
         clock.setTime(LocalTime.of(3, 0)); // well outside both Breakfast and Lunch windows
 
-        var body = orderJson(new BigDecimal("20.00"), new LineReq(optionId, 1, List.of()));
+        var body = orderJson(new BigDecimal("15.00"), new LineReq(optionId, 1, List.of()));
 
         mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -398,7 +414,7 @@ class OrderIntegrationTests {
         var toastStockId = createDailyComponentStock(breakfastId, toastId, 5); // breakfast-only stock
         openShift(cashierToken);
 
-        var body = orderJson(new BigDecimal("100.00"),
+        var body = orderJson(new BigDecimal("56.00"),
                 new LineReq(optionId, 1, List.of(new ExtraReq(toastStockId, 1))));
 
         mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
@@ -413,8 +429,8 @@ class OrderIntegrationTests {
         var optionId = createDailyOption(lunchId, mealId, 10);
         openShift(cashierToken);
 
-        var firstId = placeOrder(cashierToken, new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
-        var secondId = placeOrder(cashierToken, new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var firstId = placeOrder(cashierToken, new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
+        var secondId = placeOrder(cashierToken, new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
 
         mockMvc.perform(get("/orders/today").header("Authorization", "Bearer " + cashierToken))
                 .andExpect(status().isOk())
@@ -432,7 +448,7 @@ class OrderIntegrationTests {
         var chickenStockId = createDailyComponentStock(lunchId, chickenId, 5);
         openShift(cashierToken);
 
-        var orderId = placeOrder(cashierToken, new BigDecimal("100.00"),
+        var orderId = placeOrder(cashierToken, new BigDecimal("62.00"),
                 new LineReq(optionId, 1, List.of(new ExtraReq(chickenStockId, 1))));
 
         mockMvc.perform(get("/orders/" + orderId).header("Authorization", "Bearer " + cashierToken))
@@ -456,7 +472,7 @@ class OrderIntegrationTests {
         var optionId = createDailyOption(lunchId, mealId, 10);
         openShift(cashierToken);
 
-        var orderId = placeOrder(cashierToken, new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var orderId = placeOrder(cashierToken, new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
 
         mockMvc.perform(post("/orders/" + orderId + "/mark-print-failed").header("Authorization", "Bearer " + cashierToken))
                 .andExpect(status().isOk())
@@ -472,7 +488,7 @@ class OrderIntegrationTests {
         var optionId = createDailyOption(lunchId, mealId, 10);
         openShift(cashierToken);
 
-        var orderId = placeOrder(cashierToken, new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var orderId = placeOrder(cashierToken, new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
 
         mockMvc.perform(post("/orders/" + orderId + "/mark-print-failed").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isForbidden());

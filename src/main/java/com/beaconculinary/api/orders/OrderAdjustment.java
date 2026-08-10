@@ -1,5 +1,6 @@
 package com.beaconculinary.api.orders;
 
+import com.beaconculinary.api.accounts.Account;
 import com.beaconculinary.api.shifts.Shift;
 import com.beaconculinary.api.users.User;
 import jakarta.persistence.*;
@@ -47,6 +48,25 @@ public class OrderAdjustment {
 
     @Column(name = "amount")
     private BigDecimal amount;
+
+    // DISCOUNT rows only (Stage 3.2) — null for VOID/REFUND.
+    @Column(name = "discount_type")
+    @Enumerated(EnumType.STRING)
+    private DiscountType discountType;
+
+    @Column(name = "discount_value")
+    private BigDecimal discountValue;
+
+    // Stage 4 Part C — how this adjustment's money is actually paid out, computed automatically
+    // from whether the order's payment included ACCOUNT. Never client-supplied.
+    @Column(name = "refund_method")
+    @Enumerated(EnumType.STRING)
+    private RefundMethod refundMethod;
+
+    // Populated only when refund_method = ACCOUNT_BALANCE, copied from the order's OrderPayment.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "account_id")
+    private Account account;
 
     // The cashier who initiated the adjustment.
     @ManyToOne(fetch = FetchType.LAZY)

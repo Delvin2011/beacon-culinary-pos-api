@@ -23,6 +23,11 @@ public class AdminController {
         return adminAuthorizationService.authorize(request);
     }
 
+    @PostMapping("/authorize-session")
+    public AuthorizeSessionResponse authorizeSession(@Valid @RequestBody AuthorizeRequest request) {
+        return adminAuthorizationService.authorizeSession(request);
+    }
+
     @ExceptionHandler(InvalidPinException.class)
     public ResponseEntity<ErrorDto> handleInvalidPin(InvalidPinException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorDto(ex.getMessage()));

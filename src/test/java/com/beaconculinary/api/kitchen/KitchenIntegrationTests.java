@@ -125,8 +125,11 @@ class KitchenIntegrationTests {
                 .andExpect(status().isCreated());
     }
 
+    // The one meal catalog entry used in this file is always 50.00 x1, so the payment amount
+    // (which must equal the order total exactly) is always 50.00.
     private long placeOrder(long optionId) throws Exception {
-        var body = "{\"amountTendered\":100.00,\"lines\":[{\"dailyMealOptionId\":" + optionId + ",\"quantity\":1,\"extras\":[]}]}";
+        var body = "{\"payments\":[{\"method\":\"CASH\",\"amount\":50.00,\"amountTendered\":100.00}],"
+                + "\"lines\":[{\"dailyMealOptionId\":" + optionId + ",\"quantity\":1,\"extras\":[]}]}";
         var response = mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())

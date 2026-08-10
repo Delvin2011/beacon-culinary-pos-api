@@ -40,16 +40,6 @@ public class Order {
     @Enumerated(EnumType.STRING)
     private OrderStatus status = OrderStatus.PENDING;
 
-    @Column(name = "payment_method")
-    @Enumerated(EnumType.STRING)
-    private PaymentMethod paymentMethod = PaymentMethod.CASH;
-
-    @Column(name = "amount_tendered")
-    private BigDecimal amountTendered;
-
-    @Column(name = "change_due")
-    private BigDecimal changeDue;
-
     @Column(name = "subtotal")
     private BigDecimal subtotal;
 
@@ -75,4 +65,11 @@ public class Order {
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderAdjustment> adjustments = new ArrayList<>();
+
+    // Stage 4 Part A — one row per payment method used (1 entry for a single-method order, up
+    // to 2 for a CASH+CARD split, always exactly 1 for ACCOUNT). Replaces the old single
+    // payment_method/amount_tendered/change_due/card_reference fields (Stage 1.3/3); those
+    // columns remain in the orders table, unused, flagged for a future cleanup.
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderPayment> payments = new ArrayList<>();
 }

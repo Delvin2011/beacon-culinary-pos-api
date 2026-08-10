@@ -15,9 +15,6 @@ public class OrderDto {
     private Long shiftId;
     private Long cashierId;
     private OrderStatus status;
-    private PaymentMethod paymentMethod;
-    private BigDecimal amountTendered;
-    private BigDecimal changeDue;
     private BigDecimal subtotal;
     private BigDecimal total;
     private BigDecimal originalTotal;
@@ -25,4 +22,5 @@ public class OrderDto {
     private boolean printFailed;
     private List<OrderLineDto> lines;
     private List<OrderAdjustmentDto> adjustments;
+    private List<OrderPaymentDto> payments;
 }

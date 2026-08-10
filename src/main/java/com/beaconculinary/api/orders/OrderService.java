@@ -1,5 +1,6 @@
 package com.beaconculinary.api.orders;
 
+import com.beaconculinary.api.accounts.AccountRepository;
 import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
@@ -13,6 +14,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.EnumSet;
 import java.util.List;
 
 @Service
@@ -23,6 +25,7 @@ public class OrderService {
     private final DailyMealOptionRepository dailyMealOptionRepository;
     private final DailyComponentStockRepository dailyComponentStockRepository;
     private final OrderRepository orderRepository;
+    private final AccountRepository accountRepository;
     private final OrderMapper orderMapper;
     private final OrderStatusEventPublisher orderStatusEventPublisher;
     private final Clock clock;
@@ -115,15 +118,10 @@ public class OrderService {
             }
         }
 
-        if (request.getAmountTendered().compareTo(total) < 0) {
-            throw new InvalidOrderRequestException("amountTendered is less than the order total.");
-        }
-        var changeDue = request.getAmountTendered().subtract(total);
+        attachPayments(order, request.getPayments(), total);
 
         var orderNumber = orderRepository.findMaxOrderNumberForDate(today) + 1;
         order.setOrderNumber(orderNumber);
-        order.setAmountTendered(request.getAmountTendered());
-        order.setChangeDue(changeDue);
         order.setSubtotal(subtotal);
         order.setTotal(total);
         order.setOriginalTotal(total);
@@ -155,5 +153,73 @@ public class OrderService {
         order.setPrintFailed(true);
         orderRepository.save(order);
         return orderMapper.toDto(order);
+    }
+
+    /**
+     * Stage 4 Part A/B — validates the payment split (1-2 entries, at most one per method,
+     * ACCOUNT mutually exclusive with everything else, amounts summing exactly to the order
+     * total) and builds one {@link OrderPayment} row per entry. Runs after the stock decrement,
+     * matching where the old single-method check used to live — safe because the whole method
+     * is one transaction, so a rejected payment split still rolls back any decrements already
+     * applied.
+     */
+    private void attachPayments(Order order, List<OrderPaymentRequest> paymentRequests, BigDecimal total) {
+        if (paymentRequests.size() > 2) {
+            throw new InvalidOrderRequestException("A maximum of 2 payment entries is allowed.");
+        }
+
+        var methods = EnumSet.noneOf(PaymentMethod.class);
+        for (var paymentRequest : paymentRequests) {
+            if (!methods.add(paymentRequest.getMethod())) {
+                throw new InvalidOrderRequestException("Each payment method may appear at most once.");
+            }
+        }
+        if (methods.contains(PaymentMethod.ACCOUNT) && paymentRequests.size() > 1) {
+            throw new InvalidOrderRequestException("ACCOUNT payment cannot be combined with any other payment method.");
+        }
+
+        var sum = paymentRequests.stream().map(OrderPaymentRequest::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (sum.compareTo(total) != 0) {
+            throw new InvalidOrderRequestException("Sum of payments must equal the order total.");
+        }
+
+        for (var paymentRequest : paymentRequests) {
+            var payment = new OrderPayment();
+            payment.setOrder(order);
+            payment.setMethod(paymentRequest.getMethod());
+            payment.setAmount(paymentRequest.getAmount());
+
+            switch (paymentRequest.getMethod()) {
+                case CASH -> {
+                    if (paymentRequest.getAmountTendered() == null) {
+                        throw new InvalidOrderRequestException("amountTendered is required for a CASH payment.");
+                    }
+                    if (paymentRequest.getAmountTendered().compareTo(paymentRequest.getAmount()) < 0) {
+                        throw new InvalidOrderRequestException("amountTendered is less than the CASH payment amount.");
+                    }
+                    payment.setAmountTendered(paymentRequest.getAmountTendered());
+                    payment.setChangeDue(paymentRequest.getAmountTendered().subtract(paymentRequest.getAmount()));
+                }
+                case CARD -> {
+                    if (paymentRequest.getCardReference() == null || paymentRequest.getCardReference().isBlank()) {
+                        throw new InvalidOrderRequestException("cardReference is required for a CARD payment.");
+                    }
+                    payment.setCardReference(paymentRequest.getCardReference());
+                }
+                case ACCOUNT -> {
+                    if (paymentRequest.getAccountId() == null) {
+                        throw new InvalidOrderRequestException("accountId is required for an ACCOUNT payment.");
+                    }
+                    var account = accountRepository.findById(paymentRequest.getAccountId())
+                            .orElseThrow(() -> new InvalidOrderRequestException("accountId does not exist."));
+                    if (!account.isActive()) {
+                        throw new InvalidOrderRequestException("Account is not active.");
+                    }
+                    payment.setAccount(account);
+                }
+            }
+
+            order.getPayments().add(payment);
+        }
     }
 }

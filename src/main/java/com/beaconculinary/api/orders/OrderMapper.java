@@ -15,7 +15,11 @@ public interface OrderMapper {
 
     @Mapping(target = "requestedById", source = "requestedBy.id")
     @Mapping(target = "authorizedById", source = "authorizedBy.id")
+    @Mapping(target = "accountId", source = "account.id")
     OrderAdjustmentDto toDto(OrderAdjustment adjustment);
+
+    @Mapping(target = "accountId", source = "account.id")
+    OrderPaymentDto toDto(OrderPayment payment);
 
     @Mapping(target = "shiftId", source = "shift.id")
     @Mapping(target = "cashierId", source = "cashier.id")
