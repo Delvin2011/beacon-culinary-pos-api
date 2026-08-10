@@ -38,4 +38,9 @@ public class DailyComponentStock {
 
     @Column(name = "buffer_remaining")
     private Integer bufferRemaining;
+
+    // Stage 5 Part C — set once this row has contributed to a confirmed ingredient-requirement
+    // deduction, so a later re-planning of the same day never sums it again.
+    @Column(name = "ingredients_reviewed")
+    private boolean ingredientsReviewed;
 }

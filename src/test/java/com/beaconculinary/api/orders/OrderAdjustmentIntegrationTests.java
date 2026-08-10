@@ -1,6 +1,7 @@
 package com.beaconculinary.api.orders;
 
 import com.beaconculinary.api.admin.AuthorizationTokenRepository;
+import com.beaconculinary.api.inventory.RecipeRepository;
 import com.beaconculinary.api.menu.ComponentCatalogRepository;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
@@ -58,6 +59,8 @@ class OrderAdjustmentIntegrationTests {
     @Autowired
     private ComponentCatalogRepository componentCatalogRepository;
     @Autowired
+    private RecipeRepository recipeRepository;
+    @Autowired
     private MutableClock clock;
 
     private String adminToken;
@@ -83,6 +86,7 @@ class OrderAdjustmentIntegrationTests {
         dailyComponentStockRepository.deleteAll();
         dailyMealOptionRepository.deleteAll();
         mealCatalogRepository.deleteAll();
+        recipeRepository.deleteAll();
         componentCatalogRepository.deleteAll();
         shiftRepository.deleteAll();
     }

@@ -11,6 +11,10 @@ import java.util.List;
 public interface DailyMealOptionRepository extends JpaRepository<DailyMealOption, Long> {
     List<DailyMealOption> findByOptionDateAndMealPeriodId(LocalDate optionDate, Long mealPeriodId);
 
+    /** Stage 5 Part C — the set an ingredient-requirements calculation sums over; excludes rows
+     * already contributed to a confirmed deduction. */
+    List<DailyMealOption> findByOptionDateAndMealPeriodIdAndIngredientsReviewedFalse(LocalDate optionDate, Long mealPeriodId);
+
     /**
      * Conditional decrement guarded by the WHERE clause — returns rows affected (0 or 1) so the
      * caller can detect an oversell attempt without a separate read-then-write race window.

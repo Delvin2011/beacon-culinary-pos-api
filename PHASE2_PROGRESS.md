@@ -639,3 +639,143 @@ test runs). Combined with every pre-existing suite, now migrated to the new cont
 **119 tests, 0 failures, 0 errors**.
 
 ---
+
+## Stage 5 — Backend: Raw-Ingredient Inventory, Recipes & Planning-Time Deduction — ✅ Complete
+
+New `inventory` package — an entirely new domain (raw materials/procurement) alongside the
+existing selling-side packages, deliberately with **zero changes to `POST /orders` or any other
+cashier/kitchen/public endpoint**. Ingredient deduction happens once, in a batch, at
+daily-planning time (Part C) — never per sale.
+
+**What was built**
+- **Part A** — `Ingredient` (`name`, `unit` KG/LITRE/EACH, `countSheetCategory`
+  PREP/BULK/DRYSTOCK/FVEG, `active`). `GET/POST/PUT /admin/ingredients`,
+  `GET /admin/ingredients/{id}/stock`. `currentStock` is never a stored field — always
+  `SUM(IngredientStockMovement.quantity)` for that ingredient, computed live in
+  `IngredientService#getStock`.
+- **Part B** — `Recipe` (one per `ComponentCatalog`, unique FK, `batchSize`) + `RecipeLine`
+  (`ingredient`, `quantity`, in the ingredient's own unit). `GET/PUT
+  /admin/components/{id}/recipe`; `PUT` replaces the recipe wholesale
+  (`recipe.getLines().clear()` then re-add, relying on `orphanRemoval = true` — same pattern as
+  `MealCatalogService#applyComponents`). A component with no recipe returns `404` on `GET` and
+  is simply skipped by Part C's calculation — not an error state, just "nothing to track here."
+- New `IngredientStockMovement` — the single append-only ledger backing every stock figure in
+  Parts A/C/D/E/F: `ingredient`, `movementType`
+  (RECEIVED/CONSUMED_FOR_PREP/WASTED/STOCK_TAKE_ADJUSTMENT), signed `quantity`, `costPerUnit`
+  (RECEIVED only), `sourceType`/`sourceId` (polymorphic — not an FK, since it points at
+  whichever of `Grv`/`WasteEntry`/`StockTake`/`IngredientRequirementConfirmation` caused it),
+  `recordedBy`, `createdAt`. Exactly the `AccountPayment`/`OrderAdjustment` "current value = SUM
+  of movements" pattern from Stages 2.5/4, applied to raw stock.
+- **Part C** — `GET /admin/daily-planning/{date}/ingredient-requirements?period=X` sums, per
+  ingredient, over every **unreviewed** `DailyMealOption` (via its meal's components' recipes ×
+  `plannedPortions`) plus every unreviewed `DailyComponentStock` (via its own component's recipe
+  × `bufferQuantity`) — consolidating an ingredient shared across different components (e.g.
+  Cooking Oil used by both a Rice and a Chicken component recipe) into one line, not several.
+  `POST .../confirm-ingredient-requirements` re-runs that same calculation server-side (never
+  trusts the client's snapshot), writes one `CONSUMED_FOR_PREP` movement per submitted
+  `{ingredientId, finalQuantity}` — using the chef's possibly-edited figure, not the calculated
+  one — referencing a new `IngredientRequirementConfirmation` row for traceability, and marks
+  every contributing `DailyMealOption`/`DailyComponentStock` row `ingredientsReviewed = true`
+  (`V51` adds the flag to both existing tables) so a later re-fetch for the same date/period
+  never sums them again. Insufficient stock is collected into a `shortfalls` response list and
+  the deduction proceeds anyway — negative derived stock is allowed by design, this stage warns,
+  it never blocks.
+- **Part D** — `Grv` (`ingredient`, `quantity`, `costPerUnit`, `supplierName`, `note`,
+  `receivedBy`). `POST/GET /admin/grv` (list filterable by `ingredientId`/date range). Creates a
+  RECEIVED movement. Ingredient cost is never written onto `Ingredient` itself — "current cost"
+  is whatever the most recent GRV's `costPerUnit` was, so cost history is fully preserved
+  rather than overwritten.
+- **Part E** — `WasteEntry` (`ingredient`, `quantity`, `reason`, `note`). `POST /admin/waste` →
+  WASTED movement.
+- **Part F** — `StockTake` (`ingredient`, `countedQuantity`, `variance`). `POST
+  /admin/stock-takes` → `{ variance: countedQuantity - currentStock }`, and a
+  STOCK_TAKE_ADJUSTMENT movement of exactly that variance (either sign) so derived stock
+  reconciles to the physical count exactly — the same expected-vs-counted pattern Stage 2.5
+  proved for cash, applied to raw stock.
+- **Part G** — `PurchaseOrder` (`supplierName`, `status` DRAFT/SUBMITTED/RECEIVED) +
+  `PurchaseOrderLine`. `GET/POST /admin/purchase-orders`, `PUT .../{id}` (status only).
+  Deliberately no approval workflow and no FK to `Grv` — placing an order and receiving stock
+  are independent actions in this stage.
+- No new `SecurityRules` class — every endpoint in this stage lives under `/admin/**`, already
+  blanketed to `ADMIN`-only by the existing `AdminSecurityRules`.
+- Eleven migrations (`V49`–`V59`): `ingredients`, `recipes`/`recipe_lines`,
+  `daily_meal_options`/`daily_component_stock`'s `ingredients_reviewed` flags,
+  `ingredient_stock_movements`, `grv`, `waste_entries`, `stock_takes`,
+  `ingredient_requirement_confirmations`, `purchase_orders`/`purchase_order_lines`, a seed of
+  the spec's 21 ingredients with an initial GRV/movement each (`V58`), and the spec's eight
+  component recipes plus four example meals (`V59`).
+
+**Decisions made**
+- **Migrations `V54`–`V56` (`waste_entries`, `stock_takes`, `ingredient_requirement_confirmations`)
+  are not in the stage spec's literal Flyway listing**, which only sketches
+  `ingredient_stock_movements` with a `source_type`/`source_id` pointing at "whichever record
+  caused the movement." But the Waste and Stock Take endpoints accept `reason`/`note`/counted
+  values that have no column on the movement row itself, and Part C's spec text explicitly says
+  a confirmation batch is referenced "for traceability" — so each of GRV/Waste/StockTake/
+  Confirmation needed its own dedicated source table, matching the shape `Grv` (which *is* in
+  the spec's listing) already has. Added the three missing ones rather than cramming
+  reason/note/variance onto the shared ledger row.
+- **`recipes` (`V50`) is a new FK child of `component_catalog`, which broke a dozen pre-existing
+  integration tests' teardown** (`AccountIntegrationTests`, `OrderIntegrationTests`,
+  `KitchenIntegrationTests`, `PublicBoardIntegrationTests`, `MenuIntegrationTests`,
+  `ManagementSessionIntegrationTests`, `ShiftCloseCashAttributionIntegrationTests`, and four
+  `orders` payment/discount/refund test classes), all of which unconditionally call
+  `componentCatalogRepository.deleteAll()` in their `@AfterEach`. Once `V59` seeds a recipe onto
+  a `component_catalog` row, every one of those calls starts throwing
+  `DataIntegrityViolationException` the moment it runs against a database that still has that
+  row — not a one-off, since seed data is permanent and the tests' failure has nothing to do
+  with which specific component they created themselves. Fixed at the root rather than worked
+  around: each of those twelve `tearDown()` methods (plus this stage's own two that already
+  needed it) now calls `recipeRepository.deleteAll()` immediately before
+  `componentCatalogRepository.deleteAll()` — the same "children before parents" convention
+  those methods already follow for every other table, just extended to cover the new child.
+  Verified by running the full suite twice back to back: the first run seeds+consumes the data,
+  the second proves `V59` tolerates the ingredients/components it depends on having been wiped
+  by the first run's own test teardown (see the next bullet) — 137/137 both times. Commenting
+  the affected tests out instead was considered and rejected: it would have silently dropped
+  regression coverage on core Phase 1–4 flows (split/card payments, discounts, refunds, shift
+  close) to dodge a schema-consequence that has zero production impact (there is no `DELETE`
+  endpoint for components; `active` is how one is retired).
+- **`V59`'s ingredient/component lookups are guarded with `IF NOT EXISTS` rather than assumed
+  present**, for the same reason as the point above: `V58`'s 21 ingredients and V27's
+  Rice/Chicken components are exactly as vulnerable to a blanket test-suite wipe as any other
+  row in those tables, and `V59` isn't guaranteed to run immediately after `V58` in the same
+  session — in dev, `V58` can already have been applied (and its rows since wiped) long before
+  `V59` is first written or run. Each of the ~23 single-row lookups also uses
+  `SELECT TOP 1 id ... ORDER BY id` instead of a bare subquery, so a hypothetical duplicate name
+  fails soft (picks one) instead of crashing migration with "subquery returned more than 1
+  value" — the same class of fragility the `IF NOT EXISTS` guards are already there to survive.
+- `RecipeLine.quantity` is divided by `batchSize` at calculation time with a scale-6
+  `HALF_UP` rounding (`DailyPlanningIngredientService#accumulate`) rather than deferring
+  division — the spec's formula is explicitly per-line, and every seeded/tested recipe quantity
+  divides batch sizes cleanly, so this never surfaces a rounding artifact in practice while
+  still being safe for recipes that don't.
+- `IngredientRequirementConfirmation` stores `planningDate` + `mealPeriod` rather than nothing —
+  even though no endpoint reads it back in this stage, it is the thing Part C's spec text says
+  the resulting movements "reference... for traceability," so it needed to actually hold that
+  context rather than being an empty marker row.
+
+**Tests** — four new classes, 18 tests: `IngredientLedgerIntegrationTests` (6 — zero-stock on
+creation, GRV increases stock and preserves cost history across multiple entries, waste
+decreases stock, stock-take reconciles in both directions, ingredient update/deactivate,
+GRV/waste against an unknown ingredient `400`); `RecipeIntegrationTests` (4 — no-recipe `404`,
+multi-line recipe create matches on `GET`, `PUT` replaces lines wholesale rather than merging,
+unknown `ingredientId` in a recipe line `400`); `DailyPlanningIngredientRequirementsIntegrationTests`
+(4 — the spec's rice/chicken worked example, split across two different daily meal options plus
+a component-stock buffer so Cooking Oil and Salt each get contributions from three sources via
+two different components and must consolidate to one line apiece; confirming with an edited-down
+quantity deducts the edited figure and excludes the now-reviewed option from the next fetch,
+while a newly-added option still surfaces correctly; confirming against insufficient stock
+returns a populated `shortfalls` list and still deducts, going negative, with no exception; a
+component with no recipe is excluded entirely); `PurchaseOrderIntegrationTests` (4 — draft
+creation and listing, DRAFT→SUBMITTED→RECEIVED status transitions, unknown purchase order `404`,
+unknown ingredient in a line `400`).
+
+**Full-suite verification** — all parts built and tested against the real dev SQL Server DB
+(migrations `V49`–`V59` applied cleanly via Spring Boot's own Flyway startup during test runs).
+Combined with every pre-existing suite, confirming zero regressions on any Phase 1–4
+cashier/kitchen/public endpoint, run twice back to back to prove the twelve teardown fixes and
+`V59`'s existence guards both hold up across a full wipe/reseed cycle: **137 tests, 0 failures,
+0 errors, both runs**.
+
+---
