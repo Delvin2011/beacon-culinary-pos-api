@@ -150,11 +150,17 @@ class ShiftCloseCashAttributionIntegrationTests {
     private record LineReq(long dailyMealOptionId, int quantity, List<ExtraReq> extras) {
     }
 
-    private record OrderReq(BigDecimal amountTendered, List<LineReq> lines) {
+    private record PaymentReq(String method, BigDecimal amount, BigDecimal amountTendered) {
     }
 
-    private long placeOrder(BigDecimal amountTendered, LineReq... lines) throws Exception {
-        var body = MAPPER.writeValueAsString(new OrderReq(amountTendered, List.of(lines)));
+    private record OrderReq(List<PaymentReq> payments, List<LineReq> lines) {
+    }
+
+    // amount must equal the order's total exactly (Stage 4 Part A) — amountTendered is fixed
+    // comfortably larger, since no test here asserts change-due.
+    private long placeOrder(BigDecimal amount, LineReq... lines) throws Exception {
+        var body = MAPPER.writeValueAsString(new OrderReq(
+                List.of(new PaymentReq("CASH", amount, amount.add(new BigDecimal("500.00")))), List.of(lines)));
         var response = mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -226,11 +232,11 @@ class ShiftCloseCashAttributionIntegrationTests {
         openShift(cashierToken, "500.00");
 
         // Cash sale #1: 50.00, left PENDING -> a later WHOLE_ORDER adjustment reads as VOID.
-        var order1 = placeOrder(new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var order1 = placeOrder(new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
 
         // Cash sale #2: 50.00 meal + 10.00 extra = 60.00, driven to DONE -> a later EXTRAS_ONLY
         // adjustment reads as REFUND.
-        var order2 = placeOrder(new BigDecimal("100.00"),
+        var order2 = placeOrder(new BigDecimal("60.00"),
                 new LineReq(optionId, 1, List.of(new ExtraReq(chickenStockId, 1))));
         patchStatus(order2, "IN_PROGRESS");
         patchStatus(order2, "DONE");
@@ -259,7 +265,7 @@ class ShiftCloseCashAttributionIntegrationTests {
         var optionId = createDailyOption(lunchId, mealId, 10);
 
         var shiftAId = openShift(cashierToken, "500.00");
-        var orderId = placeOrder(new BigDecimal("100.00"), new LineReq(optionId, 1, List.of()));
+        var orderId = placeOrder(new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
         patchStatus(orderId, "IN_PROGRESS");
         patchStatus(orderId, "DONE");
 

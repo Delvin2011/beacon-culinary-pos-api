@@ -26,8 +26,10 @@ public class ShiftController {
     }
 
     @GetMapping("/{id}/summary")
-    public ShiftSummaryDto getShiftSummary(@PathVariable Long id) {
-        return shiftService.getShiftSummary(id);
+    public ShiftSummaryDto getShiftSummary(
+            @PathVariable Long id,
+            @RequestParam(required = false) String sessionToken) {
+        return shiftService.getShiftSummary(id, sessionToken);
     }
 
     @PostMapping("/{id}/close")

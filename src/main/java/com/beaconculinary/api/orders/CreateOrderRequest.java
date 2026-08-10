@@ -1,19 +1,19 @@
 package com.beaconculinary.api.orders;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 @Data
 public class CreateOrderRequest {
-    @NotNull(message = "amountTendered is required")
-    @DecimalMin(value = "0.00", message = "amountTendered cannot be negative")
-    private BigDecimal amountTendered;
+    // 1-2 entries, at most one per method; ACCOUNT is mutually exclusive with everything else —
+    // enforced in OrderService, since these are cross-entry rules a bean-validation annotation
+    // can't express cleanly.
+    @NotEmpty(message = "payments cannot be empty")
+    @Valid
+    private List<OrderPaymentRequest> payments;
 
     @NotEmpty(message = "lines cannot be empty")
     @Valid

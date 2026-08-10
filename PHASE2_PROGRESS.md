@@ -385,3 +385,257 @@ in the dev DB, so the filtered unique index's `CREATE INDEX` succeeded without n
 cleanup step first — a real deployment with duplicate `OPEN` rows would need one).
 
 ---
+
+## Stage 3 — Backend: Polish Existing Functionality — ✅ Complete
+
+Three sub-stages, each deliberately reusing Phase 1/2 infrastructure rather than introducing
+anything new: card payment on the existing order-creation path, a third `order_adjustments`
+action alongside Stage 2.6's void/refund, and a reusable session token layered onto Stage 2.6's
+single-use one.
+
+### 3.1 — Card Payment
+
+**What was built**
+- `PaymentMethod` widened to `CASH | CARD`. `CreateOrderRequest` gained `paymentMethod`
+  (defaults to `CASH` when omitted, so Stage 1.3 clients keep working unmodified) and
+  `cardReference` (free text — approval code/last-4, whatever the physical card machine
+  printed; the only audit trail without real gateway integration).
+- `orders.amount_tendered`/`change_due` made nullable and `orders.card_reference` added
+  (`V42__widen_payment_method_card.sql`) — a `CARD` order stores neither tender nor change
+  (always the exact total) and both are omitted (`@JsonInclude(NON_NULL)`) from the response
+  rather than serialized as `null`.
+- `OrderService.createOrder()` branches once, right where the old unconditional
+  `amountTendered` check used to live: `CARD` requires `cardReference` (`400` if
+  missing/blank) and skips the tender/change math entirely; `CASH` keeps the exact Stage 1.3
+  behavior. Stock decrement, meal-period validation, and extras validation run identically
+  before this branch regardless of payment method — this stage never touches them.
+- No changes to Stage 2.5's cash-drawer formula. `OrderRepository
+  .sumOriginalTotalByShiftIdAndPaymentMethod` already filters `WHERE payment_method = 'CASH'`,
+  so `CARD` orders were invisible to `expectedCash` for free — confirmed by test, not by
+  editing `ShiftService`.
+
+**Decisions made**
+- Widening `orders.payment_method`'s `CHECK` constraint reused the exact `V30` pattern
+  (Stage 2.1): the original constraint was created inline/unnamed in `V23`, so `V42` looks it
+  up dynamically via `sys.check_constraints` rather than guessing a generated name.
+- Validation placed after the same stock-decrement phase the old `amountTendered` check ran
+  after, not before it — matches the existing "Phase 1 validate/price, Phase 2 decrement,
+  then payment check" structure, and stays safe because the whole method is one
+  `@Transactional`: a `CARD` order missing its reference still rolls back any decrements that
+  happened first.
+
+**Tests** — `OrderCardPaymentIntegrationTests` (5): a valid `CARD` order succeeds with
+`cardReference` echoed back and no `amountTendered`/`changeDue` in the response; missing or
+blank `cardReference` is `400`; omitting `paymentMethod` entirely still defaults to `CASH`
+with unchanged tender/change behavior (regression); a mixed shift (one cash sale, one card
+sale) shows `cashSalesTotal`/`expectedCash` reflecting only the cash order via
+`GET /shifts/{id}/summary`, with zero changes to `ShiftService`.
+
+### 3.2 — Discount
+
+**What was built**
+- `OrderAdjustmentAction` gained `DISCOUNT`; `DiscountType` (`PERCENTAGE | FIXED_AMOUNT`) is
+  new; `order_adjustments` gained `discount_type`/`discount_value`
+  (`V43__add_discount_to_order_adjustments.sql`, widening the already-named
+  `CK_order_adjustments_action` constraint from `V37` directly — no dynamic lookup needed this
+  time).
+- `CreateOrderAdjustmentRequest` gained `requestedAction` (missing or `CANCEL` → Stage 2.6's
+  existing auto-derived-`VOID`/`REFUND` path, byte-for-byte unchanged; `DISCOUNT` → the new
+  path) plus `discountType`/`discountValue`. `scope` is no longer `@NotNull` at the
+  bean-validation level — it's required only for the `CANCEL` path now (a discount is always
+  whole-order), enforced in the service instead.
+- `OrderAdjustmentService.adjustOrder()` restructured around a shared prefix (authorization,
+  `reasonCode = OTHER` + note check, same-day check, terminal-order check, open-shift lookup)
+  that both paths still run, then branches: the old body moved into the `CANCEL` branch
+  unchanged; a new `applyDiscount()` computes `amount` (`round(total * value / 100, 2)` for
+  `PERCENTAGE`, `value` for `FIXED_AMOUNT`), rejects `400` on an out-of-range percentage
+  (`(0, 100]`), a non-positive fixed amount, or an amount exceeding the order's *current*
+  total, then subtracts it from `order.total` with **no** status transition, stock change, or
+  SSE broadcast — exactly the "money handed back on an already-paid order" model the spec
+  called out as the working assumption.
+- No changes needed to Stage 2.5's `expectedCash` formula: `order_adjustments.amount` is
+  summed regardless of `action`, so a `DISCOUNT` row is picked up by
+  `OrderAdjustmentRepository.sumAmountByShiftId` the same way a `VOID`/`REFUND` row always
+  was — confirmed by test.
+
+**Decisions made**
+- **Deviation from the spec's literal test-scenario wording, flagged rather than forced**: the
+  Test Scenarios section lists "discount on an already-voided/refunded order → `400`", but the
+  Business Logic section says step 2 reuses the exact same terminal-order check Stage 2.6
+  already has (`order.status == VOIDED/REFUNDED` → reject) — and that shared check throws
+  `OrderAlreadyAdjustedException`, which `OrderController` already maps to `409 CONFLICT` (the
+  same status a second void/refund attempt gets). Rather than special-case `DISCOUNT` to throw
+  a different exception/status than `CANCEL` hits for the identical condition, this
+  implementation kept the check genuinely shared and let it report `409` for both — consistent
+  behavior for "this order is terminal" beat matching one line of the spec's prose literally.
+- The shared prefix — including token/session authorization — runs *before* the
+  `requestedAction` branch, preserving the existing "a later validation failure still burns a
+  single-use token" guarantee (Stage 2.6) for the discount path too, not just `CANCEL`.
+
+**Tests** — `OrderDiscountIntegrationTests` (9): `PERCENTAGE` and `FIXED_AMOUNT` discounts each
+compute and deduct the exact expected amount with the order status untouched; a discount
+exceeding the current total is `400` with the order left unchanged; an out-of-range percentage
+and a zero/negative fixed amount are each `400`; two discounts stacked on one order both
+succeed as long as the cumulative amount stays within the total; a discount followed by a
+`WHOLE_ORDER` refund produces a refund `amount` equal to the post-discount total, not the
+original; a discount on an already-voided order is rejected (`409`, per the decision above);
+and a shift-close scenario (cash sale + discount) shows the discount correctly reducing
+`expectedCash` via `GET /shifts/{id}/summary` with zero changes to Stage 2.5's code.
+
+### 3.3 — Management Menu / Cashup Summary Exposure
+
+**What was built**
+- New `authorization_sessions` table (`V44__create_authorization_sessions.sql`) and
+  `AuthorizationSession` entity/repository — deliberately separate from Stage 2.6's
+  `authorization_tokens`, since this token type is never consumed.
+- `POST /admin/authorize-session` (`CASHIER`/`ADMIN`, same PIN-matching rule as
+  `POST /admin/authorize`) mints a 5-minute, reusable `sessionToken`. `AdminAuthorizationService`
+  had its PIN-matching logic extracted into a shared `matchAdmin()` so both `authorize()` and
+  the new `authorizeSession()` use one implementation.
+- `POST /orders/{id}/adjustments` now accepts *either* the existing single-use
+  `authorizationToken` *or* a `sessionToken` — `OrderAdjustmentService` tries `sessionToken`
+  first if present (validated via the new `AdminAuthorizationService.validateSessionToken()`,
+  which checks existence/expiry but never deletes the row), falling back to the original
+  `consumeToken()` path otherwise. Stage 2.6 clients that only ever send `authorizationToken`
+  are unaffected.
+- `GET /shifts/{id}/summary` gained an optional `sessionToken` query parameter. When present
+  and valid, `ShiftService.getShiftSummary()` skips the usual owner-or-admin ownership check
+  entirely (the terminal is already inside an admin-authorized context) and loads the shift by
+  id alone; omitted, it falls back to the exact Stage 2.5 ownership check unchanged.
+
+**Decisions made**
+- Read the acceptance criteria as authoritative over one contradictory scope-section sentence:
+  the spec's Scope section says viewing the cashup summary with a `sessionToken` needs "no new
+  backend logic needed here at all," but its own Acceptance Criteria explicitly require
+  bypassing the ownership check for a non-owner holding a valid session — which the endpoint's
+  pre-existing `CASHIER`/`ADMIN`-role-only security rule can't do by itself. Implemented the
+  bypass in `ShiftService` rather than leaving the contradiction unresolved.
+- `validateSessionToken()` is intentionally structured never to mutate the row (no `used`
+  flag, no deletion) — reusability across multiple actions within the 5-minute window is the
+  entire point of this token type, unlike Stage 2.6's single-use one.
+
+**Tests** — `ManagementSessionIntegrationTests` (5): authorizing a session then viewing the
+caller's own cashup summary succeeds; a session token lets cashier B view cashier A's shift
+summary (first proving the same call is `403` *without* a token, establishing the baseline
+Stage 2.5 behavior is unchanged); one session token authorizes a void and then a discount on
+two different orders without re-authorizing; an expired session token is `401` on both an
+adjustment call and a summary view; and Stage 2.6's original single-use-token flow still
+succeeds unmodified (regression).
+
+**Full-suite verification** — all three sub-stages built and tested together against the real
+dev SQL Server DB (migrations `V42`–`V44` applied cleanly via Spring Boot's own Flyway startup
+during test runs, no manual intervention needed since none of the three involve a data
+backfill). Combined with every pre-existing suite: **100 tests, 0 failures, 0 errors** — the
+full Stage 1–2.6 regression suite passes unmodified, confirming none of the "explicit
+assumption" flags above required touching already-shipped behavior.
+
+---
+
+## Stage 4 — Backend: Account Payment & Cash/Card Split — ✅ Complete
+
+The core model change — orders have `payments[]`, not a single payment method — is a breaking
+change to `POST /orders`'s request/response contract (Stage 1.3/3's `paymentMethod`/
+`amountTendered`/`cardReference` fields are gone from both). Every existing order-creation test
+across the whole suite had to move to the new contract as part of this stage, per its own
+"full regression... required against the new shape" acceptance criterion.
+
+**What was built**
+- New `accounts` package: `Account`/`AccountPayment` entities, `GET /accounts` (lightweight
+  till-picker list, optional `?active=` filter), `GET/POST /admin/accounts`,
+  `PUT /admin/accounts/{id}` (edit/deactivate), `GET /admin/accounts/{id}/balance`, and
+  `POST /admin/accounts/{id}/payments` (records money received, returns the updated balance).
+  `outstandingBalance = totalCharged − totalReversed − totalPaid`, all three terms derived
+  live from `OrderPayment`/`OrderAdjustment`/`AccountPayment` — no stored balance column, no
+  credit-limit enforcement (explicitly out of scope).
+- New `orders.OrderPayment` entity/table — 1 row per payment method used on an order (1 entry
+  for a single-method order, up to 2 for a CASH+CARD split, always exactly 1 for ACCOUNT).
+  Replaces `Order`'s old single `paymentMethod`/`amountTendered`/`changeDue`/`cardReference`
+  fields entirely — those fields are gone from the `Order` entity and `OrderDto`; the
+  `orders` table's matching columns are left in place, unused, per the spec's explicit
+  "flag as future cleanup" instruction.
+- `OrderService.attachPayments()` — new validation replacing the old single-method check:
+  1–2 entries, at most one per method, `ACCOUNT` mutually exclusive with everything else,
+  `SUM(payments[].amount)` must equal the order total exactly (`400` otherwise), then the
+  same per-method field rules as before (`CASH` needs `amountTendered >= amount`, `CARD`
+  needs `cardReference`, `ACCOUNT` needs an existing, active `accountId`). Runs in the same
+  position the old check did — after the stock decrement — safe because the whole method is
+  one transaction, so a rejected split still rolls back any decrements already applied.
+- `OrderAdjustment` gained `refundMethod` (`CASH | ACCOUNT_BALANCE`) and `account`, computed
+  automatically in `OrderAdjustmentService.adjustOrder()` — once, right after either branch
+  (`CANCEL`'s VOID/REFUND or `DISCOUNT`) — by checking whether the order has an `ACCOUNT`
+  payment. Applies uniformly to all three adjustment actions, exactly as specified: an
+  account-paid order's adjustment always credits the account; everything else always pays
+  out as cash, for the full amount, regardless of the original cash/card mix.
+- `ShiftService.computeCashBreakdown()` reworked per Part D: `cashSalesTotal` now sums
+  `OrderPayment.amount` (method `CASH`) instead of `Order.originalTotal` (method
+  `CASH`) — same "immutable at sale time, immune to later adjustments" property, just
+  sourced from the row that actually carries a per-method amount now. `adjustmentsTotal` is
+  narrowed to `refundMethod = CASH` adjustments only, so an `ACCOUNT_BALANCE` payout
+  contributes zero — both to keep `expectedCash`'s formula correct and to keep the DTO's
+  three fields (`cashSalesTotal` + `openingFloat` − `adjustmentsTotal` = `expectedCash`)
+  internally consistent with each other.
+- Four migrations (`V45`–`V48`): `accounts`, `account_payments`, `order_payments` (with a
+  backfill of existing Stage 1.3/3 orders as single-entry rows), and
+  `order_adjustments.refund_method`/`account_id` (existing rows backfilled to `CASH`, the
+  only value possible before `ACCOUNT` existed).
+
+**Decisions made**
+- **Deviated from the spec's literal backfill snippet**: `V47`'s migration snippet in the spec
+  selects `orders.total` for the backfilled `order_payments.amount`, but `total` is the
+  *current*, possibly-already-adjusted total — for any historical order that had a Stage
+  2.6/3 void/refund/discount applied before this migration ran, backfilling from `total`
+  would silently corrupt the cash formula it's meant to replace (the adjustment's own `amount`
+  would still get subtracted in full, but the sale side would already reflect the reduction,
+  double-counting it). Used `original_total` instead — the immutable snapshot Stage 2.6
+  introduced for exactly this "what was actually collected at sale time" purpose, which is
+  also what the formula this table replaces already used. No dev-DB orders were actually
+  affected (every prior integration test suite cleans up its own data via `@AfterEach`), but
+  the correct column matters for any real deployment with adjustment history.
+- Accepted a bidirectional package dependency between `accounts` and `orders`, rather than
+  forcing Stage 2.1's "one-way, no cycles" precedent here. `orders` needs `Account` (an
+  `OrderPayment`/`OrderAdjustment` can reference one); `accounts.AccountService` needs
+  `OrderPaymentRepository`/`OrderAdjustmentRepository` to compute a balance. Unlike
+  `kitchen`/`board` reaching into `orders`' shared infrastructure (genuinely one-directional,
+  many-subscribers-one-source), an account's balance is *fundamentally* derived from its
+  orders — the coupling is the correct domain model here, not an accident of implementation
+  convenience, and Java has no technical cycle restriction at the package level the way the
+  earlier precedent was guarding against.
+- Payment-split validation (size/duplicate-method/`ACCOUNT`-exclusivity/sum-equals-total) is
+  entirely manual in `OrderService`, not bean-validation annotations — same reasoning as every
+  prior stage's cross-field checks (`reasonCode = OTHER` needing a note, `scope` only required
+  for `CANCEL`, etc.): these are relationships between array entries and the computed order
+  total, not single-field constraints.
+- `refundMethod`/`account` are computed once, after the `CANCEL`/`DISCOUNT` branch, rather than
+  duplicated inside `adjustWholeOrder()`/`adjustExtrasOnly()`/`applyDiscount()` — all three
+  already converge on building the same `OrderAdjustment` object before it's saved, so this
+  stays a single, action-agnostic rule applied at that convergence point instead of three
+  copies of the same account-lookup logic.
+
+**Tests** — the entire existing order-creation-dependent suite moved to `payments[]` first
+(`OrderIntegrationTests`, `OrderAdjustmentIntegrationTests`, `OrderCardPaymentIntegrationTests`,
+`OrderDiscountIntegrationTests`, `ManagementSessionIntegrationTests`,
+`ShiftCloseCashAttributionIntegrationTests`, plus the inline order-creation JSON in
+`KitchenIntegrationTests`/`PublicBoardIntegrationTests`) — every call site now has to state the
+payment `amount` as the order's *exact* total rather than a comfortably-large `amountTendered`,
+since the sum-must-equal-total rule is new. Four new test classes for what pure regression can't
+prove: `OrderPaymentSplitIntegrationTests` (7 — cash+card split succeeds; sum mismatch, two
+same-method entries, three entries, and `ACCOUNT`+anything all `400`); `AccountIntegrationTests`
+(7 — CRUD, till-picker filtering, an account order increasing `outstandingBalance`, an inactive
+or nonexistent account rejected `400`, multiple partial `AccountPayment`s producing a correct
+running balance, balance-on-unknown-account `404`); `RefundPayoutIntegrationTests` (5 — a
+card-only and a cash+card-split refund both pay out as `CASH` for the full amount; an
+account-order refund credits the account with zero shift-summary impact both before and after;
+a discount on a card-only order reduces `expectedCash` — the "hands back physical cash despite a
+card sale" case the spec's worked example calls out as intentional; and a single shift mixing
+cash-only/card-only-refunded/split/account-refunded orders producing the exact expected-cash
+figure by hand-calculation). One authoring bug caught by the mixed-shift test itself before
+landing: an early draft used a `50.00` cash-only leg against a shared `100.00`-priced meal
+option, tripping the new sum-must-equal-total check — fixed by matching the test's fixture
+price rather than loosening the check.
+
+**Full-suite verification** — all four parts built and tested together against the real dev SQL
+Server DB (migrations `V45`–`V48` applied cleanly via Spring Boot's own Flyway startup during
+test runs). Combined with every pre-existing suite, now migrated to the new contract:
+**119 tests, 0 failures, 0 errors**.
+
+---

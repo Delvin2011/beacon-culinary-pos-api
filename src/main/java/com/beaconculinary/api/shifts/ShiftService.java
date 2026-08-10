@@ -3,8 +3,10 @@ package com.beaconculinary.api.shifts;
 import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.orders.OrderAdjustmentRepository;
+import com.beaconculinary.api.orders.OrderPaymentRepository;
 import com.beaconculinary.api.orders.OrderRepository;
 import com.beaconculinary.api.orders.PaymentMethod;
+import com.beaconculinary.api.orders.RefundMethod;
 import com.beaconculinary.api.users.Role;
 import lombok.AllArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -21,6 +23,7 @@ import java.time.LocalDateTime;
 public class ShiftService {
     private final ShiftRepository shiftRepository;
     private final OrderRepository orderRepository;
+    private final OrderPaymentRepository orderPaymentRepository;
     private final OrderAdjustmentRepository orderAdjustmentRepository;
     private final AdminAuthorizationService adminAuthorizationService;
     private final AuthService authService;
@@ -50,8 +53,17 @@ public class ShiftService {
     }
 
     @Transactional(readOnly = true)
-    public ShiftSummaryDto getShiftSummary(Long id) {
-        var shift = loadShiftForCaller(id);
+    public ShiftSummaryDto getShiftSummary(Long id, String sessionToken) {
+        Shift shift;
+        if (sessionToken != null && !sessionToken.isBlank()) {
+            // Stage 3.3: a valid management-session token grants read access to any shift's
+            // cashup summary, regardless of ownership — the terminal is already inside an
+            // admin-authorized context, so the usual owner-or-admin check doesn't apply.
+            adminAuthorizationService.validateSessionToken(sessionToken);
+            shift = shiftRepository.findById(id).orElseThrow(ShiftNotFoundException::new);
+        } else {
+            shift = loadShiftForCaller(id);
+        }
         var breakdown = computeCashBreakdown(shift);
 
         var summary = new ShiftSummaryDto();
@@ -126,11 +138,14 @@ public class ShiftService {
     private record CashBreakdown(BigDecimal cashSalesTotal, BigDecimal adjustmentsTotal, BigDecimal expectedCash, long orderCount) {
     }
 
-    // expected_cash = opening_float + SUM(cash orders' original_total for this shift)
-    //                                - SUM(adjustments authorized during this shift)
+    // Stage 4 Part D — expected_cash = opening_float + SUM(CASH-method OrderPayment amounts for
+    // this shift) - SUM(CASH-refund_method adjustments authorized during this shift). Reworked
+    // from Stage 2.5's original orders.payment_method-based formula to account for cash/card
+    // splits (Stage 4 Part A) and account payments (Part B): an ACCOUNT_BALANCE-refunded
+    // adjustment is excluded entirely, since no physical cash moved.
     private CashBreakdown computeCashBreakdown(Shift shift) {
-        var cashSalesTotal = orderRepository.sumOriginalTotalByShiftIdAndPaymentMethod(shift.getId(), PaymentMethod.CASH);
-        var adjustmentsTotal = orderAdjustmentRepository.sumAmountByShiftId(shift.getId());
+        var cashSalesTotal = orderPaymentRepository.sumAmountByShiftIdAndMethod(shift.getId(), PaymentMethod.CASH);
+        var adjustmentsTotal = orderAdjustmentRepository.sumAmountByShiftIdAndRefundMethod(shift.getId(), RefundMethod.CASH);
         var orderCount = orderRepository.countByShiftId(shift.getId());
         var expectedCash = shift.getOpeningFloat().add(cashSalesTotal).subtract(adjustmentsTotal);
         return new CashBreakdown(cashSalesTotal, adjustmentsTotal, expectedCash, orderCount);

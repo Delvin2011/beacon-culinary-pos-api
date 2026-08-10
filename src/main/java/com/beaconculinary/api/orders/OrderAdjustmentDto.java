@@ -13,6 +13,10 @@ public class OrderAdjustmentDto {
     private OrderAdjustmentReasonCode reasonCode;
     private String note;
     private BigDecimal amount;
+    private DiscountType discountType;
+    private BigDecimal discountValue;
+    private RefundMethod refundMethod;
+    private Long accountId;
     private Long requestedById;
     private Long authorizedById;
     private LocalDateTime createdAt;
