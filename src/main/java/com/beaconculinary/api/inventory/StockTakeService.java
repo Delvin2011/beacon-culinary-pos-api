@@ -5,6 +5,9 @@ import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 @Service
 @AllArgsConstructor
 public class StockTakeService {
@@ -12,6 +15,38 @@ public class StockTakeService {
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
     private final AuthService authService;
+
+    @Transactional(readOnly = true)
+    public StockTakeListResponseDto list(Long ingredientId, LocalDateTime from, LocalDateTime to) {
+        List<StockTake> results;
+        if (ingredientId != null && from != null && to != null) {
+            results = stockTakeRepository.findByIngredientIdAndCreatedAtBetweenOrderByCreatedAtDesc(ingredientId, from, to);
+        } else if (ingredientId != null) {
+            results = stockTakeRepository.findByIngredientIdOrderByCreatedAtDesc(ingredientId);
+        } else if (from != null && to != null) {
+            results = stockTakeRepository.findByCreatedAtBetweenOrderByCreatedAtDesc(from, to);
+        } else {
+            results = stockTakeRepository.findAllByOrderByCreatedAtDesc();
+        }
+        return new StockTakeListResponseDto(results.stream().map(this::toListItemDto).toList());
+    }
+
+    // expectedQuantity/variance are read back exactly as computed at creation time (see create()
+    // below), never recalculated against current stock — a later movement on the same ingredient
+    // must not change what a past stock take reported.
+    private StockTakeListItemDto toListItemDto(StockTake stockTake) {
+        var dto = new StockTakeListItemDto();
+        dto.setId(stockTake.getId());
+        dto.setIngredientId(stockTake.getIngredient().getId());
+        dto.setIngredientName(stockTake.getIngredient().getName());
+        dto.setCountedQuantity(stockTake.getCountedQuantity());
+        dto.setExpectedQuantity(stockTake.getCountedQuantity().subtract(stockTake.getVariance()));
+        dto.setVariance(stockTake.getVariance());
+        dto.setNote(stockTake.getNote());
+        dto.setRecordedBy(stockTake.getRecordedBy().getName());
+        dto.setCreatedAt(stockTake.getCreatedAt());
+        return dto;
+    }
 
     @Transactional
     public StockTakeResponseDto create(CreateStockTakeRequest request) {
