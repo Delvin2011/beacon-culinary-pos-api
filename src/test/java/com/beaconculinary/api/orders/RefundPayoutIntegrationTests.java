@@ -2,6 +2,7 @@ package com.beaconculinary.api.orders;
 
 import com.beaconculinary.api.accounts.AccountRepository;
 import com.beaconculinary.api.admin.AuthorizationTokenRepository;
+import com.beaconculinary.api.inventory.RecipeRepository;
 import com.beaconculinary.api.menu.ComponentCatalogRepository;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
@@ -63,6 +64,8 @@ class RefundPayoutIntegrationTests {
     @Autowired
     private ComponentCatalogRepository componentCatalogRepository;
     @Autowired
+    private RecipeRepository recipeRepository;
+    @Autowired
     private AccountRepository accountRepository;
     @Autowired
     private MutableClock clock;
@@ -96,6 +99,7 @@ class RefundPayoutIntegrationTests {
         dailyComponentStockRepository.deleteAll();
         dailyMealOptionRepository.deleteAll();
         mealCatalogRepository.deleteAll();
+        recipeRepository.deleteAll();
         componentCatalogRepository.deleteAll();
         shiftRepository.deleteAll();
         accountRepository.deleteAll();

@@ -1,0 +1,348 @@
+[INFO] Scanning for projects...
+[WARNING] 
+[WARNING] Some problems were encountered while building the effective model for com.beaconculinary:beacon-culinary-api:jar:1.0.0
+[WARNING] 'dependencies.dependency.scope' for org.projectlombok:lombok:jar must be one of [provided, compile, runtime, test, system] but is 'annotationProcessor'. @ line 71, column 20
+[WARNING] 
+[WARNING] It is highly recommended to fix these problems because they threaten the stability of your build.
+[WARNING] 
+[WARNING] For this reason, future Maven versions might no longer support building such malformed projects.
+[WARNING] 
+[INFO] 
+[INFO] ---------------< com.beaconculinary:beacon-culinary-api >---------------
+[INFO] Building beacon-culinary-api 1.0.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] >>> spring-boot:3.4.1:run (default-cli) > test-compile @ beacon-culinary-api >>>
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ beacon-culinary-api ---
+[INFO] Copying 3 resources from src\main\resources to target\classes
+[INFO] Copying 47 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ beacon-culinary-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ beacon-culinary-api ---
+[INFO] skip non existing resourceDirectory D:\JavaTesting\spring-api-finished\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ beacon-culinary-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] <<< spring-boot:3.4.1:run (default-cli) < test-compile @ beacon-culinary-api <<<
+[INFO] 
+[INFO] 
+[INFO] --- spring-boot:3.4.1:run (default-cli) @ beacon-culinary-api ---
+[INFO] Attaching agents: []
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v3.4.1)
+
+2026-08-08T00:09:17.709+02:00  INFO 44504 --- [beacon-culinary-api] [           main] c.b.api.BeaconCulinaryApiApplication     : Starting BeaconCulinaryApiApplication using Java 17.0.18 with PID 44504 (D:\JavaTesting\spring-api-finished\target\classes started by takudzwa.tapfumanei in D:\JavaTesting\spring-api-finished)
+2026-08-08T00:09:17.712+02:00  INFO 44504 --- [beacon-culinary-api] [           main] c.b.api.BeaconCulinaryApiApplication     : No active profile set, falling back to 1 default profile: "default"
+2026-08-08T00:09:18.280+02:00  INFO 44504 --- [beacon-culinary-api] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-08-08T00:09:18.344+02:00  INFO 44504 --- [beacon-culinary-api] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 57 ms. Found 17 JPA repository interfaces.
+2026-08-08T00:09:18.768+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8080 (http)
+2026-08-08T00:09:18.778+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-08-08T00:09:18.778+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.34]
+2026-08-08T00:09:18.830+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-08-08T00:09:18.831+02:00  INFO 44504 --- [beacon-culinary-api] [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1090 ms
+2026-08-08T00:09:19.029+02:00  INFO 44504 --- [beacon-culinary-api] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-08-08T00:09:19.217+02:00  INFO 44504 --- [beacon-culinary-api] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection ConnectionID:1 ClientConnectionId: 96399cb8-4852-48df-a51b-2dd3e1a012f6
+2026-08-08T00:09:19.219+02:00  INFO 44504 --- [beacon-culinary-api] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-08-08T00:09:19.326+02:00  INFO 44504 --- [beacon-culinary-api] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:sqlserver://localhost:1433;concatNullYieldsNull=ON;quotedIdentifier=ON;connectRetryInterval=10;connectRetryCount=1;maxResultBuffer=-1;sendTemporalDataTypesAsStringForBulkCopy=true;delayLoadingLobs=true;useFmtOnly=false;vectorTypeSupport=v1;cacheBulkCopyMetadata=false;bulkCopyForBatchInsertAllowEncryptedValueModifications=false;bulkCopyForBatchInsertTableLock=false;bulkCopyForBatchInsertKeepNulls=false;bulkCopyForBatchInsertKeepIdentity=false;bulkCopyForBatchInsertFireTriggers=false;bulkCopyForBatchInsertCheckConstraints=false;bulkCopyForBatchInsertBatchSize=0;useBulkCopyForBatchInsert=false;cancelQueryTimeout=-1;sslProtocol=TLS;calcBigDecimalPrecision=false;useDefaultJaasConfig=false;jaasConfigurationName=SQLJDBCDriver;statementPoolingCacheSize=0;serverPreparedStatementDiscardThreshold=10;enablePrepareOnFirstPreparedStatementCall=false;fips=false;socketTimeout=0;authentication=NotSpecified;authenticationScheme=nativeAuthentication;xopenStates=false;datetimeParameterType=datetime2;sendTimeAsDatetime=true;replication=false;trustStoreType=JKS;trustServerCertificate=true;TransparentNetworkIPResolution=true;iPAddressPreference=IPv4First;serverNameAsACE=false;sendStringParametersAsUnicode=true;selectMethod=direct;responseBuffering=adaptive;queryTimeout=-1;packetSize=8000;multiSubnetFailover=false;loginTimeout=30;lockTimeout=-1;lastUpdateCount=true;useDefaultGSSCredential=false;prepareMethod=prepexec;encrypt=false;disableStatementPooling=true;databaseName=Ecommerce;columnEncryptionSetting=Disabled;applicationName=Microsoft JDBC Driver for SQL Server;applicationIntent=readwrite; (Microsoft SQL Server 16.0)
+2026-08-08T00:09:19.396+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 46 migrations (execution time 00:00.043s)
+2026-08-08T00:09:19.410+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema [dbo]: 48
+2026-08-08T00:09:19.414+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.f.core.internal.command.DbMigrate      : Schema [dbo] is up to date. No migration necessary.
+2026-08-08T00:09:19.461+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-08-08T00:09:19.491+02:00  INFO 44504 --- [beacon-culinary-api] [           main] org.hibernate.Version                    : HHH000412: Hibernate ORM core version 6.6.4.Final
+2026-08-08T00:09:19.509+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.h.c.internal.RegionFactoryInitiator    : HHH000026: Second-level cache disabled
+2026-08-08T00:09:19.652+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-08-08T00:09:19.684+02:00  WARN 44504 --- [beacon-culinary-api] [           main] org.hibernate.orm.deprecation            : HHH90000025: SQLServerDialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2026-08-08T00:09:19.694+02:00  INFO 44504 --- [beacon-culinary-api] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 16.0
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-08-08T00:09:20.416+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-08-08T00:09:20.418+02:00  INFO 44504 --- [beacon-culinary-api] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-08-08T00:09:20.604+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.s.d.j.r.query.QueryEnhancerFactory     : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-08-08T00:09:21.075+02:00  INFO 44504 --- [beacon-culinary-api] [           main] eAuthenticationProviderManagerConfigurer : Global AuthenticationManager configured with AuthenticationProvider bean with name authenticationProvider
+2026-08-08T00:09:21.076+02:00  WARN 44504 --- [beacon-culinary-api] [           main] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with an AuthenticationProvider bean. UserDetailsService beans will not be used by Spring Security for automatically configuring username/password login. Consider removing the AuthenticationProvider bean. Alternatively, consider using the UserDetailsService in a manually instantiated DaoAuthenticationProvider. If the current configuration is intentional, to turn off this warning, increase the logging level of 'org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer' to ERROR
+2026-08-08T00:09:21.407+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.s.b.a.w.s.WelcomePageHandlerMapping    : Adding welcome page template: index
+2026-08-08T00:09:21.750+02:00  INFO 44504 --- [beacon-culinary-api] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path '/'
+2026-08-08T00:09:21.756+02:00  INFO 44504 --- [beacon-culinary-api] [           main] c.b.api.BeaconCulinaryApiApplication     : Started BeaconCulinaryApiApplication in 4.33 seconds (process running for 4.582)
+2026-08-08T00:10:44.353+02:00  INFO 44504 --- [beacon-culinary-api] [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-08-08T00:10:44.353+02:00  INFO 44504 --- [beacon-culinary-api] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-08-08T00:10:44.354+02:00  INFO 44504 --- [beacon-culinary-api] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+Request: /meal-periods
+Response: 200
+Request: /auth/login
+Response: 200
+Request: /admin/accounts
+Response: 201
+Request: /admin/accounts
+Response: 200
+Request: /swagger-ui/index.html
+Response: 200
+Request: /swagger-ui/swagger-ui.css
+Request: /swagger-ui/index.css
+Request: /swagger-ui/swagger-ui-bundle.js
+Response: 200
+Request: /swagger-ui/swagger-initializer.js
+Request: /swagger-ui/swagger-ui-standalone-preset.js
+Response: 200
+Request: /swagger-ui/swagger-ui.css
+Response: 200
+Response: 200
+Request: /swagger-ui/index.css
+Response: 200
+Response: 200
+Response: 200
+Request: /v3/api-docs/swagger-config
+Response: 200
+Request: /v3/api-docs
+2026-08-08T00:11:02.994+02:00  INFO 44504 --- [beacon-culinary-api] [io-8080-exec-10] o.springdoc.api.AbstractOpenApiResource  : Init duration for springdoc-openapi is: 1220 ms
+Response: 200
+Request: /v3/api-docs
+Response: 200
+Request: /users/cashiers
+Response: 200
+Request: /users/cashiers
+Response: 200
+Request: /auth/pin-login
+Response: 200
+Request: /shifts/current
+Response: 404
+Request: /meal-periods
+Response: 200
+Request: /meal-periods
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /shifts/open
+Response: 201
+Request: /meal-periods
+Response: 200
+Request: /meal-periods
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /meal-periods
+Request: /auth/refresh
+Response: 200
+Response: 200
+Request: /admin/meal-catalog
+Request: /admin/component-catalog
+Response: 200
+Request: /menu/today
+Response: 200
+Response: 200
+Request: /admin/accounts
+Response: 200
+Request: /admin/accounts/22/balance
+Response: 200
+Request: /admin/meal-catalog
+Request: /admin/component-catalog
+Response: 200
+Response: 200
+Request: /admin/component-catalog
+Response: 201
+Request: /admin/component-catalog
+Response: 200
+Request: /admin/meal-catalog
+Response: 200
+Request: /admin/component-catalog
+Response: 201
+Request: /admin/component-catalog
+Response: 200
+Request: /admin/meal-catalog
+Response: 200
+Request: /admin/meal-catalog
+Response: 201
+Request: /admin/meal-catalog
+Response: 200
+Request: /admin/accounts
+Response: 200
+Request: /admin/accounts/22/balance
+Response: 200
+Request: /admin/meal-catalog
+Request: /meal-periods
+Request: /admin/component-catalog
+Response: 200
+Response: 200
+Request: /menu/today
+Response: 200
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /admin/daily-options
+Response: 201
+Request: /menu/today
+Response: 200
+Request: /meal-periods
+Request: /shifts/current
+Response: 200
+Request: /meal-periods
+Response: 200
+Response: 200
+Request: /meal-periods
+Response: 200
+Request: /meal-periods
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /meal-periods
+Response: 200
+Request: /meal-periods
+Request: /menu/today
+Response: 200
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /accounts
+Response: 200
+Request: /orders
+Response: 201
+Request: /orders/853
+Response: 200
+Request: /orders/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /orders/today
+Response: 200
+Request: /orders/853
+Response: 200
+Request: /orders
+Response: 201
+Request: /orders/854
+Response: 200
+Request: /orders/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /orders
+Response: 201
+Request: /orders/855
+Response: 200
+Request: /orders/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /orders/today
+Response: 200
+Request: /admin/authorize-session
+Response: 200
+Request: /shifts/1250/summary
+Response: 200
+Request: /auth/refresh
+Response: 200
+Request: /orders
+Response: 201
+Request: /orders/856
+Response: 200
+Request: /orders/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /orders
+Response: 201
+Request: /orders/857
+Response: 200
+Request: /orders/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /orders
+Response: 201
+Request: /orders/858
+Response: 200
+Request: /orders/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /orders/today
+Response: 200
+Request: /admin/authorize-session
+Response: 200
+Request: /shifts/1250/summary
+Response: 200
+Request: /shifts/1250/summary
+Response: 200
+Request: /shifts/1250/close
+Response: 200
+Request: /meal-periods
+Response: 200
+Request: /meal-periods
+Request: /menu/today
+Response: 200
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /users/cashiers
+Response: 200
+Request: /users/cashiers
+Response: 200
+Request: /auth/pin-login
+Response: 200
+Request: /shifts/current
+Response: 404
+Request: /meal-periods
+Response: 200
+Request: /meal-periods
+Request: /menu/today
+Response: 200
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /shifts/open
+Response: 201
+Request: /meal-periods
+Response: 200
+Request: /meal-periods
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /orders
+Response: 201
+Request: /orders/859
+Response: 200
+Request: /orders/today
+Response: 200
+Request: /menu/today
+Response: 200
+Request: /admin/authorize-session
+Response: 200
+Request: /orders/859/adjustments
+Response: 201
+Request: /orders/today
+Response: 200
+Request: /shifts/1251/summary
+Response: 200
+2026-08-08T00:44:02.939+02:00  WARN 44504 --- [beacon-culinary-api] [l-1 housekeeper] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Thread starvation or clock leap detected (housekeeper delta=2m13s68ms243µs100ns).
+2026-08-08T08:19:05.959+02:00  WARN 44504 --- [beacon-culinary-api] [l-1 housekeeper] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Thread starvation or clock leap detected (housekeeper delta=7h35m8s960ms981µs500ns).

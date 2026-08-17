@@ -1,5 +1,6 @@
 package com.beaconculinary.api.menu;
 
+import com.beaconculinary.api.inventory.RecipeRepository;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -34,6 +35,8 @@ class MenuIntegrationTests {
     @Autowired
     private ComponentCatalogRepository componentCatalogRepository;
     @Autowired
+    private RecipeRepository recipeRepository;
+    @Autowired
     private DailyMealOptionRepository dailyMealOptionRepository;
     @Autowired
     private DailyComponentStockRepository dailyComponentStockRepository;
@@ -52,6 +55,7 @@ class MenuIntegrationTests {
         dailyComponentStockRepository.deleteAll();
         dailyMealOptionRepository.deleteAll();
         mealCatalogRepository.deleteAll();
+        recipeRepository.deleteAll();
         componentCatalogRepository.deleteAll();
     }
 
