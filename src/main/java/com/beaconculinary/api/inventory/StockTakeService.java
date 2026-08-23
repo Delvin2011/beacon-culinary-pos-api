@@ -11,9 +11,14 @@ import java.util.List;
 @Service
 @AllArgsConstructor
 public class StockTakeService {
+    // Stage 5.2.1: Stock Take has no location-selection UI yet — a physical count is implicitly
+    // a Main Store count until a later stage adds real location awareness here.
+    private static final String COUNTED_LOCATION = "Main Store";
+
     private final StockTakeRepository stockTakeRepository;
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
+    private final LocationRepository locationRepository;
     private final AuthService authService;
 
     @Transactional(readOnly = true)
@@ -53,7 +58,10 @@ public class StockTakeService {
         var ingredient = ingredientRepository.findById(request.getIngredientId())
                 .orElseThrow(() -> new InvalidInventoryRequestException("ingredientId does not exist."));
 
-        var currentStock = ingredientStockMovementRepository.sumQuantityByIngredientId(ingredient.getId());
+        var mainStore = locationRepository.findByNameIgnoreCase(COUNTED_LOCATION)
+                .orElseThrow(() -> new IllegalStateException(COUNTED_LOCATION + " location not seeded."));
+        var currentStock = ingredientStockMovementRepository
+                .sumQuantityByIngredientIdAndLocationId(ingredient.getId(), mainStore.getId());
         var variance = request.getCountedQuantity().subtract(currentStock);
 
         var stockTake = new StockTake();
@@ -72,6 +80,7 @@ public class StockTakeService {
         movement.setQuantity(variance);
         movement.setSourceType(MovementSourceType.STOCK_TAKE);
         movement.setSourceId(stockTake.getId());
+        movement.setLocation(mainStore);
         movement.setRecordedBy(stockTake.getRecordedBy());
         ingredientStockMovementRepository.save(movement);
 

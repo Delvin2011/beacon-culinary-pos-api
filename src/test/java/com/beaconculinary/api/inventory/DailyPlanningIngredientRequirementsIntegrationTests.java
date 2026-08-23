@@ -42,7 +42,7 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
     @Autowired
     private DailyComponentStockRepository dailyComponentStockRepository;
     @Autowired
-    private IngredientRequirementConfirmationRepository confirmationRepository;
+    private StockRequestRepository stockRequestRepository;
     @Autowired
     private IngredientStockMovementRepository ingredientStockMovementRepository;
     @Autowired
@@ -51,17 +51,19 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
     private IngredientRepository ingredientRepository;
 
     private String adminToken;
+    private String stockAdminToken;
     private long lunchId;
 
     @BeforeEach
     void setUp() throws Exception {
         adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
+        stockAdminToken = AuthTestHelper.loginAsStockAdmin(mockMvc);
         lunchId = periodId("lunch");
     }
 
     @AfterEach
     void tearDown() {
-        confirmationRepository.deleteAll();
+        stockRequestRepository.deleteAll();
         dailyMealOptionRepository.deleteAll();
         dailyComponentStockRepository.deleteAll();
         mealCatalogRepository.deleteAll();
@@ -92,8 +94,8 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
     }
 
     private void createGrv(long ingredientId, String quantity) throws Exception {
-        var body = "{\"ingredientId\":" + ingredientId + ",\"quantity\":" + quantity
-                + ",\"costPerUnit\":1.00,\"supplierName\":\"Supplier A\"}";
+        var body = "{\"invoiceNumber\":\"INV-" + ingredientId + "-" + quantity + "\",\"supplierName\":\"Supplier A\","
+                + "\"lines\":[{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":" + quantity + ",\"costPerUnit\":1.00}]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());
@@ -191,10 +193,10 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
     }
 
     @Test
-    void confirm_usesEditedQuantity_deductsStock_andExcludesReviewedRowsFromNextFetch() throws Exception {
+    void confirm_usesEditedQuantity_createsStockRequestWithoutDeducting_andExcludesReviewedRowsFromNextFetch() throws Exception {
         var riceId = createIngredient("Rice", "KG");
         var oilId = createIngredient("Cooking Oil", "LITRE");
-        createGrv(riceId, "10.0000");
+        createGrv(riceId, "10.0000"); // Main Store — what the shortfall preview now checks against
         createGrv(oilId, "10.0000");
 
         var riceComponentId = createComponent("Rice");
@@ -207,19 +209,52 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
         var confirmBody = "{\"period\":\"Lunch\",\"adjustments\":["
                 + "{\"ingredientId\":" + riceId + ",\"finalQuantity\":2.0},"
                 + "{\"ingredientId\":" + oilId + ",\"finalQuantity\":0.5}]}";
-        mockMvc.perform(post("/admin/daily-planning/" + PLANNING_DATE + "/confirm-ingredient-requirements")
+        var confirmResponse = mockMvc.perform(post("/admin/daily-planning/" + PLANNING_DATE + "/confirm-ingredient-requirements")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(confirmBody))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.shortfalls.length()").value(0));
+                .andExpect(jsonPath("$.shortfalls.length()").value(0))
+                .andExpect(jsonPath("$.stockRequestId").isNumber())
+                .andReturn().getResponse().getContentAsString();
+        var stockRequestId = MAPPER.readTree(confirmResponse).get("stockRequestId").asLong();
 
-        // Deduction used the edited 2.0, not the calculated 3.0.
+        // No stock movement happens at confirm time — Main Store is untouched, Kitchen is still
+        // empty. Only actioning the resulting Issuing Sheet actually moves stock.
         mockMvc.perform(get("/admin/ingredients/" + riceId + "/stock").header("Authorization", "Bearer " + adminToken))
-                .andExpect(jsonPath("$.currentStock").value(8.0));
-        mockMvc.perform(get("/admin/ingredients/" + oilId + "/stock").header("Authorization", "Bearer " + adminToken))
-                .andExpect(jsonPath("$.currentStock").value(9.5));
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Main Store')].stock").value(10.0))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Kitchen')].stock").value(0));
 
-        // The now-reviewed option is excluded from a re-fetch.
+        // The created Issuing Sheet carries the edited 2.0, not the calculated 3.0, and the
+        // daily-plan traceability fields.
+        mockMvc.perform(get("/stock-requests/" + stockRequestId).header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requestType").value("ISSUE"))
+                .andExpect(jsonPath("$.source").value("DAILY_PLANNING"))
+                .andExpect(jsonPath("$.status").value("REQUESTED"))
+                .andExpect(jsonPath("$.dailyPlanDate").value(PLANNING_DATE))
+                .andExpect(jsonPath("$.lines[?(@.ingredientId == " + riceId + ")].requestedQuantity").value(2.0))
+                .andExpect(jsonPath("$.lines[?(@.ingredientId == " + oilId + ")].requestedQuantity").value(0.5));
+
+        // Authorizing it is what actually moves the stock, Main Store -> Kitchen.
+        var actionBody = "{\"lines\":[{\"ingredientId\":" + riceId + ",\"actionedQuantity\":2.0},"
+                + "{\"ingredientId\":" + oilId + ",\"actionedQuantity\":0.5}]}";
+        mockMvc.perform(post("/stock-requests/" + stockRequestId + "/action")
+                        .header("Authorization", "Bearer " + stockAdminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(actionBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIONED"));
+
+        mockMvc.perform(get("/admin/ingredients/" + riceId + "/stock").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.totalStock").value(10.0))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Kitchen')].stock").value(2.0))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Main Store')].stock").value(8.0));
+        mockMvc.perform(get("/admin/ingredients/" + oilId + "/stock").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.totalStock").value(10.0))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Kitchen')].stock").value(0.5))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Main Store')].stock").value(9.5));
+
+        // The now-reviewed option is excluded from a re-fetch, regardless of the request's
+        // authorization state — the review and the deduction are two separate steps.
         mockMvc.perform(get("/admin/daily-planning/" + PLANNING_DATE + "/ingredient-requirements")
                         .param("period", "Lunch").header("Authorization", "Bearer " + adminToken))
                 .andExpect(jsonPath("$.requirements.length()").value(0));
@@ -233,7 +268,7 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
     }
 
     @Test
-    void confirm_withInsufficientStock_returnsShortfalls_butStillDeducts() throws Exception {
+    void confirm_withInsufficientMainStoreStock_returnsShortfallPreview_stillCreatesRequestWithoutDeducting() throws Exception {
         var riceId = createIngredient("Rice", "KG");
         createGrv(riceId, "1.0000"); // far less than what will be requested
 
@@ -243,17 +278,40 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
         createDailyOption(riceMealId, 20); // calculated rice = 3.0
 
         var confirmBody = "{\"period\":\"Lunch\",\"adjustments\":[{\"ingredientId\":" + riceId + ",\"finalQuantity\":3.0}]}";
-        mockMvc.perform(post("/admin/daily-planning/" + PLANNING_DATE + "/confirm-ingredient-requirements")
+        var confirmResponse = mockMvc.perform(post("/admin/daily-planning/" + PLANNING_DATE + "/confirm-ingredient-requirements")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(confirmBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.shortfalls.length()").value(1))
                 .andExpect(jsonPath("$.shortfalls[0].ingredientId").value(riceId))
-                .andExpect(jsonPath("$.shortfalls[0].resultingStock").value(-2.0));
+                .andExpect(jsonPath("$.shortfalls[0].resultingStock").value(-2.0))
+                .andReturn().getResponse().getContentAsString();
+        var stockRequestId = MAPPER.readTree(confirmResponse).get("stockRequestId").asLong();
 
-        // Deduction proceeded despite the shortfall — negative stock allowed, no exception.
+        // The shortfall is a preview only — no deduction happened, stock is unchanged.
         mockMvc.perform(get("/admin/ingredients/" + riceId + "/stock").header("Authorization", "Bearer " + adminToken))
-                .andExpect(jsonPath("$.currentStock").value(-2.0));
+                .andExpect(jsonPath("$.totalStock").value(1.0));
+
+        // The real guard still lives at authorization time: actioning above what's actually
+        // available in Main Store is rejected, and writes nothing.
+        var overBody = "{\"lines\":[{\"ingredientId\":" + riceId + ",\"actionedQuantity\":3.0}]}";
+        mockMvc.perform(post("/stock-requests/" + stockRequestId + "/action")
+                        .header("Authorization", "Bearer " + stockAdminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(overBody))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/admin/ingredients/" + riceId + "/stock").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.totalStock").value(1.0));
+
+        // Actioning within what's actually available succeeds.
+        var withinBody = "{\"lines\":[{\"ingredientId\":" + riceId + ",\"actionedQuantity\":1.0}]}";
+        mockMvc.perform(post("/stock-requests/" + stockRequestId + "/action")
+                        .header("Authorization", "Bearer " + stockAdminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(withinBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PARTIALLY_ACTIONED"));
+        mockMvc.perform(get("/admin/ingredients/" + riceId + "/stock").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Kitchen')].stock").value(1.0))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Main Store')].stock").value(0.0));
     }
 
     @Test

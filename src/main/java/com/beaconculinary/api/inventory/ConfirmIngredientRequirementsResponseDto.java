@@ -9,4 +9,7 @@ import java.util.List;
 @AllArgsConstructor
 public class ConfirmIngredientRequirementsResponseDto {
     private List<IngredientShortfallDto> shortfalls;
+    // Stage 5 Revision — the Issuing Sheet this confirmation created, so the frontend can link
+    // straight to it for authorization.
+    private Long stockRequestId;
 }

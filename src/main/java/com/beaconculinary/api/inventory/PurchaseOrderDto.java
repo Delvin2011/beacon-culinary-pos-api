@@ -11,5 +11,6 @@ public class PurchaseOrderDto {
     private String supplierName;
     private PurchaseOrderStatus status;
     private LocalDateTime createdAt;
+    private Long stockRequestId;
     private List<PurchaseOrderLineDto> lines;
 }

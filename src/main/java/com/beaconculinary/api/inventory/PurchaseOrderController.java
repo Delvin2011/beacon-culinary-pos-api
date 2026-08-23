@@ -20,6 +20,11 @@ public class PurchaseOrderController {
         return purchaseOrderService.getAll();
     }
 
+    @GetMapping("/{id}")
+    public PurchaseOrderDto getById(@PathVariable Long id) {
+        return purchaseOrderService.getById(id);
+    }
+
     @PostMapping
     public ResponseEntity<PurchaseOrderDto> create(@Valid @RequestBody CreatePurchaseOrderRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(purchaseOrderService.create(request));

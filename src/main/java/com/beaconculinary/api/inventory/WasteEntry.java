@@ -28,6 +28,11 @@ public class WasteEntry {
     @Column(name = "quantity")
     private BigDecimal quantity;
 
+    // Stage 5.2.4 — required going forward; historical rows backfilled to Main Store.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "location_id")
+    private Location location;
+
     @Column(name = "reason")
     private String reason;
 

@@ -6,12 +6,24 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public interface IngredientStockMovementRepository extends JpaRepository<IngredientStockMovement, Long> {
-    /** Every ingredient stock figure in this system derives from this one query — never a
-     * stored/mutable field on {@link Ingredient}. */
+    /** Total across every location — every ingredient's grand-total stock figure derives from
+     * this one query — never a stored/mutable field on {@link Ingredient}. */
     @Query("SELECT COALESCE(SUM(m.quantity), 0) FROM IngredientStockMovement m WHERE m.ingredient.id = :ingredientId")
     BigDecimal sumQuantityByIngredientId(@Param("ingredientId") Long ingredientId);
+
+    /** Stage 5.2.1 — the per-location figure everything except the total-stock display now
+     * actually cares about (e.g. "does Kitchen have enough"). */
+    @Query("SELECT COALESCE(SUM(m.quantity), 0) FROM IngredientStockMovement m " +
+            "WHERE m.ingredient.id = :ingredientId AND m.location.id = :locationId")
+    BigDecimal sumQuantityByIngredientIdAndLocationId(
+            @Param("ingredientId") Long ingredientId, @Param("locationId") Long locationId);
+
+    @Query("SELECT m.location.id, COALESCE(SUM(m.quantity), 0) FROM IngredientStockMovement m " +
+            "WHERE m.ingredient.id = :ingredientId GROUP BY m.location.id")
+    List<Object[]> sumQuantityByIngredientIdGroupedByLocation(@Param("ingredientId") Long ingredientId);
 
     @Query("SELECT MAX(m.createdAt) FROM IngredientStockMovement m WHERE m.ingredient.id = :ingredientId")
     LocalDateTime findLastMovementAtByIngredientId(@Param("ingredientId") Long ingredientId);

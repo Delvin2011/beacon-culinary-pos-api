@@ -17,6 +17,16 @@ public class AdminSecurityRules implements SecurityRules {
         registry
             .requestMatchers(HttpMethod.POST, "/admin/authorize", "/admin/authorize-session")
                 .hasAnyRole(Role.CASHIER.name(), Role.ADMIN.name())
+            // Stage 5 Revision: Ingredient Master, GRV, Stock Take, Purchase Orders, and direct
+            // Waste move from ADMIN-only to STOCK_ADMIN (ADMIN still passes, as a superset).
+            // Recipes/catalog/daily-planning stay ADMIN-only, falling through to the rule below.
+            .requestMatchers(
+                    "/admin/ingredients", "/admin/ingredients/**",
+                    "/admin/grv", "/admin/grv/**",
+                    "/admin/stock-takes", "/admin/stock-takes/**",
+                    "/admin/purchase-orders", "/admin/purchase-orders/**",
+                    "/admin/waste", "/admin/waste/**")
+                .hasAnyRole(Role.STOCK_ADMIN.name(), Role.ADMIN.name())
             .requestMatchers("/admin/**").hasRole(Role.ADMIN.name());
     }
 }

@@ -36,6 +36,12 @@ public class PurchaseOrder {
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    // Stage 5.2.3 — set when this PO was produced by approving an ORDER-type StockRequest;
+    // null for the unchanged direct-admin-creates-a-PO path.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "stock_request_id")
+    private StockRequest stockRequest;
+
     @OneToMany(mappedBy = "purchaseOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PurchaseOrderLine> lines = new ArrayList<>();
 }

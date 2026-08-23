@@ -12,4 +12,8 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
 
     @EntityGraph(attributePaths = {"lines", "lines.ingredient"})
     Optional<PurchaseOrder> findWithLinesById(Long id);
+
+    // Stage 5.2.3 — looks up the PO an approved ORDER-type StockRequest produced, via the nested
+    // stockRequest.id property (no direct stockRequestId field on PurchaseOrder).
+    Optional<PurchaseOrder> findByStockRequestId(Long stockRequestId);
 }

@@ -779,3 +779,421 @@ cashier/kitchen/public endpoint, run twice back to back to prove the twelve tear
 0 errors, both runs**.
 
 ---
+
+## Stage 5.2.1 — Backend: Location Foundation & Kitchen-Scoped Daily Planning (Sections 1, 2, 4–7) — ✅ Complete
+
+Implements the location-scoping half of the Stage 5.2.1 spec (new `Location` entity, per-location
+stock, Kitchen-scoped daily-planning deduction, the `/locations` and per-location `/stock`
+endpoints). **Section 3 (Issue-approval paired movement) is explicitly deferred** — it depends on
+a `StockRequest`/`Issue`/`STOCK_CLERK`/`STOCK_ADMIN` workflow that is fully specified elsewhere
+(the "Stage 5 Revision" doc) but not yet implemented in this codebase at all; building a version
+of it here would mean improvising role hierarchy, cap-at-available-stock, and partial-approval
+decisions that were deliberately made in that separate spec. Once that revision lands, Section 3
+becomes a small follow-up: add the Kitchen-side paired movement to its Issue action endpoint.
+
+**What was built**
+- New `Location` (`id`, `name`, `active`) — seeded with exactly two rows, `Main Store` and
+  `Kitchen` (`V60`). `GET /locations` (any authenticated role — no dedicated `SecurityRules`
+  bean needed, it falls through to `SecurityConfig`'s default `authenticated()` rule, same as
+  every other unmatched endpoint).
+- `IngredientStockMovement` gained a required `location` — `V61` adds the column nullable,
+  backfills every pre-existing row to Main Store (the only place GRV/Waste/Stock Take have ever
+  written to), then locks it `NOT NULL` + FK, split across `GO` batches (same same-batch-column
+  gotcha `V35`/`V41` hit in Stage 2.5/2.6). "Current stock" is now always `SUM(quantity)` for an
+  ingredient **at a location**, not for an ingredient alone — `IngredientStockMovementRepository`
+  gained `sumQuantityByIngredientIdAndLocationId` and a grouped-by-location variant alongside the
+  existing all-locations total.
+- `MovementType.CONSUMED_FOR_PREP` renamed to `CONSUMED` (`V62`, data + `CHECK` constraint) —
+  same event, Kitchen-scoped now rather than one undifferentiated pool. `ISSUED` added to the
+  allowed set for Section 3's later follow-up; nothing produces it yet.
+- **Daily planning confirmation is now Kitchen-scoped**, not a global-pool deduction:
+  `DailyPlanningIngredientService` resolves the `Kitchen` location once per call and both the
+  requirements-preview `currentStock` and the confirm-step shortfall calculation compare against
+  Kitchen's stock specifically; every `CONSUMED` movement it writes is tagged `location = Kitchen`.
+  Direct deduction (no `StockRequest`, no approval step) is unchanged from Stage 5 — this is a
+  re-scoping, not the create-a-request behavior the separate Stage 5 Revision doc describes.
+- **GRV, direct Waste, and Stock Take default to Main Store**, matching the spec's "no
+  location-selection UI yet" scope: each sets `location = Main Store` on the movements it writes.
+  Stock Take's variance calculation is now Main-Store-scoped too (not the ingredient's
+  all-locations total) — a physical count is a Main Store count, and reconciling it against a
+  total that includes Kitchen's independent daily-planning consumption would produce the wrong
+  variance the moment the two diverge.
+- `GET /admin/ingredients/{id}/stock` now returns `{ totalStock, byLocation: [{ locationId,
+  locationName, stock }], lastMovementAt }` instead of a single `currentStock` figure — every
+  seeded location is always present in `byLocation`, even ones with zero movements for that
+  ingredient (e.g. Kitchen before anything has ever reached it), rather than only the locations
+  that happen to appear in the ledger.
+- Three migrations (`V60`–`V62`): `locations` + seed, `location_id` on
+  `ingredient_stock_movements` (add → backfill → `NOT NULL` → FK, across `GO` batches), and the
+  `movement_type` rename/widen.
+
+**Decisions made**
+- **Section 3 skipped entirely**, per explicit instruction — see the framing above. `ISSUED` is
+  still added to the `movement_type` enum/constraint now (Section 2's own target list includes
+  it), even though nothing produces it yet, so the schema doesn't need a second widening
+  migration once Section 3's prerequisite work lands.
+- **The `IngredientRequirementConfirmation` entity already *is* the spec's "new lightweight audit
+  anchor" (`DailyPlanningConfirmation`)** — Stage 5 built it with exactly that shape
+  (`planningDate`/`mealPeriod`/`confirmedBy`/`confirmedAt`) for the same traceability reason back
+  when Stage 5 Part C was implemented. No new table was needed for this.
+- **`IngredientStockDto.currentStock` renamed to `totalStock`** to match the spec's response
+  shape exactly — a deliberate breaking change to this endpoint's contract, not an additive one.
+- Kitchen has no way to receive stock yet (Section 3/Issue is deferred, and GRV always lands at
+  Main Store) — so daily-planning confirmation will show a shortfall for Kitchen's zero stock
+  until Section 3 lands. This is the intended, acceptable state of a mid-sequence stage, not a
+  bug; tests that need to exercise the "sufficient Kitchen stock" path seed Kitchen's ledger
+  directly via the repository rather than through a (nonexistent) API path.
+
+**Tests** — one new class, two updated: `LocationIntegrationTests` (2 — unauthenticated `401`,
+any authenticated role sees both seeded locations); `IngredientLedgerIntegrationTests` gained a
+per-location breakdown test (GRV-only stock shows entirely under Main Store, Kitchen at zero) and
+had its `/stock` assertions renamed to `totalStock`; `DailyPlanningIngredientRequirementsIntegrationTests`'
+confirm tests now seed Kitchen stock directly to exercise the sufficient-stock path, and the
+insufficient-stock test's expected shortfall figure was recalculated for Kitchen starting at zero
+rather than whatever Main Store happened to hold.
+
+**Full-suite verification** — the inventory package (all GRV/Waste/Stock Take/Recipe/Purchase
+Order/Daily-Planning/Location tests) passes cleanly against the real dev SQL Server DB with
+`V60`–`V62` applied: **44 tests, 0 failures, 0 errors**. A full whole-suite run also surfaced
+pre-existing failures in unrelated packages (`shifts`, `users`, `orders`, `kitchen`, `board`,
+`admin`) — all showing hardcoded seeded-user-id/shift-state assertions drifting (e.g. `cashierId`
+expected `2` but was `1`), not anything touching `location_id`/`movement_type`/inventory code.
+These stem from this suite's tests assuming a freshly-migrated DB with untouched auto-increment
+sequences, and this session's shared dev DB having accumulated extra rows across many earlier
+manual/test runs — a pre-existing environmental fragility, not a regression from this stage.
+
+---
+
+## Stage 5.2.2 — Backend: GRV Header/Lines, PO & Invoice Linkage, Receipt Variance — ✅ Complete
+
+Restructures `Grv` from one-row-per-ingredient to header + lines, matching the real delivery
+template (one invoice number, one supplier, covering however many items that invoice actually
+contained) — independent of the Stage 5 Revision (`StockRequest`) work, per the spec.
+
+**What was built**
+- `Grv` is now a header (`invoiceNumber`, optional `purchaseOrder`, `supplierName`, `note`,
+  `receivedBy`/`receivedAt`) with a `@OneToMany` of new `GrvLine` rows (`ingredient`, optional
+  `purchaseOrderLine`, `quantityOrdered` — derived from the linked PO line, `null` if ad-hoc —
+  `quantityReceived`, `costPerUnit`). Every `RECEIVED` `IngredientStockMovement` now sources from
+  the specific `GrvLine`'s id, not the header's, so a movement always traces to the exact item
+  that produced it.
+- `POST /admin/grv` takes `{ invoiceNumber, purchaseOrderId?, supplierName, note?, lines: [{
+  ingredientId, purchaseOrderLineId?, quantityReceived, costPerUnit }] }`. A line linked to a PO
+  line whose ingredient doesn't match the submitted `ingredientId` is rejected `400` (prevents a
+  mismatched linkage); an ad-hoc line (no PO link) leaves `quantityOrdered` `null`. Multiple GRVs
+  may reference the same PO line over time (partial/split deliveries) — no capping, and
+  `PurchaseOrder.status` is untouched by GRV activity, exactly as specced.
+- `GrvLineDto.receiptVariance` (`quantityReceived - quantityOrdered`, `null` when
+  `quantityOrdered` is `null`) is computed at read time via a MapStruct `expression`, not stored
+  — negative is a short delivery, positive is over-delivery.
+- `GET /admin/grv` gained a `purchaseOrderId` filter alongside the existing `ingredientId`/date
+  range ones; since ingredient filtering now means "at least one line has this ingredient" (a
+  line-level join, not a header column) and all three filters are independently optional, the
+  four-branch finder-method style the original single-line `Grv` used was replaced with one
+  null-coalescing `@Query` (`(:x IS NULL OR ...) AND ...`) rather than growing to eight branches.
+  New `GET /admin/grv/{id}` returns full line detail.
+- `Ingredient.itemCode` (optional, free text, no uniqueness constraint) added to the
+  create/update/response DTOs and to bulk CSV import indirectly (unaffected — itemCode isn't a
+  bulk-import column in this stage, matching the spec's explicit scope).
+- Bulk GRV CSV import adapted to the header/line model: each row still creates its own one-line,
+  ad-hoc GRV (same "every row is its own GRV" shape as before), now carrying a required Invoice
+  Number column per row rather than one invoice shared across the file — the spec doesn't
+  describe grouping multiple CSV rows under one invoice, so this preserves prior behavior with
+  the minimum change needed to satisfy the new required field.
+- Two migrations (`V63`–`V64`): `ingredients.item_code`, and the GRV restructure — creates
+  `grv_lines`, migrates every existing single-line `grv` row into one `GrvLine` each (capturing
+  the old-header-id → new-line-id mapping via an `OUTPUT ... INTO` table variable), re-points
+  every existing stock movement's `source_id` from the old header id to the new line id, drops
+  the now-redundant `ingredient_id`/`quantity`/`cost_per_unit` columns (and their FK/CHECK/index)
+  from `grv`, then adds `invoice_number` (backfilled `'LEGACY-UNKNOWN'` for pre-existing rows,
+  then locked `NOT NULL`) and `purchase_order_id`. Split across `GO` batches throughout — the
+  same same-batch-new-column gotcha `V35`/`V41`/`V61` already established the pattern for.
+
+**Decisions made**
+- **`PurchaseOrderLineDto` gained an `id` field.** It had none before this stage — Part G never
+  needed to reference a specific line by id. Without it, there was no way for a caller (or this
+  stage's own tests) to discover a `purchaseOrderLineId` to link a GRV line against at all, so
+  this was a necessary addition, not scope creep — Stage 5.2.2's own GRV↔PO linkage is otherwise
+  unusable through the API.
+- **`STOCK_ADMIN`/`ADMIN` in the spec's endpoint table stays `ADMIN`-only for now**, same
+  treatment as Stage 5.2.1 — `STOCK_ADMIN` doesn't exist as a role anywhere in this codebase yet
+  (it's part of the still-deferred Stage 5 Revision), and `/admin/grv` already falls under the
+  existing blanket `/admin/**` → `ADMIN` rule with no code change needed.
+- **`invoiceNumber` "required" is enforced via `@NotBlank` bean validation** on
+  `CreateGrvRequest`, not a separate manual service-layer check — consistent with how every other
+  required field in this codebase's request DTOs works (`supplierName`, `quantity`, etc.).
+- **At least one line is required** (`@NotEmpty` on `CreateGrvRequest.lines`) — the spec's
+  acceptance criteria and worked examples all assume a GRV always covers real received items;
+  nothing in the spec describes a legitimate zero-line header.
+
+**Tests** — one new class, three updated: `GrvHeaderLinesIntegrationTests` (9 — multi-line GRV
+writes one header/correct lines/movements and is fully readable back via `GET .../{id}`; a
+PO-linked line computes `quantityOrdered`/`receiptVariance` correctly in both the short-delivery
+and over-delivery direction; an unlinked line leaves both `null`; a mismatched ingredient vs. the
+linked PO line's own ingredient is `400`; two GRVs against the same PO line both record in full
+with no capping and independently-correct variance, leaving `PurchaseOrder.status` untouched;
+`purchaseOrderId` list filtering; missing invoice number and empty `lines` are both `400`;
+`itemCode` set on create/update appears in the ingredient list). `BulkGrvImportIntegrationTests`
+adapted to the new required Invoice Number CSV column and the header/lines response shape (plus a
+new missing-invoice-number `400` case); `IngredientLedgerIntegrationTests` and
+`DailyPlanningIngredientRequirementsIntegrationTests`'s `createGrv` test helpers updated to the
+new request shape (the latter's assertions were otherwise unaffected — Kitchen-scoping from Stage
+5.2.1 doesn't interact with this stage).
+
+**Full-suite verification** — the inventory package passes cleanly against the real dev SQL
+Server DB with `V63`–`V64` applied: **54 tests, 0 failures, 0 errors**. `PurchaseOrderIntegrationTests`
+included, confirming the `PurchaseOrderLineDto.id` addition is non-breaking. `PurchaseOrderLineDto`/
+`GrvDto` are confirmed unused anywhere outside the `inventory` package, so this stage's DTO
+reshaping can't have regressed another domain.
+
+---
+
+## Stage 5 Revision — Backend: Stock Requests, Role Hierarchy & Issue-on-Authorization — ✅ Complete
+
+Implements the separately-specced "Stage 5 Revision" doc — the piece both Stage 5.2.1 Section 3
+and Stage 5.2.3 (Order Sheet) explicitly said they were blocked on. Two new roles (`STOCK_CLERK`,
+`STOCK_ADMIN`) and a `StockRequest`/`StockRequestLine` request-then-authorize model for `ISSUE`
+and `WASTE`, replacing Stage 5's original direct-deduction daily-planning confirmation.
+
+**Adapted to this codebase's already-built Location model.** The Revision spec predates Stage
+5.2.1 and explicitly scopes Location out ("no Location entity, single stock pool only") — but
+Location (Main Store/Kitchen) already exists here, built *after* this spec was written but
+*before* it got implemented. Rather than build a single-pool version that would immediately need
+re-revising, an authorized `ISSUE` request now writes the Main Store → Kitchen paired movement
+Stage 5.2.1 Section 3 described as this exact follow-up ("add the Kitchen-side paired movement to
+the Issue action endpoint... once this revision lands"). This is the only substantive adaptation;
+everything else follows the spec as written.
+
+**What was built**
+- Two new roles, additive up the hierarchy (`ADMIN` ⊇ `STOCK_ADMIN` ⊇ `STOCK_CLERK`), enforced via
+  explicit `hasAnyRole(...)` lists at each matcher — matching this codebase's existing convention
+  (no `RoleHierarchy` bean introduced). `AdminSecurityRules` gained a matcher for
+  `/admin/ingredients`, `/admin/grv`, `/admin/stock-takes`, `/admin/purchase-orders`,
+  `/admin/waste` (+ their sub-paths) at `STOCK_ADMIN`/`ADMIN`, registered before the general
+  `/admin/**` → `ADMIN`-only fallback that Recipes/catalog/daily-planning still fall through to,
+  unchanged. New `StockRequestSecurityRules`: `/stock-requests/*/action` is `STOCK_ADMIN`/`ADMIN`;
+  everything else under `/stock-requests/**` is `STOCK_CLERK` and up.
+- New `StockRequest` (`requestType` ISSUE/WASTE, `source` DAILY_PLANNING/MANUAL, `requestedBy`/
+  `requestedAt`, `status` REQUESTED/PARTIALLY_ACTIONED/ACTIONED/REJECTED, `actionedBy`/
+  `actionedAt`, `dailyPlanDate`/`dailyPlanPeriod`) + `StockRequestLine` (`ingredient`,
+  `requestedQuantity`, `actionedQuantity` nullable until authorized, `reason` — WASTE-only).
+  `POST /stock-requests` (create, any of the three roles), `GET /stock-requests?status=&type=` +
+  `GET /stock-requests/{id}` (STOCK_CLERK sees only their own — `AccessDeniedException` → `403`
+  on someone else's, same ownership pattern `ShiftService` already uses; STOCK_ADMIN/ADMIN see
+  all), `POST /stock-requests/{id}/action` (STOCK_ADMIN/ADMIN only).
+- `POST /stock-requests/{id}/action`: `409` if already `ACTIONED`/`REJECTED`. `ISSUE` lines are
+  capped at Main Store's current available stock (`400` if exceeded) and write the paired
+  `ISSUED` (Main Store, negative) / `RECEIVED` (Kitchen, positive) movement. `WASTE` lines are
+  capped at their own `requestedQuantity` (`400` if exceeded, partial/zero approval both allowed)
+  and write a `WASTED` movement at Main Store — same shape as a direct waste entry, `source_type`
+  is the only difference (`STOCK_REQUEST` vs `DIRECT_WASTE`). Status is recomputed from all lines
+  every call (all at full requested amount → `ACTIONED`; all at zero → `REJECTED`; otherwise
+  `PARTIALLY_ACTIONED`); a line already actioned by an earlier call on a `PARTIALLY_ACTIONED`
+  request is never reprocessed, making a follow-up call safe against double-writing movements.
+- **`confirm-ingredient-requirements` no longer deducts stock.** It now creates a `StockRequest`
+  (`ISSUE`/`DAILY_PLANNING`, `dailyPlanDate`/`dailyPlanPeriod` set, one line per submitted
+  ingredient) and returns its id (`ConfirmIngredientRequirementsResponseDto.stockRequestId`) so
+  the frontend can link straight to it. The `shortfalls` list is now a preview only — computed
+  against Main Store's current stock (the same figure the eventual `/action` cap-check uses), not
+  a block; `ingredientsReviewed` is still set at this step, unchanged. The preview endpoint
+  (`GET .../ingredient-requirements`) also switched from Stage 5.2.1's Kitchen-scoped
+  `currentStock` to Main-Store-scoped, for the same reason — it should reflect whatever the real
+  constraint actually is.
+- `MovementSourceType.WASTE_ENTRY` renamed to `DIRECT_WASTE` (data + `CHECK` constraint); new
+  `STOCK_REQUEST` value. `MovementType` needed no change — `ISSUED`/`CONSUMED` already existed
+  from Stage 5.2.1, which had anticipated exactly this split (`ISSUED` = leaving a location for
+  another; `CONSUMED` = Kitchen recipe-based daily-planning usage, untouched by this revision).
+- Five migrations (`V65`–`V69`): widen `users.role`'s `CHECK` constraint; create
+  `stock_requests`/`stock_request_lines`; relabel `WASTE_ENTRY` → `DIRECT_WASTE` and widen
+  `ingredient_stock_movements.source_type`'s `CHECK` constraint; seed one `STOCK_CLERK` and one
+  `STOCK_ADMIN` dev user (`stockclerk@canteen.local`/`stockadmin@canteen.local`, `654321`),
+  reusing existing valid BCrypt hashes of `654321` from other seeded rows rather than minting new
+  secrets (a hash embeds its own salt, so reuse for the same plaintext verifies correctly — same
+  convention `V32`'s filler hash already established).
+
+**Decisions made**
+- **`IngredientRequirementConfirmation` (entity + repository) deleted outright**, not just
+  stopped-writing-to. `StockRequest.dailyPlanDate`/`dailyPlanPeriod` fully absorbs the
+  traceability role it existed for — Stage 5.2.1's own progress notes already recognized
+  `IngredientRequirementConfirmation` *was* that spec's "lightweight audit anchor" before this
+  revision existed; now `StockRequest` is the more complete version of the same thing, and
+  keeping the old class around with no reader or writer would just be dead code. Its migrated-away
+  table (`ingredient_requirement_confirmations`) is left in place, untouched — dropping a table
+  with historical rows is a bigger, riskier move nothing here asked for.
+- **The Main Store → Kitchen paired-movement design for `ISSUE`** (see the adaptation note above)
+  means every `ISSUE` request in this system — `MANUAL` or `DAILY_PLANNING` — moves stock the
+  same way, since exactly two locations exist and Main Store is the only possible source. This
+  isn't a spec gap filled arbitrarily; it's the mechanism Stage 5.2.1 Section 3 already named as
+  what this revision would unlock.
+- **A follow-up `/action` call on a `PARTIALLY_ACTIONED` request only processes lines that don't
+  already have an `actionedQuantity`** — the spec allows re-actioning (only `ACTIONED`/`REJECTED`
+  reject `409`) but gives no test scenario for it, so this is the safe interpretation: it can't
+  double-write a movement for a line already resolved, whichever way the spec actually intended
+  multi-call behavior to work.
+- **Test helper convenience**: `AuthTestHelper` gained `loginAsStockClerk`/`loginAsStockAdmin`
+  (email/password, like `loginAsAdmin` — not PIN, since these seeded users don't have a stable
+  cross-environment id the way `AuthTestHelper.KITCHEN_ID` does).
+
+**Tests** — one new class, two updated: `StockRequestIntegrationTests` (11 — multi-line creation
+and clerk/stock-admin visibility, clerk ownership `403` on another user's request, clerk `403` on
+the action endpoint, full-approval `ISSUE` moves stock Main Store→Kitchen correctly, over-cap
+`ISSUE` `400` writes nothing, partial-approval `WASTE` writes only the approved amount,
+over-requested `WASTE` `400`, re-actioning an already-`ACTIONED` request `409`, direct waste still
+works for `STOCK_ADMIN` with `DIRECT_WASTE` source, and the full STOCK_CLERK/STOCK_ADMIN role-
+boundary matrix across GRV/Stock Take/Purchase Orders/Ingredients/Recipe/daily-planning).
+`DailyPlanningIngredientRequirementsIntegrationTests`'s two confirm tests reworked end-to-end:
+confirm creates a request and moves nothing, the request is readable with the right daily-plan
+fields, and only authorizing it (as `STOCK_ADMIN`) actually deducts — including the
+insufficient-stock case, which now demonstrates the two-stage warn-then-guard behavior directly
+(preview shows a shortfall and still creates the request; actioning above what's actually
+available in Main Store is separately rejected `400`).
+
+**Full-suite verification** — the inventory package passes cleanly against the real dev SQL
+Server DB with `V65`–`V69` applied: **65 tests, 0 failures, 0 errors** (run three times to rule
+out shared-DB flakiness — the first two runs showed transient teardown collisions traced to a
+genuine bug in this stage's own initial test teardown, since fixed; see below). A full whole-suite
+run reproduced the same pre-existing unrelated failures already documented in Stage 5.2.1's
+entry above (`shifts`/`users`/`orders`/`kitchen`/`board`/`admin` — seeded-id drift from this
+session's accumulated shared dev-DB state), with no stack frame touching any file this stage
+changed.
+
+**A note on the two flaky reruns**: `StockRequestIntegrationTests`' first version didn't clean up
+`waste_entries` in `tearDown()` (only one of its tests, the direct-waste one, actually creates a
+row there) — that class's own blanket `ingredientRepository.deleteAll()` failed on that FK every
+run until fixed. Because other Stage 5 test classes here also use blanket `deleteAll()` on shared
+tables (an existing, pre-this-stage convention — see `IngredientLedgerIntegrationTests` etc.), the
+one failed teardown transiently blocked *other* test classes' blanket deletes too, in whichever
+run happened to leave the orphaned row present when they executed. Fixing the root cause
+(`wasteEntryRepository.deleteAll()` added to this class's `tearDown()`) resolved it completely —
+confirmed by a clean third run with no manual DB intervention needed.
+
+---
+
+## Stage 5.2.3 — Backend: Order Sheet — ✅ Complete
+
+Adds `ORDER` as the third and final `StockRequest.requestType`, alongside `ISSUE`/`WASTE` from
+the Stage 5 Revision. Unlike those two, approving an Order request doesn't move stock — it
+produces a `PurchaseOrder`, ready for a future GRV (Stage 5.2.2) to be received against it. This
+stage's own spec named the Stage 5 Revision as a hard dependency and explicitly said not to start
+without it; it landed immediately above this entry, so this stage proceeded directly on top of it.
+
+**What was built**
+- `StockRequestType` gained `ORDER`. `POST /stock-requests` needed no new code — `requestType:
+  "ORDER"` already flows through the existing create path unchanged, and `reason` (already
+  optional, WASTE-only in spirit) now doubles as "reason for ordering" for `ORDER` lines too.
+- `POST /stock-requests/{id}/action` branches early for `ORDER`: requires `supplierName` (`400`
+  if blank — the requesting clerk doesn't know who to order from; that's the approving
+  `STOCK_ADMIN`'s call), requires status `REQUESTED` specifically (`409` otherwise — no
+  `PARTIALLY_ACTIONED` concept exists for `ORDER`, unlike `ISSUE`/`WASTE`), and applies **no**
+  cap against any stock figure — an order is forward-looking, `actionedQuantity` can be more,
+  less, or equal to what was requested (only guarded to be positive, since a zero-quantity PO
+  line would violate `PurchaseOrderLine`'s existing `> 0` `CHECK` constraint, and "no partial
+  approval" means every line must actually go on the resulting PO). Creates exactly one
+  `PurchaseOrder` (`status = SUBMITTED`, `stockRequest` = this request, one `PurchaseOrderLine`
+  per line) and sets the `StockRequest` to `ACTIONED`. No `IngredientStockMovement` of any kind is
+  written — ordering is not receiving.
+- `PurchaseOrder` gained a nullable `stockRequest` link (`null` for the existing direct-admin-
+  creates-a-PO path, unchanged) — surfaced as `PurchaseOrderDto.stockRequestId`. `StockRequestDto`
+  gained `purchaseOrderId` (looked up via `PurchaseOrderRepository.findByStockRequestId`, a
+  nested-property derived query — `PurchaseOrder` has no direct `stockRequestId` field, just a
+  `stockRequest` relation), populated on every read of an `ORDER`-type request once actioned, not
+  just the action response — so a later `GET /stock-requests/{id}` still shows the link.
+- Two migrations (`V70`–`V71`): widen `stock_requests.request_type`'s `CHECK` constraint to add
+  `'ORDER'`; add `purchase_orders.stock_request_id` (FK + a `WHERE ... IS NOT NULL` unique index —
+  at most one PO per stock request, matching "approved as a whole, into exactly one PO").
+
+**Decisions made**
+- **`GET /admin/purchase-orders/{id}` didn't exist and was added.** The spec's "Reading" section
+  lists it as an "existing endpoint" — it wasn't; `PurchaseOrderController` only ever had list
+  (`GET`) and status-update (`PUT /{id}`). Same category of gap as Stage 5.2.2's
+  `PurchaseOrderLineDto.id` addition: without it, there's no way to view the PO an approval just
+  produced, or fetch its lines' ids to link a GRV against (this stage's own acceptance criteria
+  requires that GRV flow to work). Reuses `PurchaseOrderRepository.findWithLinesById`, already
+  built for the existing `PUT` endpoint.
+- **A zero/skipped line is rejected outright for `ORDER`, not silently treated as "not ordered."**
+  The spec's "no partial approval — approved as a whole ... or not at all" reads as a hard
+  invariant: every requested line must appear on the resulting PO or the whole action should fail
+  loudly (`400`), not quietly produce a PO with gaps the caller didn't ask for.
+
+**Tests** — one new class: `OrderStockRequestIntegrationTests` (5 — multi-line Order request
+visible to `STOCK_ADMIN` in the pending queue with per-line reasons preserved; actioning without a
+`supplierName` is `400`; actioning with one creates a `PurchaseOrder` with the correct lines
+(including ordering *more* than requested) correctly linked both directions
+(`stockRequestId`/`purchaseOrderId`) and writes zero `IngredientStockMovement` rows; the resulting
+PO's lines accept a GRV exactly like any other PO, correctly computing `quantityOrdered`/
+`receiptVariance` — Stage 5.2.2's flow working unmodified against this stage's output; a
+`STOCK_CLERK` gets `403` actioning their own Order request).
+
+**Full-suite verification** — the inventory package passes cleanly against the real dev SQL
+Server DB with `V70`–`V71` applied: **70 tests, 0 failures, 0 errors** (a clean run after fixing
+the same category of teardown-ordering bug as the Revision's note above — this stage's own new
+test class didn't clean up the `Grv`/`GrvLine` rows its GRV-against-a-PO-line test creates, which
+FK to `purchase_order_lines`; fixed by adding `GrvRepository` cleanup, ordered before
+`PurchaseOrderRepository`, before `StockRequestRepository`). A full whole-suite run reproduced the
+same pre-existing unrelated failures documented in the two entries above, with no stack frame
+touching any file this stage changed.
+
+---
+
+## Stage 5.2.4 — Backend: Waste, Location-Aware — ✅ Complete
+
+Makes both existing Waste paths — the `STOCK_CLERK`→`STOCK_ADMIN` request path (Stage 5 Revision)
+and the `STOCK_ADMIN` direct-write path (original Stage 5) — location-aware, removing the interim
+"always Main Store" default Stage 5.2.1 flagged when Location was first introduced. Location is
+header-level on a Waste sheet (one location per sheet, not per line) — a deliberate simplification
+vs. the real template, matching Issue's shape; per-line location is explicitly deferred.
+
+**What was built**
+- `StockRequest` gained a nullable `location` — required (validated in the service, `400` if
+  missing/unknown/inactive) for `WASTE`-type requests specifically; still unused by `ISSUE` (fixed
+  Main Store → Kitchen, Stage 5.2.1) and `ORDER` (not location-specific). Fixed at submission —
+  `POST /stock-requests/{id}/action` writes the `WASTED` movement at the **request's own**
+  location, never a default; approving can adjust quantities (existing "cannot exceed requested"
+  cap, unchanged) but never the location.
+- `WasteEntry` gained a required `location` too — needed so the direct-write path can actually
+  store what `POST /admin/waste` now requires (`locationId`, `400` if missing/unknown/inactive),
+  and so `GET /admin/waste` can surface it without a second lookup.
+- Both `StockRequestDto` and `WasteEntryDto`/`WasteEntryListItemDto` gained `locationId`/
+  `locationName`, so any list/queue view can display the location directly.
+- Two migrations (`V72`–`V73`): `stock_requests.location_id` (nullable — `ISSUE`/`ORDER` rows
+  never populate it); `waste_entries.location_id` (backfilled to Main Store for historical rows,
+  then locked `NOT NULL` — the same flagged, accepted historical-gap treatment Stage 5.2.1 already
+  established for `ingredient_stock_movements.location_id`, applied here to the entry table that
+  needed the same column added a stage later).
+
+**Decisions made**
+- **`WasteEntry.location` wasn't in the spec's literal migration listing** (which only shows
+  `stock_requests.location_id`) — same category of gap as prior stages' spec omissions. Without
+  it, `POST /admin/waste`'s new `locationId` field would have nowhere to persist, and `GET
+  /admin/waste` couldn't satisfy the stage's own "surface the location" requirement at all. Added
+  it as the necessary minimum, migrated the same way (`V61`'s pattern) as every other
+  location-backfill in this codebase.
+- **A tiny `resolveActiveLocation(Long)` helper is duplicated in both `WasteService` and
+  `StockRequestService`** rather than extracted to a shared utility — matches this codebase's
+  existing convention of small service-local helpers (no shared validation-utility classes exist
+  for this domain), and the two call sites differ slightly (`WasteService`'s locationId is always
+  required via `@NotNull` on the DTO; `StockRequestService`'s is conditionally required based on
+  `requestType`, so it needs its own null check first).
+- **Active-location validation** (`400` if `location.isActive()` is `false`) wasn't explicitly
+  spelled out in the acceptance criteria beyond "valid, active `locationId`" in the criteria list
+  itself — implemented literally as stated, consistent with `Location.active` already existing as
+  a field with no consumer until now.
+
+**Tests** — one new class, three updated: `WasteRequestLocationIntegrationTests` (4 — a WASTE
+request with no `locationId` is `400`; with an unknown `locationId` is `400`; submitted and
+approved against Main Store decreases Main Store only, with the location surfaced on both create
+and the `type=WASTE` list view; submitted and approved against Kitchen — reached by a real Issue
+request first, exercising the full Main Store → Kitchen → waste chain — decreases Kitchen only,
+leaving Main Store's remaining balance untouched). `WasteAndStockTakeListIntegrationTests` gained
+a missing-`locationId` `400` case and a Kitchen-targeted direct-waste case (leaves Main Store
+untouched), plus a `locationName` assertion on the existing list test; `IngredientLedgerIntegrationTests`
+and `StockRequestIntegrationTests`' waste-related helpers updated to the new required `locationId`.
+
+**Full-suite verification** — the inventory package passes cleanly against the real dev SQL
+Server DB with `V72`–`V73` applied: **76 tests, 0 failures, 0 errors** (one transient rerun needed
+to rule out shared-DB flakiness — self-healed by a later class's blanket teardown, same pattern
+documented in the two entries above; no code fix was needed this time, unlike those). A full
+whole-suite run reproduced the same pre-existing unrelated failures already documented, with no
+stack frame touching any file this stage changed.
+
+---
