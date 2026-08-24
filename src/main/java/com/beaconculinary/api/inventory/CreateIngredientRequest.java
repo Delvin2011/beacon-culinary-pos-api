@@ -14,4 +14,6 @@ public class CreateIngredientRequest {
 
     @NotNull(message = "countSheetCategory is required")
     private CountSheetCategory countSheetCategory;
+
+    private String itemCode;
 }

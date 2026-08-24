@@ -16,6 +16,7 @@ import java.util.Map;
 public class IngredientService {
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
+    private final LocationRepository locationRepository;
     private final InventoryMapper inventoryMapper;
 
     @Transactional(readOnly = true)
@@ -29,6 +30,7 @@ public class IngredientService {
         ingredient.setName(request.getName());
         ingredient.setUnit(request.getUnit());
         ingredient.setCountSheetCategory(request.getCountSheetCategory());
+        ingredient.setItemCode(request.getItemCode());
         ingredientRepository.save(ingredient);
         return inventoryMapper.toDto(ingredient);
     }
@@ -40,18 +42,32 @@ public class IngredientService {
         ingredient.setUnit(request.getUnit());
         ingredient.setCountSheetCategory(request.getCountSheetCategory());
         ingredient.setActive(request.isActive());
+        ingredient.setItemCode(request.getItemCode());
         ingredientRepository.save(ingredient);
         return inventoryMapper.toDto(ingredient);
     }
 
+    // Stage 5.2.1 — every location is shown, including ones with zero movements for this
+    // ingredient (e.g. Kitchen before anything has ever been issued/consumed there), rather than
+    // only the locations that happen to appear in the ledger.
     @Transactional(readOnly = true)
     public IngredientStockDto getStock(Long id) {
         if (!ingredientRepository.existsById(id)) {
             throw new IngredientNotFoundException();
         }
-        BigDecimal currentStock = ingredientStockMovementRepository.sumQuantityByIngredientId(id);
+        BigDecimal totalStock = ingredientStockMovementRepository.sumQuantityByIngredientId(id);
         var lastMovementAt = ingredientStockMovementRepository.findLastMovementAtByIngredientId(id);
-        return new IngredientStockDto(currentStock, lastMovementAt);
+
+        Map<Long, BigDecimal> stockByLocationId = new LinkedHashMap<>();
+        for (Object[] row : ingredientStockMovementRepository.sumQuantityByIngredientIdGroupedByLocation(id)) {
+            stockByLocationId.put((Long) row[0], (BigDecimal) row[1]);
+        }
+        var byLocation = locationRepository.findAll().stream()
+                .map(location -> new LocationStockDto(location.getId(), location.getName(),
+                        stockByLocationId.getOrDefault(location.getId(), BigDecimal.ZERO)))
+                .toList();
+
+        return new IngredientStockDto(totalStock, byLocation, lastMovementAt);
     }
 
     /** Upserts by name (case-insensitive) so re-uploading the same sheet is idempotent. Every

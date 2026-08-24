@@ -9,4 +9,5 @@ public class IngredientDto {
     private IngredientUnit unit;
     private CountSheetCategory countSheetCategory;
     private boolean active;
+    private String itemCode;
 }

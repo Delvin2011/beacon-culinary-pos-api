@@ -33,7 +33,7 @@ class WasteAndStockTakeListIntegrationTests {
     @Autowired
     private WasteEntryRepository wasteEntryRepository;
     @Autowired
-    private StockTakeRepository stockTakeRepository;
+    private LegacyStockTakeRepository stockTakeRepository;
     @Autowired
     private GrvRepository grvRepository;
     @Autowired
@@ -60,7 +60,7 @@ class WasteAndStockTakeListIntegrationTests {
                     .forEach(ingredientStockMovementRepository::delete);
             wasteEntryRepository.findByIngredientIdOrderByCreatedAtDesc(id).forEach(wasteEntryRepository::delete);
             stockTakeRepository.findByIngredientIdOrderByCreatedAtDesc(id).forEach(stockTakeRepository::delete);
-            grvRepository.findByIngredientIdOrderByReceivedAtDesc(id).forEach(grvRepository::delete);
+            grvRepository.search(id, null, null, null).forEach(grvRepository::delete);
             ingredientRepository.deleteById(id);
         }
     }
@@ -75,15 +75,27 @@ class WasteAndStockTakeListIntegrationTests {
     }
 
     private void createGrv(long ingredientId, String quantity) throws Exception {
-        var body = "{\"ingredientId\":" + ingredientId + ",\"quantity\":" + quantity
-                + ",\"costPerUnit\":10,\"supplierName\":\"Test Supplier\"}";
+        var body = "{\"invoiceNumber\":\"INV-" + ingredientId + "-" + quantity + "\",\"supplierName\":\"Test Supplier\","
+                + "\"lines\":[{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":" + quantity + ",\"costPerUnit\":10}]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());
     }
 
+    private long mainStoreLocationId() throws Exception {
+        var response = mockMvc.perform(get("/locations").header("Authorization", "Bearer " + adminToken))
+                .andReturn().getResponse().getContentAsString();
+        for (var node : MAPPER.readTree(response)) {
+            if (node.get("name").asText().equalsIgnoreCase("Main Store")) {
+                return node.get("id").asLong();
+            }
+        }
+        throw new IllegalStateException("Main Store location not seeded");
+    }
+
     private void createWaste(long ingredientId, String quantity, String reason) throws Exception {
-        var body = "{\"ingredientId\":" + ingredientId + ",\"quantity\":" + quantity + ",\"reason\":\"" + reason + "\"}";
+        var body = "{\"ingredientId\":" + ingredientId + ",\"locationId\":" + mainStoreLocationId()
+                + ",\"quantity\":" + quantity + ",\"reason\":\"" + reason + "\"}";
         mockMvc.perform(post("/admin/waste").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());
@@ -107,9 +119,43 @@ class WasteAndStockTakeListIntegrationTests {
                 .andExpect(jsonPath("$.entries[0].ingredientName").value("Waste List Test Oil"))
                 .andExpect(jsonPath("$.entries[0].reason").value("Spilled"))
                 .andExpect(jsonPath("$.entries[0].recordedBy").isNotEmpty())
+                .andExpect(jsonPath("$.entries[0].locationName").value("Main Store"))
                 .andExpect(jsonPath("$.entries[1].ingredientName").value("Waste List Test Rice"))
                 .andExpect(jsonPath("$.entries[1].quantity").value(3))
                 .andExpect(jsonPath("$.entries[1].reason").value("Spoiled overnight"));
+    }
+
+    @Test
+    void createWaste_withoutLocationId_returns400() throws Exception {
+        var body = "{\"ingredientId\":" + riceId + ",\"quantity\":1,\"reason\":\"No location\"}";
+        mockMvc.perform(post("/admin/waste").header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createWaste_atKitchen_leavesMainStoreUntouched() throws Exception {
+        createGrv(riceId, "50");
+
+        var kitchenId = mockMvc.perform(get("/locations").header("Authorization", "Bearer " + adminToken))
+                .andReturn().getResponse().getContentAsString();
+        long kitchenLocationId = -1;
+        for (var node : MAPPER.readTree(kitchenId)) {
+            if (node.get("name").asText().equalsIgnoreCase("Kitchen")) {
+                kitchenLocationId = node.get("id").asLong();
+            }
+        }
+
+        var body = "{\"ingredientId\":" + riceId + ",\"locationId\":" + kitchenLocationId
+                + ",\"quantity\":3,\"reason\":\"Kitchen spoilage\"}";
+        mockMvc.perform(post("/admin/waste").header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.locationName").value("Kitchen"));
+
+        mockMvc.perform(get("/admin/ingredients/" + riceId + "/stock").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Kitchen')].stock").value(-3.0))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Main Store')].stock").value(50.0));
     }
 
     @Test

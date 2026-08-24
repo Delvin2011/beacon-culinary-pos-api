@@ -10,6 +10,8 @@ public class WasteEntryListItemDto {
     private Long id;
     private Long ingredientId;
     private String ingredientName;
+    private Long locationId;
+    private String locationName;
     private BigDecimal quantity;
     private String reason;
     private String note;

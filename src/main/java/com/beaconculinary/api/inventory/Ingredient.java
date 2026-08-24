@@ -30,4 +30,10 @@ public class Ingredient {
 
     @Column(name = "active")
     private boolean active = true;
+
+    // Stage 5.2.2 — optional supplier/internal item code, free text, no uniqueness constraint
+    // (codes may vary by supplier). Shown for reference only, in Ingredient Master and GRV's
+    // item search.
+    @Column(name = "item_code")
+    private String itemCode;
 }

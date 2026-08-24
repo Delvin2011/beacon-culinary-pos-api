@@ -16,4 +16,6 @@ public class UpdateIngredientRequest {
     private CountSheetCategory countSheetCategory;
 
     private boolean active;
+
+    private String itemCode;
 }

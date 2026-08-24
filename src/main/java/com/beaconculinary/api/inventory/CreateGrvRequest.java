@@ -1,27 +1,26 @@
 package com.beaconculinary.api.inventory;
 
-import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 
-import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 public class CreateGrvRequest {
-    @NotNull(message = "ingredientId is required")
-    private Long ingredientId;
+    @NotBlank(message = "invoiceNumber is required")
+    private String invoiceNumber;
 
-    @NotNull(message = "quantity is required")
-    @DecimalMin(value = "0.0001", message = "quantity must be positive")
-    private BigDecimal quantity;
-
-    @NotNull(message = "costPerUnit is required")
-    @DecimalMin(value = "0.00", message = "costPerUnit cannot be negative")
-    private BigDecimal costPerUnit;
+    // Optional — an ad-hoc receipt with no linked purchase order.
+    private Long purchaseOrderId;
 
     @NotBlank(message = "supplierName is required")
     private String supplierName;
 
     private String note;
+
+    @NotEmpty(message = "lines must contain at least one item")
+    @Valid
+    private List<CreateGrvLineRequest> lines;
 }

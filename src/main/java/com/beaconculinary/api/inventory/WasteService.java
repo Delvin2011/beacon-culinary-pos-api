@@ -14,6 +14,7 @@ public class WasteService {
     private final WasteEntryRepository wasteEntryRepository;
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
+    private final LocationRepository locationRepository;
     private final AuthService authService;
     private final InventoryMapper inventoryMapper;
 
@@ -37,6 +38,8 @@ public class WasteService {
         dto.setId(wasteEntry.getId());
         dto.setIngredientId(wasteEntry.getIngredient().getId());
         dto.setIngredientName(wasteEntry.getIngredient().getName());
+        dto.setLocationId(wasteEntry.getLocation().getId());
+        dto.setLocationName(wasteEntry.getLocation().getName());
         dto.setQuantity(wasteEntry.getQuantity());
         dto.setReason(wasteEntry.getReason());
         dto.setNote(wasteEntry.getNote());
@@ -49,9 +52,11 @@ public class WasteService {
     public WasteEntryDto create(CreateWasteRequest request) {
         var ingredient = ingredientRepository.findById(request.getIngredientId())
                 .orElseThrow(() -> new InvalidInventoryRequestException("ingredientId does not exist."));
+        var location = resolveActiveLocation(request.getLocationId());
 
         var wasteEntry = new WasteEntry();
         wasteEntry.setIngredient(ingredient);
+        wasteEntry.setLocation(location);
         wasteEntry.setQuantity(request.getQuantity());
         wasteEntry.setReason(request.getReason());
         wasteEntry.setNote(request.getNote());
@@ -62,11 +67,21 @@ public class WasteService {
         movement.setIngredient(ingredient);
         movement.setMovementType(MovementType.WASTED);
         movement.setQuantity(request.getQuantity().negate());
-        movement.setSourceType(MovementSourceType.WASTE_ENTRY);
+        movement.setSourceType(MovementSourceType.DIRECT_WASTE);
         movement.setSourceId(wasteEntry.getId());
+        movement.setLocation(location);
         movement.setRecordedBy(wasteEntry.getRecordedBy());
         ingredientStockMovementRepository.save(movement);
 
         return inventoryMapper.toDto(wasteEntry);
+    }
+
+    private Location resolveActiveLocation(Long locationId) {
+        var location = locationRepository.findById(locationId)
+                .orElseThrow(() -> new InvalidInventoryRequestException("locationId does not exist."));
+        if (!location.isActive()) {
+            throw new InvalidInventoryRequestException("locationId does not reference an active location.");
+        }
+        return location;
     }
 }

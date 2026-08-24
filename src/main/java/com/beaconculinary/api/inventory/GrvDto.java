@@ -2,18 +2,17 @@ package com.beaconculinary.api.inventory;
 
 import lombok.Data;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class GrvDto {
     private Long id;
-    private Long ingredientId;
-    private String ingredientName;
-    private BigDecimal quantity;
-    private BigDecimal costPerUnit;
+    private String invoiceNumber;
+    private Long purchaseOrderId;
     private String supplierName;
     private String note;
     private Long receivedById;
     private LocalDateTime receivedAt;
+    private List<GrvLineDto> lines;
 }

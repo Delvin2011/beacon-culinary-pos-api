@@ -31,7 +31,7 @@ class IngredientLedgerIntegrationTests {
     @Autowired
     private WasteEntryRepository wasteEntryRepository;
     @Autowired
-    private StockTakeRepository stockTakeRepository;
+    private LegacyStockTakeRepository stockTakeRepository;
     @Autowired
     private IngredientRepository ingredientRepository;
 
@@ -60,9 +60,22 @@ class IngredientLedgerIntegrationTests {
         return MAPPER.readTree(response).get("id").asLong();
     }
 
+    private long mainStoreLocationId() throws Exception {
+        var response = mockMvc.perform(get("/locations").header("Authorization", "Bearer " + adminToken))
+                .andReturn().getResponse().getContentAsString();
+        for (var node : MAPPER.readTree(response)) {
+            if (node.get("name").asText().equalsIgnoreCase("Main Store")) {
+                return node.get("id").asLong();
+            }
+        }
+        throw new IllegalStateException("Main Store location not seeded");
+    }
+
     private void createGrv(long ingredientId, String quantity, String costPerUnit, String supplierName) throws Exception {
-        var body = "{\"ingredientId\":" + ingredientId + ",\"quantity\":" + quantity
-                + ",\"costPerUnit\":" + costPerUnit + ",\"supplierName\":\"" + supplierName + "\"}";
+        var body = "{\"invoiceNumber\":\"INV-" + ingredientId + "-" + supplierName.replace(" ", "") + "\","
+                + "\"supplierName\":\"" + supplierName + "\","
+                + "\"lines\":[{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":" + quantity
+                + ",\"costPerUnit\":" + costPerUnit + "}]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());
@@ -74,7 +87,7 @@ class IngredientLedgerIntegrationTests {
 
         mockMvc.perform(get("/admin/ingredients/" + id + "/stock").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.currentStock").value(0))
+                .andExpect(jsonPath("$.totalStock").value(0))
                 .andExpect(jsonPath("$.lastMovementAt").doesNotExist());
     }
 
@@ -85,20 +98,36 @@ class IngredientLedgerIntegrationTests {
         createGrv(id, "10.0000", "18.00", "Supplier A");
         mockMvc.perform(get("/admin/ingredients/" + id + "/stock").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.currentStock").value(10.0));
+                .andExpect(jsonPath("$.totalStock").value(10.0));
 
         createGrv(id, "5.0000", "20.00", "Supplier B");
         mockMvc.perform(get("/admin/ingredients/" + id + "/stock").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.currentStock").value(15.0));
+                .andExpect(jsonPath("$.totalStock").value(15.0));
 
         // Both GRVs retained with their own cost — never overwritten onto Ingredient.
         mockMvc.perform(get("/admin/grv").param("ingredientId", String.valueOf(id))
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[?(@.supplierName == 'Supplier A')].costPerUnit").value(18.0))
-                .andExpect(jsonPath("$[?(@.supplierName == 'Supplier B')].costPerUnit").value(20.0));
+                .andExpect(jsonPath("$[?(@.supplierName == 'Supplier A')].lines[0].costPerUnit").value(18.0))
+                .andExpect(jsonPath("$[?(@.supplierName == 'Supplier B')].lines[0].costPerUnit").value(20.0));
+    }
+
+    // Stage 5.2.1: GRV/Waste/Stock Take have no location-selection UI yet, so everything they
+    // write lands implicitly at Main Store — Kitchen must show zero, and Main Store's own figure
+    // must equal the ingredient's total.
+    @Test
+    void getStock_breaksDownByLocation_defaultingEverythingToMainStore() throws Exception {
+        var id = createIngredient("Test Rice");
+        createGrv(id, "20.0000", "18.00", "Supplier A");
+
+        mockMvc.perform(get("/admin/ingredients/" + id + "/stock").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalStock").value(20.0))
+                .andExpect(jsonPath("$.byLocation.length()").value(2))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Main Store')].stock").value(20.0))
+                .andExpect(jsonPath("$.byLocation[?(@.locationName == 'Kitchen')].stock").value(0));
     }
 
     @Test
@@ -106,7 +135,8 @@ class IngredientLedgerIntegrationTests {
         var id = createIngredient("Test Rice");
         createGrv(id, "20.0000", "18.00", "Supplier A");
 
-        var wasteBody = "{\"ingredientId\":" + id + ",\"quantity\":3.0000,\"reason\":\"Spoilage\"}";
+        var wasteBody = "{\"ingredientId\":" + id + ",\"locationId\":" + mainStoreLocationId()
+                + ",\"quantity\":3.0000,\"reason\":\"Spoilage\"}";
         mockMvc.perform(post("/admin/waste").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(wasteBody))
                 .andExpect(status().isCreated())
@@ -114,7 +144,7 @@ class IngredientLedgerIntegrationTests {
 
         mockMvc.perform(get("/admin/ingredients/" + id + "/stock").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.currentStock").value(17.0));
+                .andExpect(jsonPath("$.totalStock").value(17.0));
     }
 
     @Test
@@ -129,7 +159,7 @@ class IngredientLedgerIntegrationTests {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.variance").value(5.0));
         mockMvc.perform(get("/admin/ingredients/" + id + "/stock").header("Authorization", "Bearer " + adminToken))
-                .andExpect(jsonPath("$.currentStock").value(25.0));
+                .andExpect(jsonPath("$.totalStock").value(25.0));
 
         // Counted below derived stock — negative variance.
         var downBody = "{\"ingredientId\":" + id + ",\"countedQuantity\":18.0000}";
@@ -138,7 +168,7 @@ class IngredientLedgerIntegrationTests {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.variance").value(-7.0));
         mockMvc.perform(get("/admin/ingredients/" + id + "/stock").header("Authorization", "Bearer " + adminToken))
-                .andExpect(jsonPath("$.currentStock").value(18.0));
+                .andExpect(jsonPath("$.totalStock").value(18.0));
     }
 
     @Test

@@ -24,8 +24,14 @@ public class GrvController {
     public List<GrvDto> list(
             @RequestParam(required = false) Long ingredientId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
-        return grvService.list(ingredientId, from, to);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(required = false) Long purchaseOrderId) {
+        return grvService.list(ingredientId, from, to, purchaseOrderId);
+    }
+
+    @GetMapping("/{id}")
+    public GrvDto getById(@PathVariable Long id) {
+        return grvService.getById(id);
     }
 
     @PostMapping
@@ -33,12 +39,18 @@ public class GrvController {
         return ResponseEntity.status(HttpStatus.CREATED).body(grvService.create(request));
     }
 
-    /** CSV upload with Ingredient Name, Quantity, Cost Per Unit, Supplier Name, and an optional
-     * Note column. Each row must reference an ingredient that already exists (create it via
-     * /admin/ingredients/bulk-import first) — every row always creates a new GRV. */
+    /** CSV upload with Invoice Number, Ingredient Name, Quantity, Cost Per Unit, Supplier Name,
+     * and an optional Note column. Each row must reference an ingredient that already exists
+     * (create it via /admin/ingredients/bulk-import first) — every row always creates its own
+     * new one-line GRV, under its own invoice number. */
     @PostMapping(value = "/bulk-import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public BulkGrvImportResultDto bulkImport(@RequestParam("file") MultipartFile file) {
         return grvService.bulkImport(file);
+    }
+
+    @ExceptionHandler(GrvNotFoundException.class)
+    public ResponseEntity<Void> handleNotFound() {
+        return ResponseEntity.notFound().build();
     }
 
     @ExceptionHandler(InvalidInventoryRequestException.class)

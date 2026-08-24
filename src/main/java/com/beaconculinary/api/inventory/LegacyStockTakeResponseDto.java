@@ -5,9 +5,11 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 
+/** @deprecated see {@link LegacyStockTake}. */
+@Deprecated
 @Data
 @AllArgsConstructor
-public class StockTakeResponseDto {
+public class LegacyStockTakeResponseDto {
     private Long id;
     private BigDecimal variance;
 }

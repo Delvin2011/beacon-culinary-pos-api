@@ -61,7 +61,7 @@ class BulkGrvImportIntegrationTests {
             ingredientStockMovementRepository.findAll().stream()
                     .filter(m -> id.equals(m.getIngredient().getId()))
                     .forEach(ingredientStockMovementRepository::delete);
-            grvRepository.findByIngredientIdOrderByReceivedAtDesc(id).forEach(grvRepository::delete);
+            grvRepository.search(id, null, null, null).forEach(grvRepository::delete);
             ingredientRepository.deleteById(id);
         }
     }
@@ -71,11 +71,11 @@ class BulkGrvImportIntegrationTests {
     }
 
     @Test
-    void bulkImport_createsGrvPerRow_andIncreasesStock() throws Exception {
+    void bulkImport_createsOneLineGrvPerRow_andIncreasesStock() throws Exception {
         var file = csv("""
-                Ingredient Name,Quantity,Cost Per Unit,Supplier Name,Note (Optional)
-                Bulk GRV Test Chicken,80,42,SA Prime Meats & Poultry (Pty) Ltd,Weekly bulk order - IQF portions
-                Bulk GRV Test Beef,60,95,SA Prime Meats & Poultry (Pty) Ltd,
+                Invoice Number,Ingredient Name,Quantity,Cost Per Unit,Supplier Name,Note (Optional)
+                INV-001,Bulk GRV Test Chicken,80,42,SA Prime Meats & Poultry (Pty) Ltd,Weekly bulk order - IQF portions
+                INV-002,Bulk GRV Test Beef,60,95,SA Prime Meats & Poultry (Pty) Ltd,
                 """);
 
         // Rows are processed in CSV order, so grvs[0] is the Chicken row and grvs[1] is Beef.
@@ -84,28 +84,31 @@ class BulkGrvImportIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.created").value(2))
                 .andExpect(jsonPath("$.grvs.length()").value(2))
-                .andExpect(jsonPath("$.grvs[0].ingredientName").value("Bulk GRV Test Chicken"))
-                .andExpect(jsonPath("$.grvs[0].quantity").value(80))
-                .andExpect(jsonPath("$.grvs[0].costPerUnit").value(42))
+                .andExpect(jsonPath("$.grvs[0].invoiceNumber").value("INV-001"))
+                .andExpect(jsonPath("$.grvs[0].lines.length()").value(1))
+                .andExpect(jsonPath("$.grvs[0].lines[0].ingredientName").value("Bulk GRV Test Chicken"))
+                .andExpect(jsonPath("$.grvs[0].lines[0].quantityReceived").value(80))
+                .andExpect(jsonPath("$.grvs[0].lines[0].costPerUnit").value(42))
                 .andExpect(jsonPath("$.grvs[0].supplierName").value("SA Prime Meats & Poultry (Pty) Ltd"))
                 .andExpect(jsonPath("$.grvs[0].note").value("Weekly bulk order - IQF portions"))
-                .andExpect(jsonPath("$.grvs[1].ingredientName").value("Bulk GRV Test Beef"))
+                .andExpect(jsonPath("$.grvs[1].invoiceNumber").value("INV-002"))
+                .andExpect(jsonPath("$.grvs[1].lines[0].ingredientName").value("Bulk GRV Test Beef"))
                 .andExpect(jsonPath("$.grvs[1].note").value(nullValue()));
 
         mockMvc.perform(get("/admin/ingredients/" + chickenId + "/stock")
                         .header("Authorization", "Bearer " + adminToken))
-                .andExpect(jsonPath("$.currentStock").value(80));
+                .andExpect(jsonPath("$.totalStock").value(80));
         mockMvc.perform(get("/admin/ingredients/" + beefId + "/stock")
                         .header("Authorization", "Bearer " + adminToken))
-                .andExpect(jsonPath("$.currentStock").value(60));
+                .andExpect(jsonPath("$.totalStock").value(60));
     }
 
     @Test
     void bulkImport_unknownIngredient_rejectsWholeFileAndSavesNothing() throws Exception {
         var file = csv("""
-                Ingredient Name,Quantity,Cost Per Unit,Supplier Name,Note (Optional)
-                Bulk GRV Test Chicken,80,42,SA Prime Meats & Poultry (Pty) Ltd,
-                Nonexistent Ingredient,60,95,SA Prime Meats & Poultry (Pty) Ltd,
+                Invoice Number,Ingredient Name,Quantity,Cost Per Unit,Supplier Name,Note (Optional)
+                INV-001,Bulk GRV Test Chicken,80,42,SA Prime Meats & Poultry (Pty) Ltd,
+                INV-002,Nonexistent Ingredient,60,95,SA Prime Meats & Poultry (Pty) Ltd,
                 """);
 
         mockMvc.perform(multipart("/admin/grv/bulk-import").file(file)
@@ -113,14 +116,14 @@ class BulkGrvImportIntegrationTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0]").value(containsString("Nonexistent Ingredient")));
 
-        assertThat(grvRepository.findByIngredientIdOrderByReceivedAtDesc(chickenId)).isEmpty();
+        assertThat(grvRepository.search(chickenId, null, null, null)).isEmpty();
     }
 
     @Test
     void bulkImport_invalidQuantity_returns400() throws Exception {
         var file = csv("""
-                Ingredient Name,Quantity,Cost Per Unit,Supplier Name,Note (Optional)
-                Bulk GRV Test Chicken,not-a-number,42,SA Prime Meats & Poultry (Pty) Ltd,
+                Invoice Number,Ingredient Name,Quantity,Cost Per Unit,Supplier Name,Note (Optional)
+                INV-001,Bulk GRV Test Chicken,not-a-number,42,SA Prime Meats & Poultry (Pty) Ltd,
                 """);
 
         mockMvc.perform(multipart("/admin/grv/bulk-import").file(file)
@@ -130,10 +133,23 @@ class BulkGrvImportIntegrationTests {
     }
 
     @Test
+    void bulkImport_missingInvoiceNumber_returns400() throws Exception {
+        var file = csv("""
+                Invoice Number,Ingredient Name,Quantity,Cost Per Unit,Supplier Name,Note (Optional)
+                ,Bulk GRV Test Chicken,80,42,SA Prime Meats & Poultry (Pty) Ltd,
+                """);
+
+        mockMvc.perform(multipart("/admin/grv/bulk-import").file(file)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0]").value(containsString("invoice number")));
+    }
+
+    @Test
     void bulkImport_worksWithoutOptionalNoteColumn() throws Exception {
         var file = csv("""
-                Ingredient Name,Quantity,Cost Per Unit,Supplier Name
-                Bulk GRV Test Chicken,80,42,SA Prime Meats & Poultry (Pty) Ltd
+                Invoice Number,Ingredient Name,Quantity,Cost Per Unit,Supplier Name
+                INV-001,Bulk GRV Test Chicken,80,42,SA Prime Meats & Poultry (Pty) Ltd
                 """);
 
         mockMvc.perform(multipart("/admin/grv/bulk-import").file(file)
@@ -146,8 +162,8 @@ class BulkGrvImportIntegrationTests {
     @Test
     void bulkImport_missingRequiredColumn_returns400() throws Exception {
         var file = csv("""
-                Ingredient Name,Quantity,Supplier Name
-                Bulk GRV Test Chicken,80,SA Prime Meats & Poultry (Pty) Ltd
+                Invoice Number,Ingredient Name,Quantity,Supplier Name
+                INV-001,Bulk GRV Test Chicken,80,SA Prime Meats & Poultry (Pty) Ltd
                 """);
 
         mockMvc.perform(multipart("/admin/grv/bulk-import").file(file)

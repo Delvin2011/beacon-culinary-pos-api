@@ -5,13 +5,14 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
-/** Stage 5 Part D — a goods-received record. Creates a RECEIVED {@link IngredientStockMovement}
- * and is that movement's source, carrying the cost history: an ingredient's "current cost" is
- * derived as the most recent GRV's {@code costPerUnit}, never overwritten directly onto {@link
- * Ingredient}. */
+/** Stage 5.2.2 — a goods-received delivery: one invoice number, one supplier, covering however
+ * many ingredient lines that invoice actually contained. Each {@link GrvLine} is its own {@link
+ * IngredientStockMovement} source (not this header), so a movement always traces back to the
+ * specific line item that produced it, not just the delivery it was part of. */
 @Getter
 @Setter
 @Entity
@@ -22,15 +23,13 @@ public class Grv {
     @Column(name = "id")
     private Long id;
 
+    @Column(name = "invoice_number")
+    private String invoiceNumber;
+
+    // Optional — an ad-hoc purchase (no purchase order) still has a real supplier invoice.
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ingredient_id")
-    private Ingredient ingredient;
-
-    @Column(name = "quantity")
-    private BigDecimal quantity;
-
-    @Column(name = "cost_per_unit")
-    private BigDecimal costPerUnit;
+    @JoinColumn(name = "purchase_order_id")
+    private PurchaseOrder purchaseOrder;
 
     @Column(name = "supplier_name")
     private String supplierName;
@@ -44,4 +43,7 @@ public class Grv {
 
     @Column(name = "received_at", insertable = false, updatable = false)
     private LocalDateTime receivedAt;
+
+    @OneToMany(mappedBy = "grv", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<GrvLine> lines = new ArrayList<>();
 }

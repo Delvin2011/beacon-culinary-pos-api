@@ -12,6 +12,9 @@ public class CreateWasteRequest {
     @NotNull(message = "ingredientId is required")
     private Long ingredientId;
 
+    @NotNull(message = "locationId is required")
+    private Long locationId;
+
     @NotNull(message = "quantity is required")
     @DecimalMin(value = "0.0001", message = "quantity must be positive")
     private BigDecimal quantity;

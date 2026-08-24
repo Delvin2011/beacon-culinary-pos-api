@@ -22,6 +22,12 @@ public class PurchaseOrderService {
         return inventoryMapper.toPurchaseOrderDtoList(purchaseOrderRepository.findAllWithLinesByOrderByCreatedAtDesc());
     }
 
+    @Transactional(readOnly = true)
+    public PurchaseOrderDto getById(Long id) {
+        var purchaseOrder = purchaseOrderRepository.findWithLinesById(id).orElseThrow(PurchaseOrderNotFoundException::new);
+        return inventoryMapper.toDto(purchaseOrder);
+    }
+
     @Transactional
     public PurchaseOrderDto create(CreatePurchaseOrderRequest request) {
         var ingredientIds = request.getLines().stream().map(PurchaseOrderLineRequest::getIngredientId).toList();

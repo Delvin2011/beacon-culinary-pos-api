@@ -26,6 +26,14 @@ public class AuthTestHelper {
         return login(mockMvc, "admin@canteen.local", "654321");
     }
 
+    public static String loginAsStockClerk(MockMvc mockMvc) throws Exception {
+        return login(mockMvc, "stockclerk@canteen.local", "654321");
+    }
+
+    public static String loginAsStockAdmin(MockMvc mockMvc) throws Exception {
+        return login(mockMvc, "stockadmin@canteen.local", "654321");
+    }
+
     private static String login(MockMvc mockMvc, String email, String password) throws Exception {
         var body = MAPPER.writeValueAsString(new LoginRequest(email, password));
         var response = mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON).content(body))
