@@ -61,4 +61,17 @@ public interface InventoryMapper {
     @Mapping(target = "ingredientId", source = "ingredient.id")
     @Mapping(target = "ingredientName", source = "ingredient.name")
     StockRequestLineDto toDto(StockRequestLine line);
+
+    @Mapping(target = "locationId", source = "location.id")
+    @Mapping(target = "locationName", source = "location.name")
+    @Mapping(target = "submittedById", source = "submittedBy.id")
+    @Mapping(target = "submittedByName", source = "submittedBy.name")
+    @Mapping(target = "reviewedById", source = "reviewedBy.id")
+    StockTakeDto toDto(StockTake stockTake);
+
+    List<StockTakeDto> toStockTakeDtoList(List<StockTake> stockTakes);
+
+    @Mapping(target = "ingredientId", source = "ingredient.id")
+    @Mapping(target = "ingredientName", source = "ingredient.name")
+    StockTakeLineDto toDto(StockTakeLine line);
 }

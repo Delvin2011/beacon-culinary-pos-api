@@ -5,12 +5,16 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
-/** Stage 5 Part F — a physical stock count reconciled against the derived ledger total, the same
- * expected-vs-counted variance pattern already proven for cash in Stage 2.5. Creates a
- * STOCK_TAKE_ADJUSTMENT {@link IngredientStockMovement} and is that movement's source. */
+/** Stage 5.2.5 — a physical stock count submitted for one location, reviewed (approved or
+ * rejected) by a {@code STOCK_ADMIN}/{@code ADMIN}. Deliberately not a {@link StockRequest}:
+ * nobody is requesting anything here — a clerk reports what they physically counted, and review
+ * is a binary credibility check ({@link StockTakeDecision}), never an edit of that observation.
+ * Replaces the original Stage 5 direct-write {@code POST /admin/stock-takes}, now {@link
+ * LegacyStockTake} — historical data only, nothing new writes there. */
 @Getter
 @Setter
 @Entity
@@ -22,24 +26,32 @@ public class StockTake {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ingredient_id")
-    private Ingredient ingredient;
+    @JoinColumn(name = "location_id")
+    private Location location;
 
-    @Column(name = "counted_quantity")
-    private BigDecimal countedQuantity;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "submitted_by")
+    private User submittedBy;
 
-    // countedQuantity - derivedStockAtTimeOfCount, stored so the count is a durable record even
-    // though it can also be recomputed from the resulting movement.
-    @Column(name = "variance")
-    private BigDecimal variance;
+    @Column(name = "submitted_at", insertable = false, updatable = false)
+    private LocalDateTime submittedAt;
 
+    @Column(name = "status")
+    @Enumerated(EnumType.STRING)
+    private StockTakeStatus status = StockTakeStatus.SUBMITTED;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reviewed_by")
+    private User reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    // Populated at review time only (approval comment or rejection reason) — submission itself
+    // carries no note.
     @Column(name = "note")
     private String note;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "recorded_by")
-    private User recordedBy;
-
-    @Column(name = "created_at", insertable = false, updatable = false)
-    private LocalDateTime createdAt;
+    @OneToMany(mappedBy = "stockTake", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<StockTakeLine> lines = new ArrayList<>();
 }

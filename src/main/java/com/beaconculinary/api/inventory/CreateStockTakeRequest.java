@@ -1,19 +1,18 @@
 package com.beaconculinary.api.inventory;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Data;
 
-import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 public class CreateStockTakeRequest {
-    @NotNull(message = "ingredientId is required")
-    private Long ingredientId;
+    @NotNull(message = "locationId is required")
+    private Long locationId;
 
-    @NotNull(message = "countedQuantity is required")
-    @PositiveOrZero(message = "countedQuantity cannot be negative")
-    private BigDecimal countedQuantity;
-
-    private String note;
+    @NotEmpty(message = "lines must contain at least one item")
+    @Valid
+    private List<CreateStockTakeLineRequest> lines;
 }

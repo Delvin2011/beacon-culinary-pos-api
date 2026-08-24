@@ -31,7 +31,7 @@ class IngredientLedgerIntegrationTests {
     @Autowired
     private WasteEntryRepository wasteEntryRepository;
     @Autowired
-    private StockTakeRepository stockTakeRepository;
+    private LegacyStockTakeRepository stockTakeRepository;
     @Autowired
     private IngredientRepository ingredientRepository;
 

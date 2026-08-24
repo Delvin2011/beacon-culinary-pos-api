@@ -1197,3 +1197,89 @@ whole-suite run reproduced the same pre-existing unrelated failures already docu
 stack frame touching any file this stage changed.
 
 ---
+
+## Stage 5.2.5 — Backend: Stock Take, Location-Scoped, Clerk→Admin, Rand Variance — ✅ Complete
+
+Rebuilds Stock Take as a two-step submit/review flow — a clerk reports a physical count, a
+`STOCK_ADMIN`/`ADMIN` reviews it as a binary credibility check (approve/reject), never an edit —
+replacing the original Stage 5 Part F one-step direct write. Deliberately **not** a `StockRequest`
+type: nobody is requesting anything here, so overloading `StockRequestLine`'s `requested`/
+`actioned` fields with a meaning they don't have would have muddied both concepts.
+
+**Not an in-place restructure, unlike GRV (5.2.2).** The spec's own migration listing gives a
+literal `CREATE TABLE stock_takes` — impossible if the existing Stage 5 table were reused, since
+it already exists. Read together with the endpoint paths (`POST /stock-takes`, not `/admin/
+stock-takes`), this confirms the new flow is a genuinely separate resource, not a same-URL
+replacement. So the old table/entity/endpoint were renamed to `Legacy*` (frozen, deprecated, kept
+running for historical data and any still-attached caller) rather than migrated in place — no
+`source_id` re-pointing was needed either, since the spec explicitly says historical
+`STOCK_TAKE_ADJUSTMENT` movements from the old endpoint "stay untouched as historical record."
+
+**What was built**
+- `LegacyStockTake`/`LegacyStockTakeRepository`/`LegacyStockTakeService`/`LegacyStockTakeController`
+  (all `@Deprecated`) — the exact original Stage 5 Part F code, byte-for-byte unchanged in
+  behavior, just renamed and pointed at a renamed `legacy_stock_takes` table (`V74`,
+  `sp_rename`). Still lives at `POST/GET /admin/stock-takes`, still hardcoded to Main Store, still
+  one-step — frozen on purpose, not extended.
+- New `StockTake` (`location`, `submittedBy`/`submittedAt`, `status` SUBMITTED/APPROVED/REJECTED,
+  `reviewedBy`/`reviewedAt`, `note` — populated only at review, submission carries none) +
+  `StockTakeLine` (`ingredient`, `expectedQuantity`, `actualQuantity`, `unitCost`,
+  `varianceQuantity`, `varianceValue`, `appliedAdjustmentQuantity` — nullable until reviewed).
+  `POST /stock-takes` (submit, any of the three roles), `GET /stock-takes?status=&locationId=` +
+  `GET /stock-takes/{id}` (`STOCK_CLERK` sees only their own — same `AccessDeniedException` → `403`
+  ownership pattern as `StockRequestService`/`ShiftService`), `POST /stock-takes/{id}/review`
+  (`STOCK_ADMIN`/`ADMIN` only, `409` if already reviewed).
+- **Submission snapshots four values per line, permanently**: `expectedQuantity` (current derived
+  stock at that location — the exact same `sumQuantityByIngredientIdAndLocationId` query
+  `GET /admin/ingredients/{id}/stock` already uses), `unitCost` (most recent `RECEIVED` movement
+  that actually carries a cost — see the gap noted below), `varianceQuantity = actual - expected`,
+  `varianceValue = varianceQuantity * unitCost`. None of these are ever recalculated after the
+  fact.
+- **Review is where the one real subtlety lives.** `REJECT` writes nothing, just sets status/
+  note. `APPROVE` does **not** apply the stored `varianceQuantity` — it recomputes
+  `appliedAdjustmentQuantity = actualQuantity - currentStockAtApprovalTime` per line, fresh,
+  against whatever the location's stock actually is *right now*. Writes one
+  `STOCK_TAKE_ADJUSTMENT` movement per line at that delta (`source_type = STOCK_TAKE`,
+  `source_id` = the line's own id — no new `MovementSourceType`/`MovementType` needed, both
+  already existed from original Stage 5). This is the only way the ledger is guaranteed to land
+  exactly on `actualQuantity` regardless of what happened between submission and review; the
+  originally-snapshotted `varianceQuantity` stays untouched alongside it as the honest record of
+  the discrepancy *at count time*, and the two are allowed to disagree.
+- Three migrations (`V74`–`V76`): rename the old table out of the way; create `stock_takes`
+  (header); create `stock_take_lines`.
+
+**Decisions made**
+- **A real gap found while wiring `unitCost`: "current cost" wasn't queryable anywhere yet.**
+  README/prior-stage prose describes it ("most recent GRV's cost") but no repository method
+  existed. Added `IngredientStockMovementRepository
+  .findFirstByIngredientIdAndMovementTypeAndCostPerUnitIsNotNullOrderByCreatedAtDesc` — and it
+  had to filter on `costPerUnit IS NOT NULL`, not just `movementType = RECEIVED`: Stage 5 Revision's
+  `ISSUE` approval writes a `RECEIVED` movement on the Kitchen side that never sets a cost (only a
+  purchase does), so a naive "latest RECEIVED" query would silently return `null` for anything
+  ever issued into Kitchen. Falls back to `BigDecimal.ZERO` if an ingredient has genuinely never
+  been received with a cost anywhere.
+- **`StockTakeSecurityRules` is a new bean, not folded into `StockRequestSecurityRules`** — same
+  one-bean-per-feature convention every prior stage's security rules follow, even though the
+  role shape (submit: all three: review: top two) is identical to `StockRequest`'s.
+- **The legacy classes keep their original internal logic completely unchanged** (still
+  Main-Store-hardcoded, still a single immediate write) rather than being adapted to reuse the
+  new Location-aware machinery — the point of freezing them is that nothing about them should
+  keep evolving; a future touch to "fix" them would defeat that.
+
+**Tests** — one new class, two updated: `StockTakeIntegrationTests` (10 — submission snapshots all
+four values correctly; approval with no intervening activity applies the exact original variance;
+approval **with** an intervening GRV recomputes a different delta that still lands the ledger
+exactly on `actualQuantity`, with both figures visible afterward; rejection writes no movement and
+stores the note; a Kitchen-targeted take leaves Main Store untouched and vice versa; `STOCK_CLERK`
+can submit but is `403` on review; re-reviewing an already-reviewed take is `409`; clerk ownership
+`403` on another user's take; missing `locationId` is `400`). `IngredientLedgerIntegrationTests`
+and `WasteAndStockTakeListIntegrationTests` updated to autowire the renamed
+`LegacyStockTakeRepository` — no behavioral change, `/admin/stock-takes` itself is untouched.
+
+**Full-suite verification** — the inventory package passes cleanly against the real dev SQL Server
+DB with `V74`–`V76` applied: **86 tests, 0 failures, 0 errors**, clean on the first run (no
+shared-DB flakiness this time). A full whole-suite run reproduced the same pre-existing unrelated
+failures already documented in every entry above, with no stack frame touching any file this
+stage changed.
+
+---

@@ -5,8 +5,10 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/** @deprecated see {@link LegacyStockTake}. */
+@Deprecated
 @Data
-public class StockTakeListItemDto {
+public class LegacyStockTakeListItemDto {
     private Long id;
     private Long ingredientId;
     private String ingredientName;
