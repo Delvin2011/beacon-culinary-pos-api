@@ -8,11 +8,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @AllArgsConstructor
@@ -29,6 +33,7 @@ public class GrvService {
     private final LocationRepository locationRepository;
     private final AuthService authService;
     private final InventoryMapper inventoryMapper;
+    private final Clock clock;
 
     @Transactional
     public GrvDto create(CreateGrvRequest request) {
@@ -107,6 +112,60 @@ public class GrvService {
     @Transactional(readOnly = true)
     public GrvDto getById(Long id) {
         var grv = grvRepository.findWithLinesById(id).orElseThrow(GrvNotFoundException::new);
+        return inventoryMapper.toDto(grv);
+    }
+
+    /** Stage 5.2.6 — a same-day correction of a data-entry mistake (invoice number, supplier,
+     * note, per-line quantity/cost). Ingredient, purchase-order link, and line identity are never
+     * touched here — {@code lines} must name exactly the GRV's existing line ids, and a line
+     * pointed at the wrong ingredient has to be deleted/re-entered, not repointed. Each edited
+     * line's RECEIVED movement is adjusted in place in the same transaction, so stock levels and
+     * cost figures never drift from what the corrected GRV displays; receiptVariance needs no
+     * separate recompute since it's derived at read time from the (now-updated)
+     * quantityReceived. */
+    @Transactional
+    public GrvDto update(Long id, UpdateGrvRequest request) {
+        var grv = grvRepository.findWithLinesById(id).orElseThrow(GrvNotFoundException::new);
+
+        // grv.receivedAt is stored in UTC (SYSUTCDATETIME() at insert) — comparing its raw date
+        // against LocalDate.now() would silently use the wrong calendar day for any receipt near
+        // midnight in the business's actual timezone, so both sides are resolved through the same
+        // business-zone clock before comparing.
+        var receivedDate = grv.getReceivedAt().atZone(ZoneOffset.UTC)
+                .withZoneSameInstant(clock.getZone())
+                .toLocalDate();
+        if (!receivedDate.equals(LocalDate.now(clock))) {
+            throw new GrvEditWindowClosedException();
+        }
+
+        var existingLinesById = grv.getLines().stream().collect(Collectors.toMap(GrvLine::getId, l -> l));
+        var requestedIds = request.getLines().stream().map(UpdateGrvLineRequest::getId).collect(Collectors.toSet());
+        if (!requestedIds.equals(existingLinesById.keySet())) {
+            throw new InvalidInventoryRequestException(
+                    "lines must include exactly this GRV's existing line ids — lines cannot be added or removed via this endpoint.");
+        }
+
+        grv.setInvoiceNumber(request.getInvoiceNumber());
+        grv.setSupplierName(request.getSupplierName());
+        grv.setNote(request.getNote());
+
+        for (var lineRequest : request.getLines()) {
+            var line = existingLinesById.get(lineRequest.getId());
+            line.setQuantityReceived(lineRequest.getQuantityReceived());
+            line.setCostPerUnit(lineRequest.getCostPerUnit());
+
+            var movement = ingredientStockMovementRepository
+                    .findBySourceTypeAndSourceId(MovementSourceType.GRV, line.getId())
+                    .orElseThrow(() -> new IllegalStateException("No stock movement found for GRV line " + line.getId() + "."));
+            movement.setQuantity(lineRequest.getQuantityReceived());
+            movement.setCostPerUnit(lineRequest.getCostPerUnit());
+            ingredientStockMovementRepository.save(movement);
+        }
+
+        grv.setEditedBy(authService.getCurrentUser());
+        grv.setEditedAt(LocalDateTime.now(clock));
+
+        grvRepository.save(grv);
         return inventoryMapper.toDto(grv);
     }
 

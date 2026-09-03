@@ -315,6 +315,50 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
     }
 
     @Test
+    void getRequirements_includesKitchenStockAlongsideMainStoreCurrentStock() throws Exception {
+        var riceId = createIngredient("Kitchen Stock Rice", "KG");
+        createGrv(riceId, "10.0000"); // Main Store only — Kitchen starts empty
+
+        var riceComponentId = createComponent("Kitchen Stock Rice Component");
+        putRecipe(riceComponentId, 10, "[{\"ingredientId\":" + riceId + ",\"quantity\":1.5}]");
+        var riceMealId = createMealCatalog("Kitchen Stock Rice Meal", riceComponentId);
+        createDailyOption(riceMealId, 20); // calculated rice = 3.0
+
+        // Before any Issue has ever moved stock: Main Store carries the GRV receipt, Kitchen is
+        // still at zero — the two figures are independent, not mirrors of each other.
+        mockMvc.perform(get("/admin/daily-planning/" + PLANNING_DATE + "/ingredient-requirements")
+                        .param("period", "Lunch").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requirements[?(@.ingredientId == " + riceId + ")].currentStock").value(10.0))
+                .andExpect(jsonPath("$.requirements[?(@.ingredientId == " + riceId + ")].kitchenStock").value(0.0));
+
+        // Confirm and authorize the resulting Issuing Sheet — this is the only thing that
+        // actually moves stock Main Store -> Kitchen.
+        var confirmBody = "{\"period\":\"Lunch\",\"adjustments\":[{\"ingredientId\":" + riceId + ",\"finalQuantity\":3.0}]}";
+        var confirmResponse = mockMvc.perform(post("/admin/daily-planning/" + PLANNING_DATE + "/confirm-ingredient-requirements")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(confirmBody))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var stockRequestId = MAPPER.readTree(confirmResponse).get("stockRequestId").asLong();
+
+        var actionBody = "{\"lines\":[{\"ingredientId\":" + riceId + ",\"actionedQuantity\":3.0}]}";
+        mockMvc.perform(post("/stock-requests/" + stockRequestId + "/action")
+                        .header("Authorization", "Bearer " + stockAdminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(actionBody))
+                .andExpect(status().isOk());
+
+        // The now-reviewed option is excluded from this date/period, so a fresh option is needed
+        // to surface a requirements row again — its currentStock/kitchenStock must reflect the
+        // Issue that just happened: Main Store down to 7, Kitchen up to 3.
+        createDailyOption(riceMealId, 10); // calculated rice = 1.5
+        mockMvc.perform(get("/admin/daily-planning/" + PLANNING_DATE + "/ingredient-requirements")
+                        .param("period", "Lunch").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.requirements[?(@.ingredientId == " + riceId + ")].currentStock").value(7.0))
+                .andExpect(jsonPath("$.requirements[?(@.ingredientId == " + riceId + ")].kitchenStock").value(3.0));
+    }
+
+    @Test
     void componentWithNoRecipe_isExcludedFromRequirements() throws Exception {
         var componentId = createComponent("Bought-in Extra");
         var mealId = createMealCatalog("Extra Meal", componentId);

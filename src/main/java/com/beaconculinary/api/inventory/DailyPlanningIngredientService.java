@@ -34,6 +34,7 @@ import java.util.Map;
 @AllArgsConstructor
 public class DailyPlanningIngredientService {
     private static final String ISSUE_SOURCE_LOCATION = "Main Store";
+    private static final String ISSUE_DESTINATION_LOCATION = "Kitchen";
 
     private final MealPeriodRepository mealPeriodRepository;
     private final DailyMealOptionRepository dailyMealOptionRepository;
@@ -50,9 +51,10 @@ public class DailyPlanningIngredientService {
         var mealPeriod = resolvePeriod(period);
         var calculation = calculate(date, mealPeriod.getId());
         var mainStoreId = mainStore().getId();
+        var kitchenId = kitchen().getId();
 
         var requirements = calculation.byIngredientId().entrySet().stream()
-                .map(entry -> toRequirementDto(entry.getKey(), entry.getValue(), mainStoreId))
+                .map(entry -> toRequirementDto(entry.getKey(), entry.getValue(), mainStoreId, kitchenId))
                 .toList();
         return new IngredientRequirementsResponseDto(requirements);
     }
@@ -110,10 +112,13 @@ public class DailyPlanningIngredientService {
         return new ConfirmIngredientRequirementsResponseDto(shortfalls, stockRequest.getId());
     }
 
-    private IngredientRequirementDto toRequirementDto(Long ingredientId, BigDecimal calculatedQuantity, Long mainStoreId) {
+    private IngredientRequirementDto toRequirementDto(
+            Long ingredientId, BigDecimal calculatedQuantity, Long mainStoreId, Long kitchenId) {
         var ingredient = ingredientRepository.findById(ingredientId).orElseThrow(IngredientNotFoundException::new);
         var currentStock = ingredientStockMovementRepository.sumQuantityByIngredientIdAndLocationId(ingredientId, mainStoreId);
-        return new IngredientRequirementDto(ingredient.getId(), ingredient.getName(), ingredient.getUnit(), calculatedQuantity, currentStock);
+        var kitchenStock = ingredientStockMovementRepository.sumQuantityByIngredientIdAndLocationId(ingredientId, kitchenId);
+        return new IngredientRequirementDto(
+                ingredient.getId(), ingredient.getName(), ingredient.getUnit(), calculatedQuantity, currentStock, kitchenStock);
     }
 
     private MealPeriod resolvePeriod(String period) {
@@ -124,6 +129,11 @@ public class DailyPlanningIngredientService {
     private Location mainStore() {
         return locationRepository.findByNameIgnoreCase(ISSUE_SOURCE_LOCATION)
                 .orElseThrow(() -> new IllegalStateException(ISSUE_SOURCE_LOCATION + " location not seeded."));
+    }
+
+    private Location kitchen() {
+        return locationRepository.findByNameIgnoreCase(ISSUE_DESTINATION_LOCATION)
+                .orElseThrow(() -> new IllegalStateException(ISSUE_DESTINATION_LOCATION + " location not seeded."));
     }
 
     // calculatedQuantity per ingredient = SUM over every unreviewed DailyMealOption of [SUM over

@@ -44,6 +44,15 @@ public class Grv {
     @Column(name = "received_at", insertable = false, updatable = false)
     private LocalDateTime receivedAt;
 
+    // Stage 5.2.6 — populated only by a same-day PATCH /admin/grv/{id} correction; null on every
+    // GRV that has never been edited. A GRV otherwise stays an immutable receiving record.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "edited_by")
+    private User editedBy;
+
+    @Column(name = "edited_at")
+    private LocalDateTime editedAt;
+
     @OneToMany(mappedBy = "grv", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<GrvLine> lines = new ArrayList<>();
 }

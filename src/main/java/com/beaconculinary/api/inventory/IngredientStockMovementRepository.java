@@ -35,4 +35,9 @@ public interface IngredientStockMovementRepository extends JpaRepository<Ingredi
     // purchase actually sets one.
     Optional<IngredientStockMovement> findFirstByIngredientIdAndMovementTypeAndCostPerUnitIsNotNullOrderByCreatedAtDesc(
             Long ingredientId, MovementType movementType);
+
+    // Stage 5.2.6 — the one movement a GrvLine produced (writeReceivedMovements writes exactly
+    // one per line, pointed at that line's own id), so a same-day GRV edit can adjust it in place
+    // rather than leaving it stale against the corrected quantity/cost.
+    Optional<IngredientStockMovement> findBySourceTypeAndSourceId(MovementSourceType sourceType, Long sourceId);
 }

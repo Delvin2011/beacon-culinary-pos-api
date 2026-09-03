@@ -39,6 +39,13 @@ public class GrvController {
         return ResponseEntity.status(HttpStatus.CREATED).body(grvService.create(request));
     }
 
+    /** Same-day correction of a data-entry mistake — rejected with 409 once the GRV's received
+     * date (in the business's local timezone) is no longer today. */
+    @PatchMapping("/{id}")
+    public GrvDto update(@PathVariable Long id, @Valid @RequestBody UpdateGrvRequest request) {
+        return grvService.update(id, request);
+    }
+
     /** CSV upload with Invoice Number, Ingredient Name, Quantity, Cost Per Unit, Supplier Name,
      * and an optional Note column. Each row must reference an ingredient that already exists
      * (create it via /admin/ingredients/bulk-import first) — every row always creates its own
@@ -56,6 +63,11 @@ public class GrvController {
     @ExceptionHandler(InvalidInventoryRequestException.class)
     public ResponseEntity<ErrorDto> handleInvalidRequest(InvalidInventoryRequestException ex) {
         return ResponseEntity.badRequest().body(new ErrorDto(ex.getMessage()));
+    }
+
+    @ExceptionHandler(GrvEditWindowClosedException.class)
+    public ResponseEntity<ErrorDto> handleEditWindowClosed(GrvEditWindowClosedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage()));
     }
 
     @ExceptionHandler(BulkImportException.class)
