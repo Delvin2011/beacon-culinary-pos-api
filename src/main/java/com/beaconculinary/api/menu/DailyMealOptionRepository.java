@@ -9,11 +9,28 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface DailyMealOptionRepository extends JpaRepository<DailyMealOption, Long> {
-    List<DailyMealOption> findByOptionDateAndMealPeriodId(LocalDate optionDate, Long mealPeriodId);
+    List<DailyMealOption> findByOptionDateAndMealPeriodIdOrderById(LocalDate optionDate, Long mealPeriodId);
 
-    /** Stage 5 Part C — the set an ingredient-requirements calculation sums over; excludes rows
-     * already contributed to a confirmed deduction. */
-    List<DailyMealOption> findByOptionDateAndMealPeriodIdAndIngredientsReviewedFalse(LocalDate optionDate, Long mealPeriodId);
+    /** With status PLANNED: the set an ingredient-requirements calculation sums over, excluding
+     * rows already covered by a confirmation. With READY: what the POS may sell. */
+    List<DailyMealOption> findByOptionDateAndMealPeriodIdAndStatusOrderById(
+            LocalDate optionDate, Long mealPeriodId, DailyPlanItemStatus status);
+
+    /**
+     * Records (or corrects) the actual, moving the row to READY. remaining shifts by the same
+     * delta as the actual, so sold is preserved; the WHERE guard refuses an actual below what's
+     * already sold in the same statement as the write, so a sale landing concurrently can't slip
+     * under it. Returns rows affected (0 or 1). SQL Server evaluates every SET expression against
+     * the pre-update row, so the COALESCE reads the old actual.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE DailyMealOption o SET " +
+            "o.portionsRemaining = o.portionsRemaining + :actual - COALESCE(o.actualPortions, 0), " +
+            "o.actualPortions = :actual, o.status = :ready " +
+            "WHERE o.id = :id AND o.status <> :planned " +
+            "AND o.portionsRemaining + :actual - COALESCE(o.actualPortions, 0) >= 0")
+    int recordActualPortions(@Param("id") Long id, @Param("actual") int actual,
+                             @Param("planned") DailyPlanItemStatus planned, @Param("ready") DailyPlanItemStatus ready);
 
     /**
      * Conditional decrement guarded by the WHERE clause — returns rows affected (0 or 1) so the

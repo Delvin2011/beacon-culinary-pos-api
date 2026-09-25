@@ -32,6 +32,8 @@ class BulkGrvImportIntegrationTests {
     private GrvRepository grvRepository;
     @Autowired
     private IngredientStockMovementRepository ingredientStockMovementRepository;
+    @Autowired
+    private CountSheetCategoryRepository countSheetCategoryRepository;
 
     private String adminToken;
     private Long chickenId;
@@ -48,7 +50,7 @@ class BulkGrvImportIntegrationTests {
         var ingredient = new Ingredient();
         ingredient.setName(name);
         ingredient.setUnit(IngredientUnit.KG);
-        ingredient.setCountSheetCategory(CountSheetCategory.BULK);
+        ingredient.setCountSheetCategory(countSheetCategoryRepository.findByNameIgnoreCase("MEAT").orElseThrow());
         return ingredientRepository.save(ingredient).getId();
     }
 

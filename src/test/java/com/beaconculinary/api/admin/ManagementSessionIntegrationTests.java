@@ -11,6 +11,7 @@ import com.beaconculinary.api.orders.OrderStatusEventRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.shifts.ShiftStatus;
 import com.beaconculinary.api.support.AuthTestHelper;
+import com.beaconculinary.api.support.DailyPlanTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -79,7 +80,7 @@ class ManagementSessionIntegrationTests {
     void setUp() throws Exception {
         clock.setTime(LocalTime.of(12, 30)); // inside the Lunch window (12:00-14:30)
         cashierAToken = AuthTestHelper.loginAsCashier(mockMvc);
-        cashierBToken = AuthTestHelper.loginWithPin(mockMvc, AuthTestHelper.CASHIER_B_ID, "654321");
+        cashierBToken = AuthTestHelper.loginWithPin(mockMvc, AuthTestHelper.cashierBId(mockMvc), "654321");
         lunchId = periodId("lunch");
     }
 
@@ -136,7 +137,9 @@ class ManagementSessionIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        return MAPPER.readTree(response).get("id").asLong();
+        var id = MAPPER.readTree(response).get("id").asLong();
+        DailyPlanTestHelper.markReady(dailyMealOptionRepository, id);
+        return id;
     }
 
     private void openShift() throws Exception {
@@ -186,7 +189,7 @@ class ManagementSessionIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sessionToken").exists())
-                .andExpect(jsonPath("$.adminId").value(AuthTestHelper.ADMIN_ID))
+                .andExpect(jsonPath("$.adminId").value(AuthTestHelper.adminId(mockMvc)))
                 .andExpect(jsonPath("$.expiresAt").exists())
                 .andReturn().getResponse().getContentAsString();
         return MAPPER.readTree(response).get("sessionToken").asText();

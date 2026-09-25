@@ -13,6 +13,8 @@ public class DailyComponentStockDto {
     private Long mealPeriodId;
     private LocalDate optionDate;
     private BigDecimal extraPrice;
+    private DailyPlanItemStatus status;
     private Integer bufferQuantity;
+    private Integer actualQuantity;
     private Integer bufferRemaining;
 }

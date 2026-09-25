@@ -1,5 +1,6 @@
 package com.beaconculinary.api.inventory;
 
+import com.beaconculinary.api.common.ErrorDto;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -53,5 +54,10 @@ public class IngredientController {
     @ExceptionHandler(BulkImportException.class)
     public ResponseEntity<Map<String, List<String>>> handleBulkImportError(BulkImportException ex) {
         return ResponseEntity.badRequest().body(Map.of("errors", ex.getErrors()));
+    }
+
+    @ExceptionHandler(InvalidInventoryRequestException.class)
+    public ResponseEntity<ErrorDto> handleInvalidRequest(InvalidInventoryRequestException ex) {
+        return ResponseEntity.badRequest().body(new ErrorDto(ex.getMessage()));
     }
 }

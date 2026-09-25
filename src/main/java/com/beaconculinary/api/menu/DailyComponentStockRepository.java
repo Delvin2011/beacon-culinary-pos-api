@@ -9,11 +9,22 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface DailyComponentStockRepository extends JpaRepository<DailyComponentStock, Long> {
-    List<DailyComponentStock> findByOptionDateAndMealPeriodId(LocalDate optionDate, Long mealPeriodId);
+    List<DailyComponentStock> findByOptionDateAndMealPeriodIdOrderById(LocalDate optionDate, Long mealPeriodId);
 
-    /** Stage 5 Part C — the set an ingredient-requirements calculation sums over; excludes rows
-     * already contributed to a confirmed deduction. */
-    List<DailyComponentStock> findByOptionDateAndMealPeriodIdAndIngredientsReviewedFalse(LocalDate optionDate, Long mealPeriodId);
+    /** With status PLANNED: the set an ingredient-requirements calculation sums over, excluding
+     * rows already covered by a confirmation. With READY: what the POS may sell. */
+    List<DailyComponentStock> findByOptionDateAndMealPeriodIdAndStatusOrderById(
+            LocalDate optionDate, Long mealPeriodId, DailyPlanItemStatus status);
+
+    /** Same contract as {@link DailyMealOptionRepository#recordActualPortions}. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE DailyComponentStock s SET " +
+            "s.bufferRemaining = s.bufferRemaining + :actual - COALESCE(s.actualQuantity, 0), " +
+            "s.actualQuantity = :actual, s.status = :ready " +
+            "WHERE s.id = :id AND s.status <> :planned " +
+            "AND s.bufferRemaining + :actual - COALESCE(s.actualQuantity, 0) >= 0")
+    int recordActualQuantity(@Param("id") Long id, @Param("actual") int actual,
+                             @Param("planned") DailyPlanItemStatus planned, @Param("ready") DailyPlanItemStatus ready);
 
     /**
      * Conditional decrement guarded by the WHERE clause — returns rows affected (0 or 1) so the

@@ -10,6 +10,7 @@ import com.beaconculinary.api.orders.OrderAdjustmentRepository;
 import com.beaconculinary.api.orders.OrderRepository;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
 import com.beaconculinary.api.support.AuthTestHelper;
+import com.beaconculinary.api.support.DailyPlanTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -134,7 +135,9 @@ class ShiftCloseCashAttributionIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        return MAPPER.readTree(response).get("id").asLong();
+        var id = MAPPER.readTree(response).get("id").asLong();
+        DailyPlanTestHelper.markReady(dailyMealOptionRepository, id);
+        return id;
     }
 
     private long createDailyComponentStock(long periodId, long componentCatalogId, int bufferQuantity) throws Exception {
@@ -145,7 +148,9 @@ class ShiftCloseCashAttributionIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        return MAPPER.readTree(response).get("id").asLong();
+        var id = MAPPER.readTree(response).get("id").asLong();
+        DailyPlanTestHelper.markReady(dailyComponentStockRepository, id);
+        return id;
     }
 
     private record ExtraReq(long dailyComponentStockId, int quantity) {

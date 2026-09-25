@@ -13,6 +13,8 @@ public class DailyMealOptionDto {
     private String name;
     private String description;
     private BigDecimal price;
+    private DailyPlanItemStatus status;
     private Integer plannedPortions;
+    private Integer actualPortions;
     private Integer portionsRemaining;
 }

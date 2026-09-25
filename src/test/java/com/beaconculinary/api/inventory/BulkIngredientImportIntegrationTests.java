@@ -26,6 +26,8 @@ class BulkIngredientImportIntegrationTests {
     private MockMvc mockMvc;
     @Autowired
     private IngredientRepository ingredientRepository;
+    @Autowired
+    private CountSheetCategoryRepository countSheetCategoryRepository;
 
     private String adminToken;
 
@@ -56,8 +58,8 @@ class BulkIngredientImportIntegrationTests {
     void bulkImport_createsNewIngredients() throws Exception {
         var file = csv("""
                 NAME,UNIT,COUNT SHEET
-                Chicken Portions,KG,BULK
-                Beef Chuck,KG,BULK
+                Chicken Portions,KG,POULTRY
+                Beef Chuck,KG,POULTRY
                 """);
 
         mockMvc.perform(multipart("/admin/ingredients/bulk-import").file(file)
@@ -67,7 +69,8 @@ class BulkIngredientImportIntegrationTests {
                 .andExpect(jsonPath("$.updated").value(0))
                 .andExpect(jsonPath("$.ingredients.length()").value(2))
                 .andExpect(jsonPath("$.ingredients[?(@.name == 'Chicken Portions')].unit").value("KG"))
-                .andExpect(jsonPath("$.ingredients[?(@.name == 'Chicken Portions')].countSheetCategory").value("BULK"));
+                .andExpect(jsonPath("$.ingredients[?(@.name == 'Chicken Portions')].countSheetCategoryName")
+                        .value("POULTRY"));
 
         assertThat(ingredientRepository.findByNameIgnoreCase("chicken portions")).isPresent();
     }
@@ -77,12 +80,12 @@ class BulkIngredientImportIntegrationTests {
         var ingredient = new Ingredient();
         ingredient.setName("Chicken Portions");
         ingredient.setUnit(IngredientUnit.EACH);
-        ingredient.setCountSheetCategory(CountSheetCategory.PREP);
+        ingredient.setCountSheetCategory(countSheetCategoryRepository.findByNameIgnoreCase("DRYSTOCK").orElseThrow());
         var existingId = ingredientRepository.save(ingredient).getId();
 
         var file = csv("""
                 NAME,UNIT,COUNT SHEET
-                chicken portions,KG,BULK
+                chicken portions,KG,POULTRY
                 """);
 
         mockMvc.perform(multipart("/admin/ingredients/bulk-import").file(file)
@@ -94,15 +97,16 @@ class BulkIngredientImportIntegrationTests {
         var updated = ingredientRepository.findByNameIgnoreCase("Chicken Portions").orElseThrow();
         assertThat(updated.getId()).isEqualTo(existingId);
         assertThat(updated.getUnit()).isEqualTo(IngredientUnit.KG);
-        assertThat(updated.getCountSheetCategory()).isEqualTo(CountSheetCategory.BULK);
+        assertThat(updated.getCountSheetCategory().getId())
+                .isEqualTo(countSheetCategoryRepository.findByNameIgnoreCase("POULTRY").orElseThrow().getId());
     }
 
     @Test
     void bulkImport_invalidRow_rejectsWholeFileAndSavesNothing() throws Exception {
         var file = csv("""
                 NAME,UNIT,COUNT SHEET
-                Chicken Portions,KG,BULK
-                Bad Row,KGS,BULK
+                Chicken Portions,KG,POULTRY
+                Bad Row,KGS,POULTRY
                 """);
 
         mockMvc.perform(multipart("/admin/ingredients/bulk-import").file(file)

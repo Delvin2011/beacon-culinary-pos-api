@@ -28,6 +28,7 @@ public class ComponentRecipeImportService {
     private final ComponentCatalogRepository componentCatalogRepository;
     private final RecipeRepository recipeRepository;
     private final IngredientRepository ingredientRepository;
+    private final CountSheetCategoryRepository countSheetCategoryRepository;
     private final InventoryMapper inventoryMapper;
 
     @Transactional
@@ -74,10 +75,10 @@ public class ComponentRecipeImportService {
                         + List.of(IngredientUnit.values()) + ".");
                 continue;
             }
-            CountSheetCategory category = parseEnum(CountSheetCategory.class, categoryRaw);
+            CountSheetCategory category = resolveCategoryByName(categoryRaw);
             if (category == null) {
                 errors.add("Row " + lineNumber + ": count sheet category '" + categoryRaw + "' must be one of "
-                        + List.of(CountSheetCategory.values()) + ".");
+                        + categoryNames() + ".");
                 continue;
             }
             BigDecimal quantity = parsePositiveDecimal(quantityRaw);
@@ -281,5 +282,16 @@ public class ComponentRecipeImportService {
         } catch (IllegalArgumentException e) {
             return null;
         }
+    }
+
+    private CountSheetCategory resolveCategoryByName(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return countSheetCategoryRepository.findByNameIgnoreCase(raw.trim()).orElse(null);
+    }
+
+    private List<String> categoryNames() {
+        return countSheetCategoryRepository.findAll().stream().map(CountSheetCategory::getName).toList();
     }
 }

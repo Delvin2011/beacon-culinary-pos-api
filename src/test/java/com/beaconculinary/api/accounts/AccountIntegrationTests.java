@@ -9,6 +9,7 @@ import com.beaconculinary.api.orders.OrderRepository;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.support.AuthTestHelper;
+import com.beaconculinary.api.support.DailyPlanTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -127,7 +128,9 @@ class AccountIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        return MAPPER.readTree(response).get("id").asLong();
+        var id = MAPPER.readTree(response).get("id").asLong();
+        DailyPlanTestHelper.markReady(dailyMealOptionRepository, id);
+        return id;
     }
 
     private void openShift(String token) throws Exception {

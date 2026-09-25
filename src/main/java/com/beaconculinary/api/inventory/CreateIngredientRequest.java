@@ -12,8 +12,8 @@ public class CreateIngredientRequest {
     @NotNull(message = "unit is required")
     private IngredientUnit unit;
 
-    @NotNull(message = "countSheetCategory is required")
-    private CountSheetCategory countSheetCategory;
+    @NotNull(message = "countSheetCategoryId is required")
+    private Long countSheetCategoryId;
 
     private String itemCode;
 }

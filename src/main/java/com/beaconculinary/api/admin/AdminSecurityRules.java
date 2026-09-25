@@ -22,6 +22,7 @@ public class AdminSecurityRules implements SecurityRules {
             // Recipes/catalog/daily-planning stay ADMIN-only, falling through to the rule below.
             .requestMatchers(
                     "/admin/ingredients", "/admin/ingredients/**",
+                    "/admin/count-sheet-categories", "/admin/count-sheet-categories/**",
                     "/admin/grv", "/admin/grv/**",
                     "/admin/stock-takes", "/admin/stock-takes/**",
                     "/admin/purchase-orders", "/admin/purchase-orders/**",

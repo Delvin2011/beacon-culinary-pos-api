@@ -4,6 +4,7 @@ import com.beaconculinary.api.accounts.AccountRepository;
 import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
+import com.beaconculinary.api.menu.DailyPlanItemStatus;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.shifts.ShiftStatus;
 import lombok.AllArgsConstructor;
@@ -59,6 +60,11 @@ public class OrderService {
             if (!option.getMealPeriod().isActiveAt(now)) {
                 throw new InvalidOrderRequestException("Meal option's meal period is not currently active.");
             }
+            // /menu/today already hides these, but a stale POS screen or a direct API call can
+            // still name one. Status only moves forward, so this check can't go stale mid-order.
+            if (option.getStatus() != DailyPlanItemStatus.READY) {
+                throw new InvalidOrderRequestException("Meal option '" + option.getName() + "' is not ready for sale yet.");
+            }
 
             var line = new OrderLine();
             line.setOrder(order);
@@ -81,6 +87,9 @@ public class OrderService {
                 // the line it's attached to, not the same dish composition.
                 if (!stock.getMealPeriod().getId().equals(option.getMealPeriod().getId())) {
                     throw new InvalidOrderRequestException("Extra component is not stocked for this meal period.");
+                }
+                if (stock.getStatus() != DailyPlanItemStatus.READY) {
+                    throw new InvalidOrderRequestException("Extra component is not ready for sale yet.");
                 }
 
                 var extra = new OrderLineExtra();

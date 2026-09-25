@@ -2,6 +2,7 @@ package com.beaconculinary.api.menu;
 
 import com.beaconculinary.api.inventory.RecipeRepository;
 import com.beaconculinary.api.support.AuthTestHelper;
+import com.beaconculinary.api.support.DailyPlanTestHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -121,7 +122,9 @@ class MenuIntegrationTests {
                 .andExpect(jsonPath("$.name").value("Potatoes & Beef"))
                 .andExpect(jsonPath("$.price").value(50.00))
                 .andExpect(jsonPath("$.plannedPortions").value(30))
-                .andExpect(jsonPath("$.portionsRemaining").value(30));
+                .andExpect(jsonPath("$.status").value("PLANNED"))
+                .andExpect(jsonPath("$.actualPortions").isEmpty())
+                .andExpect(jsonPath("$.portionsRemaining").value(0));
     }
 
     @Test
@@ -158,7 +161,9 @@ class MenuIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.bufferQuantity").value(40))
-                .andExpect(jsonPath("$.bufferRemaining").value(40))
+                .andExpect(jsonPath("$.status").value("PLANNED"))
+                .andExpect(jsonPath("$.actualQuantity").isEmpty())
+                .andExpect(jsonPath("$.bufferRemaining").value(0))
                 .andExpect(jsonPath("$.componentName").value("Chicken"));
     }
 
@@ -171,14 +176,18 @@ class MenuIntegrationTests {
         var today = LocalDate.now().toString();
 
         var optionBody = "{\"mealPeriodId\":" + lunchId + ",\"optionDate\":\"" + today + "\",\"mealCatalogId\":" + mealCatalogId + ",\"plannedPortions\":20}";
-        mockMvc.perform(post("/admin/daily-options").header("Authorization", "Bearer " + adminToken)
+        var optionResponse = mockMvc.perform(post("/admin/daily-options").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(optionBody))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        DailyPlanTestHelper.markReady(dailyMealOptionRepository, MAPPER.readTree(optionResponse).get("id").asLong());
 
         var stockBody = "{\"componentCatalogId\":" + chickenId + ",\"mealPeriodId\":" + lunchId + ",\"optionDate\":\"" + today + "\",\"bufferQuantity\":10}";
-        mockMvc.perform(post("/admin/daily-component-stock").header("Authorization", "Bearer " + adminToken)
+        var stockResponse = mockMvc.perform(post("/admin/daily-component-stock").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(stockBody))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        DailyPlanTestHelper.markReady(dailyComponentStockRepository, MAPPER.readTree(stockResponse).get("id").asLong());
 
         // Note: length()/index-based assertions are deliberately avoided here — a seeded
         // dev database (V27) may already have its own "today" lunch options/extras

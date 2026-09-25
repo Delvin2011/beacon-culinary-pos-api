@@ -6,6 +6,7 @@ import com.beaconculinary.api.menu.DailyComponentStock;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOption;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
+import com.beaconculinary.api.menu.DailyPlanItemStatus;
 import com.beaconculinary.api.menu.MealPeriod;
 import com.beaconculinary.api.menu.MealPeriodRepository;
 import lombok.AllArgsConstructor;
@@ -104,9 +105,9 @@ public class DailyPlanningIngredientService {
         // Reality diverging from the plan is corrected via Waste/Stock Take entries instead. The
         // *review* is complete here even though the *deduction* is deferred to whoever
         // authorizes the resulting Issuing Sheet.
-        calculation.options().forEach(option -> option.setIngredientsReviewed(true));
+        calculation.options().forEach(option -> option.setStatus(DailyPlanItemStatus.INGREDIENTS_REVIEWED));
         dailyMealOptionRepository.saveAll(calculation.options());
-        calculation.stocks().forEach(stock -> stock.setIngredientsReviewed(true));
+        calculation.stocks().forEach(stock -> stock.setStatus(DailyPlanItemStatus.INGREDIENTS_REVIEWED));
         dailyComponentStockRepository.saveAll(calculation.stocks());
 
         return new ConfirmIngredientRequirementsResponseDto(shortfalls, stockRequest.getId());
@@ -142,8 +143,10 @@ public class DailyPlanningIngredientService {
     // [SUM over its own component's recipe lines of (recipeLine.quantity / recipe.batchSize) x
     // dailyComponentStock.bufferQuantity].
     private RequirementsCalculation calculate(LocalDate date, Long mealPeriodId) {
-        var options = dailyMealOptionRepository.findByOptionDateAndMealPeriodIdAndIngredientsReviewedFalse(date, mealPeriodId);
-        var stocks = dailyComponentStockRepository.findByOptionDateAndMealPeriodIdAndIngredientsReviewedFalse(date, mealPeriodId);
+        var options = dailyMealOptionRepository.findByOptionDateAndMealPeriodIdAndStatusOrderById(
+                date, mealPeriodId, DailyPlanItemStatus.PLANNED);
+        var stocks = dailyComponentStockRepository.findByOptionDateAndMealPeriodIdAndStatusOrderById(
+                date, mealPeriodId, DailyPlanItemStatus.PLANNED);
 
         Map<Long, BigDecimal> byIngredientId = new LinkedHashMap<>();
 

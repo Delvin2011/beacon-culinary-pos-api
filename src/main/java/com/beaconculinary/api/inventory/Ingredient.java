@@ -24,8 +24,8 @@ public class Ingredient {
     @Enumerated(EnumType.STRING)
     private IngredientUnit unit;
 
-    @Column(name = "count_sheet_category")
-    @Enumerated(EnumType.STRING)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "count_sheet_category_id")
     private CountSheetCategory countSheetCategory;
 
     @Column(name = "active")

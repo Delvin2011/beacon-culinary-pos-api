@@ -52,12 +52,23 @@ class IngredientLedgerIntegrationTests {
     }
 
     private long createIngredient(String name) throws Exception {
-        var body = "{\"name\":\"" + name + "\",\"unit\":\"KG\",\"countSheetCategory\":\"DRYSTOCK\"}";
+        var body = "{\"name\":\"" + name + "\",\"unit\":\"KG\",\"countSheetCategoryId\":" + categoryId("DRYSTOCK") + "}";
         var response = mockMvc.perform(post("/admin/ingredients").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return MAPPER.readTree(response).get("id").asLong();
+    }
+
+    private long categoryId(String name) throws Exception {
+        var response = mockMvc.perform(get("/count-sheet-categories").header("Authorization", "Bearer " + adminToken))
+                .andReturn().getResponse().getContentAsString();
+        for (var node : MAPPER.readTree(response)) {
+            if (node.get("name").asText().equalsIgnoreCase(name)) {
+                return node.get("id").asLong();
+            }
+        }
+        throw new IllegalStateException(name + " count sheet category not seeded");
     }
 
     private long mainStoreLocationId() throws Exception {
@@ -175,12 +186,13 @@ class IngredientLedgerIntegrationTests {
     void updateIngredient_editsFieldsAndDeactivates() throws Exception {
         var id = createIngredient("Test Rice");
 
-        var updateBody = "{\"name\":\"Renamed Rice\",\"unit\":\"KG\",\"countSheetCategory\":\"BULK\",\"active\":false}";
+        var updateBody = "{\"name\":\"Renamed Rice\",\"unit\":\"KG\",\"countSheetCategoryId\":" + categoryId("MEAT")
+                + ",\"active\":false}";
         mockMvc.perform(put("/admin/ingredients/" + id).header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(updateBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Renamed Rice"))
-                .andExpect(jsonPath("$.countSheetCategory").value("BULK"))
+                .andExpect(jsonPath("$.countSheetCategoryName").value("MEAT"))
                 .andExpect(jsonPath("$.active").value(false));
     }
 

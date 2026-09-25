@@ -33,6 +33,8 @@ class BulkComponentRecipeImportIntegrationTests {
     private RecipeRepository recipeRepository;
     @Autowired
     private IngredientRepository ingredientRepository;
+    @Autowired
+    private CountSheetCategoryRepository countSheetCategoryRepository;
 
     private String adminToken;
 
@@ -66,7 +68,7 @@ class BulkComponentRecipeImportIntegrationTests {
     void bulkImport_createsNewComponentRecipeAndIngredients() throws Exception {
         var file = csv("""
                 COMPONENT,INGREDIENT (NAME),UNIT,COUNT SHEET,Quantities,Batch Size,Per Portion Price (R)
-                Bulk Recipe Import Beef Stew,Bulk Recipe Import Beef Chuck,kg,bulk,2.5,10,25
+                Bulk Recipe Import Beef Stew,Bulk Recipe Import Beef Chuck,kg,meat,2.5,10,25
                 Bulk Recipe Import Beef Stew,Bulk Recipe Import Onion,kg,fveg,0.8,10,25
                 """);
 
@@ -104,12 +106,12 @@ class BulkComponentRecipeImportIntegrationTests {
         var existingIngredient = new Ingredient();
         existingIngredient.setName("Bulk Recipe Import Beef Chuck");
         existingIngredient.setUnit(IngredientUnit.EACH);
-        existingIngredient.setCountSheetCategory(CountSheetCategory.PREP);
+        existingIngredient.setCountSheetCategory(countSheetCategoryRepository.findByNameIgnoreCase("DRYSTOCK").orElseThrow());
         var existingIngredientId = ingredientRepository.save(existingIngredient).getId();
 
         var file = csv("""
                 COMPONENT,INGREDIENT (NAME),UNIT,COUNT SHEET,Quantities,Batch Size,Per Portion Price (R)
-                bulk recipe import beef stew,bulk recipe import beef chuck,kg,bulk,3,10,30
+                bulk recipe import beef stew,bulk recipe import beef chuck,kg,meat,3,10,30
                 """);
 
         mockMvc.perform(multipart("/admin/component-catalog/bulk-import").file(file)
@@ -127,14 +129,15 @@ class BulkComponentRecipeImportIntegrationTests {
         var ingredient = ingredientRepository.findByNameIgnoreCase("Bulk Recipe Import Beef Chuck").orElseThrow();
         assertThat(ingredient.getId()).isEqualTo(existingIngredientId);
         assertThat(ingredient.getUnit()).isEqualTo(IngredientUnit.KG);
-        assertThat(ingredient.getCountSheetCategory()).isEqualTo(CountSheetCategory.BULK);
+        assertThat(ingredient.getCountSheetCategory().getId())
+                .isEqualTo(countSheetCategoryRepository.findByNameIgnoreCase("MEAT").orElseThrow().getId());
     }
 
     @Test
     void bulkImport_inconsistentBatchSizeForSameComponent_rejectsWholeFileAndSavesNothing() throws Exception {
         var file = csv("""
                 COMPONENT,INGREDIENT (NAME),UNIT,COUNT SHEET,Quantities,Batch Size,Per Portion Price (R)
-                Bulk Recipe Import Beef Stew,Bulk Recipe Import Beef Chuck,kg,bulk,2.5,10,25
+                Bulk Recipe Import Beef Stew,Bulk Recipe Import Beef Chuck,kg,meat,2.5,10,25
                 Bulk Recipe Import Beef Stew,Bulk Recipe Import Onion,kg,fveg,0.8,5,25
                 """);
 
@@ -151,8 +154,8 @@ class BulkComponentRecipeImportIntegrationTests {
     void bulkImport_invalidRow_rejectsWholeFileAndSavesNothing() throws Exception {
         var file = csv("""
                 COMPONENT,INGREDIENT (NAME),UNIT,COUNT SHEET,Quantities,Batch Size,Per Portion Price (R)
-                Bulk Recipe Import Beef Stew,Bulk Recipe Import Beef Chuck,kg,bulk,2.5,10,25
-                Bulk Recipe Import Beef Stew,Bulk Recipe Import Bad Unit,kgs,bulk,0.8,10,25
+                Bulk Recipe Import Beef Stew,Bulk Recipe Import Beef Chuck,kg,meat,2.5,10,25
+                Bulk Recipe Import Beef Stew,Bulk Recipe Import Bad Unit,kgs,meat,0.8,10,25
                 """);
 
         mockMvc.perform(multipart("/admin/component-catalog/bulk-import").file(file)

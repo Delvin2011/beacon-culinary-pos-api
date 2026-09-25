@@ -55,7 +55,7 @@ class ShiftIntegrationTests {
     void setUp() throws Exception {
         clock.setTime(LocalTime.of(12, 30));
         cashierAToken = AuthTestHelper.loginAsCashier(mockMvc);
-        cashierBToken = AuthTestHelper.loginWithPin(mockMvc, AuthTestHelper.CASHIER_B_ID, "654321");
+        cashierBToken = AuthTestHelper.loginWithPin(mockMvc, AuthTestHelper.cashierBId(mockMvc), "654321");
         adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
     }
 
@@ -109,7 +109,7 @@ class ShiftIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("OPEN"))
                 .andExpect(jsonPath("$.openingFloat").value(500.00))
-                .andExpect(jsonPath("$.cashierId").value(AuthTestHelper.CASHIER_A_ID));
+                .andExpect(jsonPath("$.cashierId").value(AuthTestHelper.cashierAId(mockMvc)));
     }
 
     @Test
@@ -231,7 +231,7 @@ class ShiftIntegrationTests {
                 .andExpect(jsonPath("$.variance").value(-50.00))
                 .andExpect(jsonPath("$.varianceReasonCode").value("CASH_COUNTING_ERROR"))
                 .andExpect(jsonPath("$.varianceNote").value("Counted twice, short by 50."))
-                .andExpect(jsonPath("$.varianceAuthorizedById").value(AuthTestHelper.ADMIN_ID));
+                .andExpect(jsonPath("$.varianceAuthorizedById").value(AuthTestHelper.adminId(mockMvc)));
     }
 
     @Test

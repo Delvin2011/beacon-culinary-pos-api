@@ -85,12 +85,24 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
     }
 
     private long createIngredient(String name, String unit) throws Exception {
-        var body = "{\"name\":\"" + name + "\",\"unit\":\"" + unit + "\",\"countSheetCategory\":\"DRYSTOCK\"}";
+        var body = "{\"name\":\"" + name + "\",\"unit\":\"" + unit + "\",\"countSheetCategoryId\":"
+                + drystockCategoryId() + "}";
         var response = mockMvc.perform(post("/admin/ingredients").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return MAPPER.readTree(response).get("id").asLong();
+    }
+
+    private long drystockCategoryId() throws Exception {
+        var response = mockMvc.perform(get("/count-sheet-categories").header("Authorization", "Bearer " + adminToken))
+                .andReturn().getResponse().getContentAsString();
+        for (var node : MAPPER.readTree(response)) {
+            if (node.get("name").asText().equalsIgnoreCase("DRYSTOCK")) {
+                return node.get("id").asLong();
+            }
+        }
+        throw new IllegalStateException("DRYSTOCK count sheet category not seeded");
     }
 
     private void createGrv(long ingredientId, String quantity) throws Exception {

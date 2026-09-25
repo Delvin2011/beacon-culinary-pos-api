@@ -51,12 +51,23 @@ class GrvHeaderLinesIntegrationTests {
     }
 
     private long createIngredient(String name) throws Exception {
-        var body = "{\"name\":\"" + name + "\",\"unit\":\"KG\",\"countSheetCategory\":\"DRYSTOCK\"}";
+        var body = "{\"name\":\"" + name + "\",\"unit\":\"KG\",\"countSheetCategoryId\":" + drystockCategoryId() + "}";
         var response = mockMvc.perform(post("/admin/ingredients").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return MAPPER.readTree(response).get("id").asLong();
+    }
+
+    private long drystockCategoryId() throws Exception {
+        var response = mockMvc.perform(get("/count-sheet-categories").header("Authorization", "Bearer " + adminToken))
+                .andReturn().getResponse().getContentAsString();
+        for (var node : MAPPER.readTree(response)) {
+            if (node.get("name").asText().equalsIgnoreCase("DRYSTOCK")) {
+                return node.get("id").asLong();
+            }
+        }
+        throw new IllegalStateException("DRYSTOCK count sheet category not seeded");
     }
 
     /** Returns {@code [purchaseOrderId, purchaseOrderLineId]}. */
@@ -225,7 +236,8 @@ class GrvHeaderLinesIntegrationTests {
 
     @Test
     void itemCode_setOnCreateAndUpdate_appearsInIngredientList() throws Exception {
-        var createBody = "{\"name\":\"Item Code Rice\",\"unit\":\"KG\",\"countSheetCategory\":\"DRYSTOCK\",\"itemCode\":\"RICE-001\"}";
+        var createBody = "{\"name\":\"Item Code Rice\",\"unit\":\"KG\",\"countSheetCategoryId\":" + drystockCategoryId()
+                + ",\"itemCode\":\"RICE-001\"}";
         var response = mockMvc.perform(post("/admin/ingredients").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(createBody))
                 .andExpect(status().isCreated())
@@ -236,7 +248,8 @@ class GrvHeaderLinesIntegrationTests {
         mockMvc.perform(get("/admin/ingredients").header("Authorization", "Bearer " + adminToken))
                 .andExpect(jsonPath("$[?(@.id == " + id + ")].itemCode").value("RICE-001"));
 
-        var updateBody = "{\"name\":\"Item Code Rice\",\"unit\":\"KG\",\"countSheetCategory\":\"DRYSTOCK\",\"active\":true,\"itemCode\":\"RICE-002\"}";
+        var updateBody = "{\"name\":\"Item Code Rice\",\"unit\":\"KG\",\"countSheetCategoryId\":" + drystockCategoryId()
+                + ",\"active\":true,\"itemCode\":\"RICE-002\"}";
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/admin/ingredients/" + id)
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(updateBody))

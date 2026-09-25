@@ -25,4 +25,9 @@ public interface MealMapper {
     @Mapping(target = "componentName", source = "componentCatalog.name")
     @Mapping(target = "mealPeriodId", source = "mealPeriod.id")
     DailyComponentStockDto toDto(DailyComponentStock dailyComponentStock);
+
+    DailyPlanOptionDto toPlanDto(DailyMealOption dailyMealOption);
+
+    @Mapping(target = "componentName", source = "componentCatalog.name")
+    DailyPlanComponentStockDto toPlanDto(DailyComponentStock dailyComponentStock);
 }

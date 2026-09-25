@@ -7,7 +7,11 @@ import java.util.List;
 
 @Mapper(componentModel = "spring")
 public interface InventoryMapper {
+    @Mapping(target = "countSheetCategoryId", source = "countSheetCategory.id")
+    @Mapping(target = "countSheetCategoryName", source = "countSheetCategory.name")
     IngredientDto toDto(Ingredient ingredient);
+
+    CountSheetCategoryDto toDto(CountSheetCategory countSheetCategory);
 
     @Mapping(target = "componentCatalogId", source = "componentCatalog.id")
     RecipeDto toDto(Recipe recipe);

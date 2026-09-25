@@ -8,6 +8,7 @@ import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.MealCatalogRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.support.AuthTestHelper;
+import com.beaconculinary.api.support.DailyPlanTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -128,7 +129,9 @@ class OrderAdjustmentIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        return MAPPER.readTree(response).get("id").asLong();
+        var id = MAPPER.readTree(response).get("id").asLong();
+        DailyPlanTestHelper.markReady(dailyMealOptionRepository, id);
+        return id;
     }
 
     private long createDailyComponentStock(long periodId, long componentCatalogId, int bufferQuantity) throws Exception {
@@ -139,7 +142,9 @@ class OrderAdjustmentIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        return MAPPER.readTree(response).get("id").asLong();
+        var id = MAPPER.readTree(response).get("id").asLong();
+        DailyPlanTestHelper.markReady(dailyComponentStockRepository, id);
+        return id;
     }
 
     private void openShift(String token) throws Exception {
@@ -226,7 +231,7 @@ class OrderAdjustmentIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON).content(MAPPER.writeValueAsString(new AuthorizeReq("654321"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.authorizationToken").exists())
-                .andExpect(jsonPath("$.adminId").value(AuthTestHelper.ADMIN_ID))
+                .andExpect(jsonPath("$.adminId").value(AuthTestHelper.adminId(mockMvc)))
                 .andExpect(jsonPath("$.expiresAt").exists());
     }
 

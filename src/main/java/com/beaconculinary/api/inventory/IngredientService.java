@@ -17,6 +17,7 @@ public class IngredientService {
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
     private final LocationRepository locationRepository;
+    private final CountSheetCategoryRepository countSheetCategoryRepository;
     private final InventoryMapper inventoryMapper;
 
     @Transactional(readOnly = true)
@@ -29,7 +30,7 @@ public class IngredientService {
         var ingredient = new Ingredient();
         ingredient.setName(request.getName());
         ingredient.setUnit(request.getUnit());
-        ingredient.setCountSheetCategory(request.getCountSheetCategory());
+        ingredient.setCountSheetCategory(resolveCategory(request.getCountSheetCategoryId()));
         ingredient.setItemCode(request.getItemCode());
         ingredientRepository.save(ingredient);
         return inventoryMapper.toDto(ingredient);
@@ -40,11 +41,16 @@ public class IngredientService {
         var ingredient = ingredientRepository.findById(id).orElseThrow(IngredientNotFoundException::new);
         ingredient.setName(request.getName());
         ingredient.setUnit(request.getUnit());
-        ingredient.setCountSheetCategory(request.getCountSheetCategory());
+        ingredient.setCountSheetCategory(resolveCategory(request.getCountSheetCategoryId()));
         ingredient.setActive(request.isActive());
         ingredient.setItemCode(request.getItemCode());
         ingredientRepository.save(ingredient);
         return inventoryMapper.toDto(ingredient);
+    }
+
+    private CountSheetCategory resolveCategory(Long countSheetCategoryId) {
+        return countSheetCategoryRepository.findById(countSheetCategoryId)
+                .orElseThrow(() -> new InvalidInventoryRequestException("countSheetCategoryId does not exist."));
     }
 
     // Stage 5.2.1 — every location is shown, including ones with zero movements for this
@@ -109,10 +115,10 @@ public class IngredientService {
                         + List.of(IngredientUnit.values()) + ".");
                 continue;
             }
-            CountSheetCategory category = parseEnum(CountSheetCategory.class, categoryRaw);
+            CountSheetCategory category = resolveCategoryByName(categoryRaw);
             if (category == null) {
                 errors.add("Row " + lineNumber + ": count sheet category '" + categoryRaw + "' must be one of "
-                        + List.of(CountSheetCategory.values()) + ".");
+                        + categoryNames() + ".");
                 continue;
             }
 
@@ -178,5 +184,16 @@ public class IngredientService {
         } catch (IllegalArgumentException e) {
             return null;
         }
+    }
+
+    private CountSheetCategory resolveCategoryByName(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return countSheetCategoryRepository.findByNameIgnoreCase(raw.trim()).orElse(null);
+    }
+
+    private List<String> categoryNames() {
+        return countSheetCategoryRepository.findAll().stream().map(CountSheetCategory::getName).toList();
     }
 }

@@ -12,8 +12,8 @@ public class UpdateIngredientRequest {
     @NotNull(message = "unit is required")
     private IngredientUnit unit;
 
-    @NotNull(message = "countSheetCategory is required")
-    private CountSheetCategory countSheetCategory;
+    @NotNull(message = "countSheetCategoryId is required")
+    private Long countSheetCategoryId;
 
     private boolean active;
 

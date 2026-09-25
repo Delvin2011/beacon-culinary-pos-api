@@ -51,7 +51,9 @@ class UserCashiersIntegrationTests {
             ids.add(node.get("id").asLong());
         }
 
-        assertThat(ids).contains(AuthTestHelper.CASHIER_A_ID, AuthTestHelper.ADMIN_ID, AuthTestHelper.CASHIER_B_ID);
-        assertThat(ids).doesNotContain(1L); // legacy "tkay" USER-role account
+        assertThat(ids).contains(AuthTestHelper.cashierAId(mockMvc), AuthTestHelper.adminId(mockMvc), AuthTestHelper.cashierBId(mockMvc));
+        // Non-CASHIER/ADMIN roles are excluded. Asserted via the seeded KITCHEN user rather than a
+        // fixed id — ids differ between databases (id 1 is Cashier A on a freshly seeded one).
+        assertThat(ids).doesNotContain(AuthTestHelper.kitchenId(mockMvc));
     }
 }

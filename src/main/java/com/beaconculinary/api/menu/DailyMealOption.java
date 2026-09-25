@@ -42,11 +42,23 @@ public class DailyMealOption {
     @Column(name = "planned_portions")
     private Integer plannedPortions;
 
+    // Recorded once cooked; null until then. Sales count down from this, not plannedPortions.
+    @Column(name = "actual_portions")
+    private Integer actualPortions;
+
+    // actualPortions - sold, kept as a counter so orders can decrement it atomically. Stays 0
+    // until an actual is recorded, so nothing can be sold before the item is READY.
     @Column(name = "portions_remaining")
     private Integer portionsRemaining;
 
-    // Stage 5 Part C — set once this row has contributed to a confirmed ingredient-requirement
-    // deduction, so a later re-planning of the same day never sums it again.
-    @Column(name = "ingredients_reviewed")
-    private boolean ingredientsReviewed;
+    // Leaving PLANNED also means this row has contributed to a confirmed ingredient-requirement
+    // calculation, so a later re-planning of the same day never sums it again.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private DailyPlanItemStatus status = DailyPlanItemStatus.PLANNED;
+
+    /** Portions sold so far (net of voids). Zero before an actual is recorded. */
+    public int getSold() {
+        return (actualPortions == null ? 0 : actualPortions) - portionsRemaining;
+    }
 }
