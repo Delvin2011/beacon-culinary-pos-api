@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
@@ -17,6 +18,16 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByOrderDateAndStatusInOrderByCreatedAtAsc(LocalDate orderDate, List<OrderStatus> statuses);
 
     long countByShiftId(Long shiftId);
+
+    /** POS Oversight A4: order counts for a page of shifts in one grouped query (no N+1).
+     * Each row is [shiftId (Long), count (Long)]; shifts with no orders are absent. */
+    @Query("SELECT o.shift.id, COUNT(o) FROM Order o WHERE o.shift.id IN :shiftIds GROUP BY o.shift.id")
+    List<Object[]> countByShiftIds(@Param("shiftIds") Collection<Long> shiftIds);
+
+    /** POS Oversight A4: orders sold in a shift with who rang them up and their payments. */
+    @Query("SELECT DISTINCT o FROM Order o JOIN FETCH o.cashier LEFT JOIN FETCH o.payments "
+            + "WHERE o.shift.id = :shiftId ORDER BY o.createdAt, o.id")
+    List<Order> findSoldInShiftWithPayments(@Param("shiftId") Long shiftId);
 
     /**
      * Conditional guard against double-applying an EXTRAS_ONLY adjustment — same anti-race

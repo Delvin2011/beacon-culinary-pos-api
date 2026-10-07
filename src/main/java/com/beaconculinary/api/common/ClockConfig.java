@@ -8,7 +8,7 @@ import java.time.ZoneId;
 
 @Configuration
 public class ClockConfig {
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Africa/Johannesburg");
+    public static final ZoneId BUSINESS_ZONE = ZoneId.of("Africa/Johannesburg");
 
     @Bean
     public Clock clock() {

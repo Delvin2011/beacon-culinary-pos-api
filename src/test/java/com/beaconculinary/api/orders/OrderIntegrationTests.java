@@ -491,7 +491,9 @@ class OrderIntegrationTests {
     }
 
     @Test
-    void markPrintFailed_asAdmin_returns403() throws Exception {
+    // POS Oversight B1: was markPrintFailed_asAdmin_returns403 — an ADMIN can now ring orders up
+    // at the till, so it can also report their print failure.
+    void markPrintFailed_asAdmin_returns200() throws Exception {
         var beefId = createComponent("Beef", "15.00");
         var mealId = createMealCatalog("Potatoes & Beef", "50.00", beefId);
         var optionId = createDailyOption(lunchId, mealId, 10);
@@ -500,6 +502,7 @@ class OrderIntegrationTests {
         var orderId = placeOrder(cashierToken, new BigDecimal("50.00"), new LineReq(optionId, 1, List.of()));
 
         mockMvc.perform(post("/orders/" + orderId + "/mark-print-failed").header("Authorization", "Bearer " + adminToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.printFailed").value(true));
     }
 }

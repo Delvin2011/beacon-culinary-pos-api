@@ -5,7 +5,6 @@ import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
-import com.beaconculinary.api.shifts.ShiftStatus;
 import com.beaconculinary.api.users.User;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -70,8 +69,10 @@ public class OrderAdjustmentService {
 
         // Stage 2.5: attribute the cash-out to whichever shift is open right now — may be a
         // different, later shift than order.shift when the sale and the adjustment happen in
-        // different shifts. Requires an open shift the same way placing an order does.
-        var openShift = shiftRepository.findFirstByStatus(ShiftStatus.OPEN)
+        // different shifts. Requires an open shift the same way placing an order does. Shared
+        // lock for the same reason as order creation (POS Oversight B3): a cash-out must never
+        // land on a shift whose close snapshot has already been computed without it.
+        var openShift = shiftRepository.findOpenShiftWithSharedLock()
                 .orElseThrow(NoOpenShiftException::new);
 
         var cashier = authService.getCurrentUser();

@@ -25,6 +25,17 @@ public class MutableClock extends Clock {
         );
     }
 
+    /** Pins "now" to an exact instant — for tests about calendar-day boundaries in a specific zone. */
+    public void setInstant(Instant instant) {
+        delegate = Clock.fixed(instant, delegate.getZone());
+    }
+
+    /** Back to the real system clock, so a pinned instant can't leak into the next test class
+     * (the bean is shared across the cached Spring context). */
+    public void reset() {
+        delegate = Clock.systemDefaultZone();
+    }
+
     @Override
     public ZoneId getZone() {
         return delegate.getZone();

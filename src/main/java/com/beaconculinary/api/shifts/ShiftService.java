@@ -2,12 +2,9 @@ package com.beaconculinary.api.shifts;
 
 import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
-import com.beaconculinary.api.orders.OrderAdjustmentRepository;
-import com.beaconculinary.api.orders.OrderPaymentRepository;
-import com.beaconculinary.api.orders.OrderRepository;
-import com.beaconculinary.api.orders.PaymentMethod;
-import com.beaconculinary.api.orders.RefundMethod;
+import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.users.Role;
+import com.beaconculinary.api.users.UserRefDto;
 import lombok.AllArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
@@ -16,15 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Clock;
-import java.time.LocalDateTime;
 
 @Service
 @AllArgsConstructor
 public class ShiftService {
     private final ShiftRepository shiftRepository;
-    private final OrderRepository orderRepository;
-    private final OrderPaymentRepository orderPaymentRepository;
-    private final OrderAdjustmentRepository orderAdjustmentRepository;
+    private final ShiftCashCalculator shiftCashCalculator;
     private final AdminAuthorizationService adminAuthorizationService;
     private final AuthService authService;
     private final ShiftMapper shiftMapper;
@@ -64,12 +58,12 @@ public class ShiftService {
         } else {
             shift = loadShiftForCaller(id);
         }
-        var breakdown = computeCashBreakdown(shift);
+        var breakdown = shiftCashCalculator.compute(shift.getId(), shift.getOpeningFloat());
 
         var summary = new ShiftSummaryDto();
         summary.setOpeningFloat(shift.getOpeningFloat());
-        summary.setCashSalesTotal(breakdown.cashSalesTotal());
-        summary.setAdjustmentsTotal(breakdown.adjustmentsTotal());
+        summary.setCashSalesTotal(breakdown.cashSales());
+        summary.setAdjustmentsTotal(breakdown.cashRefunds());
         summary.setExpectedCash(breakdown.expectedCash());
         summary.setOrderCount(breakdown.orderCount());
         return summary;
@@ -77,13 +71,18 @@ public class ShiftService {
 
     @Transactional
     public ShiftDto closeShift(Long id, CloseShiftRequest request) {
+        // POS Oversight B3: exclusive row lock before anything is read or computed, so an order
+        // or adjustment can't attach to this shift between the expected-cash calculation and
+        // the close being written (see ShiftRepository.findOpenShiftWithSharedLock). Taken
+        // before the load so the status check below sees any concurrent close.
+        shiftRepository.lockForClose(id).orElseThrow(ShiftNotFoundException::new);
         var shift = loadShiftForCaller(id);
 
         if (shift.getStatus() != ShiftStatus.OPEN) {
             throw new ShiftAlreadyClosedException();
         }
 
-        var breakdown = computeCashBreakdown(shift);
+        var breakdown = shiftCashCalculator.compute(shift.getId(), shift.getOpeningFloat());
         var variance = request.getCountedCash().subtract(breakdown.expectedCash());
 
         if (variance.compareTo(BigDecimal.ZERO) != 0) {
@@ -108,9 +107,13 @@ public class ShiftService {
 
         shift.setClosingCash(request.getCountedCash());
         shift.setExpectedCash(breakdown.expectedCash());
+        shift.setCashSalesAtClose(breakdown.cashSales());
+        shift.setCashRefundsAtClose(breakdown.cashRefunds());
         shift.setVariance(variance);
         shift.setStatus(ShiftStatus.CLOSED);
-        shift.setClosedAt(LocalDateTime.now(clock));
+        shift.setClosedBy(authService.getCurrentUser());
+        // UTC, matching opened_at's SYSUTCDATETIME() default (V84 corrected older rows).
+        shift.setClosedAt(UtcTimestamps.nowUtc(clock));
         shiftRepository.save(shift);
 
         return shiftMapper.toDto(shift);
@@ -124,6 +127,18 @@ public class ShiftService {
         return shiftMapper.toDto(shift);
     }
 
+    /** POS Oversight B2: the till's open shift whoever owns it — unlike getCurrentShift, which
+     * only finds the caller's own. */
+    @Transactional(readOnly = true)
+    public OpenShiftDto getOpenShift() {
+        var currentUser = authService.getCurrentUser();
+        var shift = shiftRepository.findFirstByStatus(ShiftStatus.OPEN).orElseThrow(ShiftNotFoundException::new);
+        var owner = shift.getCashier();
+
+        return new OpenShiftDto(shift.getId(), UserRefDto.withRole(owner), owner.getId().equals(currentUser.getId()),
+                UtcTimestamps.toInstant(shift.getOpenedAt()), shift.getOpeningFloat());
+    }
+
     private Shift loadShiftForCaller(Long id) {
         var shift = shiftRepository.findById(id).orElseThrow(ShiftNotFoundException::new);
         var currentUser = authService.getCurrentUser();
@@ -133,21 +148,5 @@ public class ShiftService {
             throw new AccessDeniedException("Cannot access another cashier's shift.");
         }
         return shift;
-    }
-
-    private record CashBreakdown(BigDecimal cashSalesTotal, BigDecimal adjustmentsTotal, BigDecimal expectedCash, long orderCount) {
-    }
-
-    // Stage 4 Part D — expected_cash = opening_float + SUM(CASH-method OrderPayment amounts for
-    // this shift) - SUM(CASH-refund_method adjustments authorized during this shift). Reworked
-    // from Stage 2.5's original orders.payment_method-based formula to account for cash/card
-    // splits (Stage 4 Part A) and account payments (Part B): an ACCOUNT_BALANCE-refunded
-    // adjustment is excluded entirely, since no physical cash moved.
-    private CashBreakdown computeCashBreakdown(Shift shift) {
-        var cashSalesTotal = orderPaymentRepository.sumAmountByShiftIdAndMethod(shift.getId(), PaymentMethod.CASH);
-        var adjustmentsTotal = orderAdjustmentRepository.sumAmountByShiftIdAndRefundMethod(shift.getId(), RefundMethod.CASH);
-        var orderCount = orderRepository.countByShiftId(shift.getId());
-        var expectedCash = shift.getOpeningFloat().add(cashSalesTotal).subtract(adjustmentsTotal);
-        return new CashBreakdown(cashSalesTotal, adjustmentsTotal, expectedCash, orderCount);
     }
 }

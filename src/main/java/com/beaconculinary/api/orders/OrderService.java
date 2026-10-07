@@ -6,7 +6,7 @@ import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.DailyPlanItemStatus;
 import com.beaconculinary.api.shifts.ShiftRepository;
-import com.beaconculinary.api.shifts.ShiftStatus;
+import com.beaconculinary.api.users.Role;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,8 +34,14 @@ public class OrderService {
     @Transactional
     public OrderDto createOrder(CreateOrderRequest request) {
         var currentUser = authService.getCurrentUser();
-        var shift = shiftRepository.findFirstByCashierIdAndStatus(currentUser.getId(), ShiftStatus.OPEN)
-                .orElseThrow(NoOpenShiftException::new);
+        // POS Oversight B1: sell on the till's single open shift (the drawer), which the caller
+        // must own unless they're an ADMIN; cashier_id below still records who rang it up. The
+        // shared lock serialises this against a concurrent close (B3).
+        var shift = shiftRepository.findOpenShiftWithSharedLock().orElseThrow(NoOpenShiftException::new);
+        var owner = shift.getCashier();
+        if (!owner.getId().equals(currentUser.getId()) && currentUser.getRole() != Role.ADMIN) {
+            throw new TillInUseException(owner.getName());
+        }
 
         var today = LocalDate.now(clock);
         var now = LocalTime.now(clock);

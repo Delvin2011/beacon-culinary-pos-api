@@ -58,7 +58,13 @@ public class OrderController {
 
     @ExceptionHandler(NoOpenShiftException.class)
     public ResponseEntity<ErrorDto> handleNoOpenShift(NoOpenShiftException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage()));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage(), "NO_OPEN_SHIFT"));
+    }
+
+    // Same 409 as NO_OPEN_SHIFT so status-based clients keep working; clients branch on code.
+    @ExceptionHandler(TillInUseException.class)
+    public ResponseEntity<ErrorDto> handleTillInUse(TillInUseException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage(), "TILL_IN_USE"));
     }
 
     @ExceptionHandler(InsufficientStockException.class)

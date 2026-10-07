@@ -42,6 +42,11 @@ public class ShiftController {
         return shiftService.getCurrentShift();
     }
 
+    @GetMapping("/open")
+    public OpenShiftDto openShift() {
+        return shiftService.getOpenShift();
+    }
+
     @ExceptionHandler(ShiftAlreadyOpenException.class)
     public ResponseEntity<ErrorDto> handleShiftAlreadyOpen(ShiftAlreadyOpenException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage()));

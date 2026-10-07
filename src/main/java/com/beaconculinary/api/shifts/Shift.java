@@ -55,4 +55,18 @@ public class Shift {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "variance_authorized_by")
     private User varianceAuthorizedBy;
+
+    // POS Oversight: the authenticated caller who closed the shift (owner or an ADMIN).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "closed_by")
+    private User closedBy;
+
+    // POS Oversight: expected_cash's two computed parts, snapshotted at close alongside it, so
+    // expected_cash = opening_float + cash_sales_at_close - cash_refunds_at_close. Null for
+    // shifts closed before V82.
+    @Column(name = "cash_sales_at_close")
+    private BigDecimal cashSalesAtClose;
+
+    @Column(name = "cash_refunds_at_close")
+    private BigDecimal cashRefundsAtClose;
 }
