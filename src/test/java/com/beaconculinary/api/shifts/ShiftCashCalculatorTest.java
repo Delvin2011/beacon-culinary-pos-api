@@ -43,6 +43,28 @@ class ShiftCashCalculatorTest {
     }
 
     @Test
+    void computeAll_appliesTheSameFormulaPerShift_withGroupedQueries() {
+        var ids = java.util.Set.of(1L, 2L);
+        when(orderPaymentRepository.sumAmountByShiftIdsAndMethod(ids, PaymentMethod.CASH))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{1L, new BigDecimal("290.00")}));
+        when(orderAdjustmentRepository.sumAmountByShiftIdsAndRefundMethod(ids, RefundMethod.CASH))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{1L, new BigDecimal("50.00")}, new Object[]{2L, new BigDecimal("100.00")}));
+        when(orderRepository.countByShiftIds(ids)).thenReturn(java.util.List.<Object[]>of(new Object[]{1L, 5L}));
+
+        var floats = new java.util.LinkedHashMap<Long, BigDecimal>();
+        floats.put(1L, new BigDecimal("200.00"));
+        floats.put(2L, new BigDecimal("300.00"));
+        var all = calculator.computeAll(floats);
+
+        assertThat(all.get(1L).expectedCash()).isEqualByComparingTo("440.00");
+        assertThat(all.get(1L).orderCount()).isEqualTo(5L);
+        // A shift with no cash sales: float - refunds.
+        assertThat(all.get(2L).cashSales()).isEqualByComparingTo("0");
+        assertThat(all.get(2L).expectedCash()).isEqualByComparingTo("200.00");
+        assertThat(calculator.computeAll(java.util.Map.of())).isEmpty();
+    }
+
+    @Test
     void emptyShift_expectedCashIsTheOpeningFloat() {
         when(orderPaymentRepository.sumAmountByShiftIdAndMethod(7L, PaymentMethod.CASH)).thenReturn(BigDecimal.ZERO);
         when(orderAdjustmentRepository.sumAmountByShiftIdAndRefundMethod(7L, RefundMethod.CASH)).thenReturn(BigDecimal.ZERO);

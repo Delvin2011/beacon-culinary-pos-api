@@ -9,6 +9,9 @@ import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * The single source of truth for a shift's expected cash, shared by the cashup summary, the
@@ -33,6 +36,38 @@ public class ShiftCashCalculator {
         var cashRefunds = orderAdjustmentRepository.sumAmountByShiftIdAndRefundMethod(shiftId, RefundMethod.CASH);
         var orderCount = orderRepository.countByShiftId(shiftId);
         return new CashBreakdown(openingFloat, cashSales, cashRefunds, openingFloat.add(cashSales).subtract(cashRefunds), orderCount);
+    }
+
+    /** The same formula for many shifts at once (three grouped queries, not three per shift),
+     * keyed by shift id. openingFloats maps each shift id to its opening float. */
+    public Map<Long, CashBreakdown> computeAll(Map<Long, BigDecimal> openingFloats) {
+        if (openingFloats.isEmpty()) {
+            return Map.of();
+        }
+        var ids = openingFloats.keySet();
+        var cashSales = sums(orderPaymentRepository.sumAmountByShiftIdsAndMethod(ids, PaymentMethod.CASH));
+        var cashRefunds = sums(orderAdjustmentRepository.sumAmountByShiftIdsAndRefundMethod(ids, RefundMethod.CASH));
+        var orderCounts = new HashMap<Long, Long>();
+        for (var row : orderRepository.countByShiftIds(ids)) {
+            orderCounts.put((Long) row[0], (Long) row[1]);
+        }
+
+        var result = new HashMap<Long, CashBreakdown>();
+        openingFloats.forEach((shiftId, openingFloat) -> {
+            var sales = cashSales.getOrDefault(shiftId, BigDecimal.ZERO);
+            var refunds = cashRefunds.getOrDefault(shiftId, BigDecimal.ZERO);
+            result.put(shiftId, new CashBreakdown(openingFloat, sales, refunds, openingFloat.add(sales).subtract(refunds),
+                    orderCounts.getOrDefault(shiftId, 0L)));
+        });
+        return result;
+    }
+
+    private static Map<Long, BigDecimal> sums(List<Object[]> rows) {
+        var sums = new HashMap<Long, BigDecimal>();
+        for (var row : rows) {
+            sums.put((Long) row[0], (BigDecimal) row[1]);
+        }
+        return sums;
     }
 
     public record CashBreakdown(BigDecimal openingFloat, BigDecimal cashSales, BigDecimal cashRefunds,

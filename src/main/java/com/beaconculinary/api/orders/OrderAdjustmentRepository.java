@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 
 public interface OrderAdjustmentRepository extends JpaRepository<OrderAdjustment, Long> {
@@ -14,6 +15,12 @@ public interface OrderAdjustmentRepository extends JpaRepository<OrderAdjustment
      * adjustment has zero cash-drawer impact, since no physical cash moved. */
     @Query("SELECT COALESCE(SUM(a.amount), 0) FROM OrderAdjustment a WHERE a.shift.id = :shiftId AND a.refundMethod = :refundMethod")
     BigDecimal sumAmountByShiftIdAndRefundMethod(@Param("shiftId") Long shiftId, @Param("refundMethod") RefundMethod refundMethod);
+
+    /** The same term for many shifts in one grouped query; rows are [shiftId, sum]. */
+    @Query("SELECT a.shift.id, COALESCE(SUM(a.amount), 0) FROM OrderAdjustment a "
+            + "WHERE a.shift.id IN :shiftIds AND a.refundMethod = :refundMethod GROUP BY a.shift.id")
+    List<Object[]> sumAmountByShiftIdsAndRefundMethod(@Param("shiftIds") Collection<Long> shiftIds,
+                                                      @Param("refundMethod") RefundMethod refundMethod);
 
     /** POS Oversight A4: adjustments processed in a shift (the cash-out attribution), which may
      * be on orders sold in an earlier shift. */
