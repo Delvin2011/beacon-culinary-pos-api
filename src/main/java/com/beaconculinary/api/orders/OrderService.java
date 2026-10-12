@@ -1,17 +1,20 @@
 package com.beaconculinary.api.orders;
 
 import com.beaconculinary.api.accounts.AccountRepository;
+import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.DailyPlanItemStatus;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.users.Role;
+import com.beaconculinary.api.users.User;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -29,6 +32,7 @@ public class OrderService {
     private final AccountRepository accountRepository;
     private final OrderMapper orderMapper;
     private final OrderStatusEventPublisher orderStatusEventPublisher;
+    private final AdminAuthorizationService adminAuthorizationService;
     private final Clock clock;
 
     @Transactional
@@ -113,6 +117,15 @@ public class OrderService {
             order.getLines().add(line);
         }
 
+        // Discount at sale: total so far is the pre-discount total (meals + extras). A discount
+        // lowers what the customer pays; payments are then validated against the discounted
+        // figure. Any authorization token is consumed inside this transaction, so if the order
+        // fails below it stays valid for the retry.
+        var preDiscountTotal = total;
+        var discount = request.getDiscount() == null ? null : buildDiscount(request.getDiscount(), preDiscountTotal, currentUser);
+        var saleDiscount = discount == null ? BigDecimal.ZERO : discount.getAmount();
+        var originalTotal = preDiscountTotal.subtract(saleDiscount);
+
         // Phase 2: atomic, conditional decrement per line/extra. A failed decrement throws,
         // which rolls back the whole transaction — including any decrements already applied
         // earlier in this same request — so no order is ever left half-fulfilled.
@@ -133,13 +146,19 @@ public class OrderService {
             }
         }
 
-        attachPayments(order, request.getPayments(), total);
+        attachPayments(order, request.getPayments(), originalTotal);
 
         var orderNumber = orderRepository.findMaxOrderNumberForDate(today) + 1;
         order.setOrderNumber(orderNumber);
         order.setSubtotal(subtotal);
-        order.setTotal(total);
-        order.setOriginalTotal(total);
+        order.setPreDiscountTotal(preDiscountTotal);
+        order.setSaleDiscount(saleDiscount);
+        order.setOriginalTotal(originalTotal);
+        order.setTotal(originalTotal);
+        if (discount != null) {
+            discount.setOrder(order);
+            order.setDiscount(discount);
+        }
 
         orderRepository.save(order);
         // The implicit null -> PENDING transition — retrofits this order onto the KDS stream
@@ -168,6 +187,76 @@ public class OrderService {
         order.setPrintFailed(true);
         orderRepository.save(order);
         return orderMapper.toDto(order);
+    }
+
+    /**
+     * Validates a discount at sale and works out its amount. Order of checks: the discount's own
+     * fields (400 DISCOUNT_INVALID), its size against the pre-discount total (400
+     * DISCOUNT_TOO_LARGE), and only then the manager's authorization (401 AUTHORIZATION_INVALID),
+     * so a rejected discount never uses up a PIN token. A discount can never make an order free.
+     */
+    private OrderDiscount buildDiscount(SaleDiscountRequest request, BigDecimal preDiscountTotal, User requestedBy) {
+        var type = parseEnum(DiscountType.class, request.getType(), "type must be PERCENTAGE or FIXED_AMOUNT.");
+        var reasonCode = parseEnum(SaleDiscountReasonCode.class, request.getReasonCode(),
+                "reasonCode must be one of STAFF, PROMOTION, MANAGER_GOODWILL, PRICING_CORRECTION, OTHER.");
+        var value = request.getValue();
+        if (value == null) {
+            throw OrderRuleException.discountInvalid("value is required.");
+        }
+        if (reasonCode == SaleDiscountReasonCode.OTHER && (request.getNote() == null || request.getNote().isBlank())) {
+            throw OrderRuleException.discountInvalid("note is required when reasonCode is OTHER.");
+        }
+
+        BigDecimal amount;
+        if (type == DiscountType.PERCENTAGE) {
+            if (value.signum() <= 0 || value.compareTo(BigDecimal.valueOf(100)) >= 0) {
+                throw OrderRuleException.discountInvalid("A percentage discount must be above 0 and below 100.");
+            }
+            amount = preDiscountTotal.multiply(value).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        } else {
+            if (value.signum() <= 0) {
+                throw OrderRuleException.discountInvalid("A fixed discount must be above 0.");
+            }
+            amount = value.setScale(2, RoundingMode.HALF_UP);
+        }
+        if (amount.signum() <= 0) {
+            throw OrderRuleException.discountTooLarge("The discount works out to R0.00.");
+        }
+        if (amount.compareTo(preDiscountTotal) >= 0) {
+            throw OrderRuleException.discountTooLarge("A discount must be less than the order total.");
+        }
+
+        var authorization = request.getAuthorization();
+        var authorizationToken = authorization == null ? null : blankToNull(authorization.getAuthorizationToken());
+        var sessionToken = authorization == null ? null : blankToNull(authorization.getSessionToken());
+        if ((authorizationToken == null) == (sessionToken == null)) {
+            throw OrderRuleException.discountInvalid("authorization needs exactly one of authorizationToken or sessionToken.");
+        }
+        var admin = authorizationToken != null
+                ? adminAuthorizationService.consumeTokenInCurrentTransaction(authorizationToken)
+                : adminAuthorizationService.validateSessionTokenForDiscount(sessionToken);
+
+        var discount = new OrderDiscount();
+        discount.setDiscountType(type);
+        discount.setDiscountValue(value);
+        discount.setAmount(amount);
+        discount.setReasonCode(reasonCode);
+        discount.setNote(blankToNull(request.getNote()));
+        discount.setRequestedBy(requestedBy);
+        discount.setAuthorizedBy(admin);
+        return discount;
+    }
+
+    private static <E extends Enum<E>> E parseEnum(Class<E> type, String value, String message) {
+        try {
+            return Enum.valueOf(type, value == null ? "" : value.trim());
+        } catch (IllegalArgumentException e) {
+            throw OrderRuleException.discountInvalid(message);
+        }
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     /**

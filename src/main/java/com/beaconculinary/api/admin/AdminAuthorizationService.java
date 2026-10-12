@@ -87,6 +87,44 @@ public class AdminAuthorizationService {
     }
 
     /**
+     * Discount at sale: validates and burns a single-use token inside the caller's transaction
+     * (unlike {@link #consumeToken}). If the order it authorizes fails and rolls back — a stock
+     * conflict, a short payment — the token is restored and the manager isn't asked for the PIN
+     * again. The conditional delete means two orders racing with one token can't both use it.
+     * Also re-checks that the authorizing admin is still an active ADMIN.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public User consumeTokenInCurrentTransaction(String tokenValue) {
+        var token = authorizationTokenRepository.findByToken(tokenValue).orElse(null);
+        var now = LocalDateTime.now(clock);
+
+        if (token == null || token.isUsed() || token.getExpiresAt().isBefore(now)) {
+            throw new InvalidAuthorizationTokenException();
+        }
+        var admin = token.getAdmin();
+        requireActiveAdmin(admin);
+        if (authorizationTokenRepository.deleteIfUnused(token.getId()) == 0) {
+            throw new InvalidAuthorizationTokenException();
+        }
+        return admin;
+    }
+
+    /** A session token for a discount at sale: never consumed, and its admin must still be an
+     * active ADMIN. */
+    @Transactional(readOnly = true)
+    public User validateSessionTokenForDiscount(String tokenValue) {
+        var admin = validateSessionToken(tokenValue);
+        requireActiveAdmin(admin);
+        return admin;
+    }
+
+    private static void requireActiveAdmin(User admin) {
+        if (admin == null || !admin.isActive() || admin.getRole() != Role.ADMIN) {
+            throw new InvalidAuthorizationTokenException();
+        }
+    }
+
+    /**
      * Stage 3.3 — validates a session token without consuming it: it stays valid for further
      * calls until its own expiry, unlike {@link #consumeToken}.
      */

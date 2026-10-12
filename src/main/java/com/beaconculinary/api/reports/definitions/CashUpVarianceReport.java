@@ -85,8 +85,9 @@ public class CashUpVarianceReport implements ReportDefinition {
     public List<String> notes() {
         return List.of(
                 "One row per shift, on the trading day the shift opened.",
-                "Expected cash is the opening float plus cash sales, minus cash paid out for voids, refunds and discounts "
-                        + "processed during the shift.",
+                "Expected cash is the opening float plus cash sales, minus cash refunds processed.",
+                "Cash refunds processed is cash handed back by voids and refunds during the shift. Discounts given at sale "
+                        + "are not included, because no cash was involved.",
                 "A closed shift shows the figures stored when it was closed. An open shift's expected cash is live and "
                         + "changes as it trades. Overdue means a shift is still open from an earlier day.",
                 "Variance is counted cash minus expected cash: negative means the drawer was short, positive means over.",

@@ -30,7 +30,7 @@ public final class ReportFixture {
 
     /** Removes everything the fixture (or any other test) left in the order and shift tables. */
     public static void clear(JdbcTemplate jdbc) {
-        for (var table : new String[]{"order_status_events", "order_line_extras", "order_lines", "order_adjustments",
+        for (var table : new String[]{"order_status_events", "order_line_extras", "order_lines", "order_adjustments", "order_discounts",
                 "order_payments", "orders", "shifts"}) {
             jdbc.update("DELETE FROM " + table);
         }
@@ -47,7 +47,7 @@ public final class ReportFixture {
         f.s1 = f.closedShift(thandiwe, "200.00", utc(MONDAY, 7, 0), utc(MONDAY, 11, 0),
                 "440.00", "440.00", "0.00", null, null, thandiwe, "290.00", "50.00");
         f.s2 = f.closedShift(sipho, "300.00", utc(MONDAY, 11, 5), utc(MONDAY, 15, 0),
-                "260.00", "270.00", "-10.00", "CASH_COUNTING_ERROR", admin, sipho, "70.00", "100.00");
+                "260.00", "270.00", "-10.00", "CASH_COUNTING_ERROR", admin, sipho, "60.00", "90.00");
         f.s3 = f.openShift(admin, "100.00", utc(TUESDAY, 8, 0));
 
         f.o1 = f.order(f.s1, thandiwe, MONDAY, 1, 7, 20, "100.00", "100.00", "COLLECTED");
@@ -72,9 +72,9 @@ public final class ReportFixture {
         f.o6 = f.order(f.s2, sipho, MONDAY, 6, 11, 30, "120.00", "120.00", "COLLECTED");
         f.payment(f.o6, "ACCOUNT", "120.00");
 
-        f.o7 = f.order(f.s2, sipho, MONDAY, 7, 12, 5, "70.00", "60.00", "COLLECTED");
-        f.payment(f.o7, "CASH", "70.00");
-        f.adjustment(f.o7, f.s2, "WHOLE_ORDER", "DISCOUNT", "10.00", "CASH", sipho, admin, utc(MONDAY, 12, 10));
+        // Amendment 1: a R10 discount at sale (MANAGER_GOODWILL) — the customer pays R60; no adjustment.
+        f.o7 = f.discountedOrder(f.s2, sipho, MONDAY, 7, 12, 5, "70.00", "10.00", "COLLECTED", sipho, admin);
+        f.payment(f.o7, "CASH", "60.00");
 
         f.o8 = f.order(f.s3, admin, TUESDAY, 1, 8, 20, "40.00", "40.00", "DONE");
         f.payment(f.o8, "CASH", "40.00");
@@ -127,15 +127,46 @@ public final class ReportFixture {
     public long orderAt(long shiftId, long cashierId, LocalDate orderDate, int orderNumber, Timestamp createdAt,
                         String originalTotal, String total, String status) {
         return jdbc.queryForObject("""
-                INSERT INTO orders (order_number, order_date, shift_id, cashier_id, status, subtotal, total, original_total,
+                INSERT INTO orders (order_number, order_date, shift_id, cashier_id, status, subtotal, total, original_total, pre_discount_total,
                                     extras_adjusted, created_at)
-                OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""", Long.class,
+                OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""", Long.class,
                 orderNumber, java.sql.Date.valueOf(orderDate), shiftId, cashierId, status, new BigDecimal(originalTotal),
-                new BigDecimal(total), new BigDecimal(originalTotal), createdAt);
+                new BigDecimal(total), new BigDecimal(originalTotal), new BigDecimal(originalTotal), createdAt);
+    }
+
+    /** An order with a fixed discount at sale: original_total = total = preDiscountTotal - saleDiscount,
+     * plus its order_discounts row. */
+    public long discountedOrder(long shiftId, long cashierId, LocalDate day, int orderNumber, int hour, int minute,
+                                String preDiscountTotal, String saleDiscount, String status, long requestedBy, long authorizedBy) {
+        var pre = new BigDecimal(preDiscountTotal);
+        var discount = new BigDecimal(saleDiscount);
+        var paid = pre.subtract(discount);
+        var orderId = jdbc.queryForObject("""
+                INSERT INTO orders (order_number, order_date, shift_id, cashier_id, status, subtotal, total, original_total,
+                                    pre_discount_total, sale_discount, extras_adjusted, created_at)
+                OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""", Long.class,
+                orderNumber, java.sql.Date.valueOf(day), shiftId, cashierId, status, pre, paid, paid, pre, discount,
+                utc(day, hour, minute));
+        jdbc.update("""
+                INSERT INTO order_discounts (order_id, discount_type, discount_value, amount, reason_code, requested_by, authorized_by)
+                VALUES (?, 'FIXED_AMOUNT', ?, ?, 'MANAGER_GOODWILL', ?, ?)""", orderId, discount, discount, requestedBy, authorizedBy);
+        return orderId;
     }
 
     public void payment(long orderId, String method, String amount) {
         jdbc.update("INSERT INTO order_payments (order_id, method, amount) VALUES (?, ?, ?)", orderId, method, new BigDecimal(amount));
+    }
+
+    /** A legacy after-payment DISCOUNT (the retired feature, which the API now refuses), as an old
+     * database would hold it: the adjustment row plus the reduced orders.total. */
+    public void legacyDiscount(long orderId, long processedInShiftId, String amount, long requestedBy, long authorizedBy,
+                               Timestamp createdAt) {
+        jdbc.update("""
+                INSERT INTO order_adjustments (order_id, shift_id, scope, action, reason_code, amount, refund_method,
+                                               requested_by, authorized_by, discount_type, discount_value, created_at)
+                VALUES (?, ?, 'WHOLE_ORDER', 'DISCOUNT', 'CUSTOMER_COMPLAINT', ?, 'CASH', ?, ?, 'FIXED_AMOUNT', ?, ?)""",
+                orderId, processedInShiftId, new BigDecimal(amount), requestedBy, authorizedBy, new BigDecimal(amount), createdAt);
+        jdbc.update("UPDATE orders SET total = total - ? WHERE id = ?", new BigDecimal(amount), orderId);
     }
 
     public void adjustment(long orderId, long processedInShiftId, String scope, String action, String amount, String refundMethod,

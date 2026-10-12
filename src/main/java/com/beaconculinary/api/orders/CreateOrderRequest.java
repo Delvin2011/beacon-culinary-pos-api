@@ -18,4 +18,7 @@ public class CreateOrderRequest {
     @NotEmpty(message = "lines cannot be empty")
     @Valid
     private List<OrderLineRequest> lines;
+
+    // Optional manager-approved discount at checkout; payments must then equal the discounted total.
+    private SaleDiscountRequest discount;
 }

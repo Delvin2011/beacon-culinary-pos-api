@@ -56,15 +56,18 @@ public record ShiftActivityDto(
     public record RecomputedParts(BigDecimal cashSales, BigDecimal cashRefundsProcessed, BigDecimal expectedCash) {
     }
 
-    /** orderCount and salesByMethod cover orders sold in the shift; the four adjustment
-     * buckets cover adjustments processed in it (the adjustments list). */
+    /** orderCount, salesByMethod and discounts (discounts at sale) cover orders sold in the
+     * shift; voids, refunds, extrasRemoved and legacyDiscountsAfterPayment cover adjustments
+     * processed in it (the adjustments list). legacyDiscountsAfterPayment is the retired
+     * after-payment discount, present only when non-zero. */
     public record Totals(
             long orderCount,
             Map<PaymentMethod, BigDecimal> salesByMethod,
             CountAmount voids,
             CountAmount refunds,
             CountAmount discounts,
-            CountAmount extrasRemoved) {
+            CountAmount extrasRemoved,
+            @JsonInclude(JsonInclude.Include.NON_NULL) CountAmount legacyDiscountsAfterPayment) {
     }
 
     public record CountAmount(long count, BigDecimal amount) {
@@ -78,6 +81,7 @@ public record ShiftActivityDto(
             OrderStatus status,
             BigDecimal originalTotal,
             BigDecimal total,
+            BigDecimal saleDiscount,
             List<Payment> payments,
             boolean discounted,
             boolean extrasRemoved) {

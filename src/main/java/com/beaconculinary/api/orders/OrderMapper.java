@@ -1,5 +1,6 @@
 package com.beaconculinary.api.orders;
 
+import com.beaconculinary.api.users.UserRefDto;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -24,4 +25,12 @@ public interface OrderMapper {
     @Mapping(target = "shiftId", source = "shift.id")
     @Mapping(target = "cashierId", source = "cashier.id")
     OrderDto toDto(Order order);
+
+    default OrderDiscountDto toDto(OrderDiscount discount) {
+        if (discount == null) {
+            return null;
+        }
+        return new OrderDiscountDto(discount.getDiscountType(), discount.getDiscountValue(), discount.getAmount(),
+                discount.getReasonCode(), discount.getNote(), UserRefDto.of(discount.getAuthorizedBy()));
+    }
 }

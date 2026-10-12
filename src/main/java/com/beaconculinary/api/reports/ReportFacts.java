@@ -25,17 +25,19 @@ import java.util.Map;
 public class ReportFacts {
     private final NamedParameterJdbcTemplate jdbc;
 
-    /** Gross, reductions and net by day of sale (or by the order's hour), plus Σ orders.total
-     * for the net-agrees-with-orders check. A null bucket means "the whole range". */
-    public record SalesFacts(String bucket, long orders, long voidedOrRefunded, BigDecimal grossSales, BigDecimal voids,
-                             BigDecimal refunds, BigDecimal discounts, BigDecimal extrasRemoved, BigDecimal netSales,
-                             BigDecimal orderTotals) {
+    /** Gross, discounts at sale, reductions after payment and net by day of sale (or by the
+     * order's hour), plus Σ orders.total for the net-agrees-with-orders check. A null bucket
+     * means "the whole range". legacyDiscountCount counts retired after-payment DISCOUNT rows. */
+    public record SalesFacts(String bucket, long orders, long voidedOrRefunded, BigDecimal grossSales,
+                             BigDecimal discountsAtSale, BigDecimal voids, BigDecimal refunds, BigDecimal extrasRemoved,
+                             BigDecimal legacyDiscounts, long legacyDiscountCount, BigDecimal netSales, BigDecimal orderTotals) {
         public long netOrders() {
             return orders - voidedOrRefunded;
         }
 
-        public BigDecimal reductions() {
-            return voids.add(refunds).add(discounts).add(extrasRemoved);
+        /** Voids, refunds, extras removed and legacy after-payment discounts. */
+        public BigDecimal reductionsAfterPayment() {
+            return voids.add(refunds).add(extrasRemoved).add(legacyDiscounts);
         }
     }
 
@@ -69,10 +71,12 @@ public class ReportFacts {
             COUNT(*) AS orders,
             COALESCE(SUM(is_voided_or_refunded), 0) AS voided_or_refunded,
             COALESCE(SUM(gross_sales), 0) AS gross_sales,
+            COALESCE(SUM(discounts_at_sale), 0) AS discounts_at_sale,
             COALESCE(SUM(voids), 0) AS voids,
             COALESCE(SUM(refunds), 0) AS refunds,
-            COALESCE(SUM(discounts), 0) AS discounts,
             COALESCE(SUM(extras_removed), 0) AS extras_removed,
+            COALESCE(SUM(legacy_discounts_after_payment), 0) AS legacy_discounts,
+            COALESCE(SUM(legacy_discount_count), 0) AS legacy_discount_count,
             COALESCE(SUM(net_sales), 0) AS net_sales,
             COALESCE(SUM(order_total), 0) AS order_totals
             FROM v_order_facts
@@ -186,8 +190,8 @@ public class ReportFacts {
 
     private static SalesFacts salesFacts(ResultSet rs, String bucket) throws SQLException {
         return new SalesFacts(bucket, rs.getLong("orders"), rs.getLong("voided_or_refunded"),
-                rs.getBigDecimal("gross_sales"), rs.getBigDecimal("voids"), rs.getBigDecimal("refunds"),
-                rs.getBigDecimal("discounts"), rs.getBigDecimal("extras_removed"), rs.getBigDecimal("net_sales"),
-                rs.getBigDecimal("order_totals"));
+                rs.getBigDecimal("gross_sales"), rs.getBigDecimal("discounts_at_sale"), rs.getBigDecimal("voids"),
+                rs.getBigDecimal("refunds"), rs.getBigDecimal("extras_removed"), rs.getBigDecimal("legacy_discounts"),
+                rs.getLong("legacy_discount_count"), rs.getBigDecimal("net_sales"), rs.getBigDecimal("order_totals"));
     }
 }
