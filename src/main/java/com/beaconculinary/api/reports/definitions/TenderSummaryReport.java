@@ -66,17 +66,22 @@ public class TenderSummaryReport implements ReportDefinition {
                 ReportParamSpec.groupBy(List.of(GroupBy.DAY, GroupBy.WEEK, GroupBy.MONTH), GroupBy.DAY));
     }
 
+    /** 2: discounts moved to checkout — the collected check now compares with gross sales less
+     * discounts at sale (key collected-equals-gross-less-sale-discounts). */
     @Override
     public int definitionVersion() {
-        return 1;
+        return 2;
     }
 
     @Override
     public List<String> notes() {
         return List.of(
-                "Collected is what customers paid, by payment method, on the trading day the order was sold.",
-                "Cash paid out and account credits are voids, refunds, discounts and extras removed, on the trading day "
-                        + "they were processed. A refund on a card order is paid out in cash, so it appears under Cash paid out.",
+                "Collected is what was actually taken for each order, after any discount at sale, by payment method, "
+                        + "on the trading day the order was sold.",
+                "Paid out is money returned after payment by a void or refund (or an extras removal), on the trading day "
+                        + "it was processed. A refund on a card order is paid out as cash. Older discounts given after payment "
+                        + "also count here.",
+                "Discounts at sale are not paid out; they simply reduce what was collected.",
                 "Net cash movement is cash collected minus cash paid out: what the cash drawers should have gained on top "
                         + "of their opening floats.",
                 "Split orders were paid with more than one payment method.");
@@ -130,10 +135,10 @@ public class TenderSummaryReport implements ReportDefinition {
             rows.add(row);
         }
 
-        var grossSales = facts.salesTotals(range).grossSales();
+        var sales = facts.salesTotals(range);
         var checks = List.of(
-                ReportCheck.compare("collected-equals-gross", "Total collected equals gross sales (Sales Summary)",
-                        grossSales, (BigDecimal) totals.get("totalCollected"), null),
+                ReportCheck.compare("collected-equals-gross-less-sale-discounts", "Collected equals gross sales less discounts at sale",
+                        sales.grossSales().subtract(sales.discountsAtSale()), (BigDecimal) totals.get("totalCollected"), null),
                 shiftCashFigures.check("cash-matches-cashups", "Net cash movement equals the cash-ups (expected cash − opening float)",
                         shiftCashFigures.reconcile(range), false));
 

@@ -204,6 +204,16 @@ public class ShiftActivityService {
             }
         }
 
+        // Discounts at sale: orders sold in this shift that had one.
+        long saleDiscountCount = 0;
+        var saleDiscountAmount = BigDecimal.ZERO;
+        for (var order : orders) {
+            if (order.discountedAtSale()) {
+                saleDiscountCount++;
+                saleDiscountAmount = saleDiscountAmount.add(order.getSaleDiscount());
+            }
+        }
+
         var counts = new EnumMap<AdjustmentType, Long>(AdjustmentType.class);
         var amounts = new EnumMap<AdjustmentType, BigDecimal>(AdjustmentType.class);
         for (var adjustment : adjustments) {
@@ -211,12 +221,17 @@ public class ShiftActivityService {
             counts.merge(type, 1L, Long::sum);
             amounts.merge(type, adjustment.getAmount(), BigDecimal::add);
         }
+        // Retired after-payment discounts processed in this shift; omitted when there are none.
+        var legacyDiscounts = counts.containsKey(AdjustmentType.DISCOUNT)
+                ? countAmount(AdjustmentType.DISCOUNT, counts, amounts)
+                : null;
 
         return new Totals(orders.size(), salesByMethod,
                 countAmount(AdjustmentType.VOID, counts, amounts),
                 countAmount(AdjustmentType.REFUND, counts, amounts),
-                countAmount(AdjustmentType.DISCOUNT, counts, amounts),
-                countAmount(AdjustmentType.EXTRAS_REMOVED, counts, amounts));
+                new CountAmount(saleDiscountCount, saleDiscountAmount),
+                countAmount(AdjustmentType.EXTRAS_REMOVED, counts, amounts),
+                legacyDiscounts);
     }
 
     private static CountAmount countAmount(AdjustmentType type, Map<AdjustmentType, Long> counts,
@@ -229,9 +244,11 @@ public class ShiftActivityService {
         for (var payment : order.getPayments()) {
             payments.add(new Payment(payment.getMethod(), payment.getAmount()));
         }
+        // Discounted = a discount at sale, or an old after-payment DISCOUNT adjustment.
+        var discounted = order.discountedAtSale() || discountedOrderIds.contains(order.getId());
         return new SoldOrder(order.getId(), order.getOrderNumber(), UtcTimestamps.toInstant(order.getCreatedAt()),
                 UserRefDto.withRole(order.getCashier()), order.getStatus(), order.getOriginalTotal(), order.getTotal(),
-                payments, discountedOrderIds.contains(order.getId()), extrasRemovedOrderIds.contains(order.getId()));
+                order.getSaleDiscount(), payments, discounted, extrasRemovedOrderIds.contains(order.getId()));
     }
 
     private ProcessedAdjustment toProcessedAdjustment(OrderAdjustment adjustment, Long shiftId) {

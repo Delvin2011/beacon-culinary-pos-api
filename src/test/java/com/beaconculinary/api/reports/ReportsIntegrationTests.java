@@ -26,6 +26,7 @@ import static com.beaconculinary.api.support.ReportFixture.TUESDAY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -110,7 +111,7 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.page").value(nullValue()))
                 .andExpect(jsonPath("$.columns[0].type").value("DATE"))
                 .andExpect(jsonPath("$.columns[*].key", contains("period", "orders", "voidedOrRefundedOrders", "netOrders",
-                        "grossSales", "voids", "refunds", "discounts", "extrasRemoved", "netSales", "averageOrderValue")))
+                        "grossSales", "discountsAtSale", "voids", "refunds", "extrasRemoved", "netSales", "averageOrderValue")))
                 .andExpect(jsonPath("$.rows.length()").value(2))
                 .andExpect(jsonPath("$.rows[0].period").value("2026-10-05"))
                 .andExpect(jsonPath("$.rows[0].orders").value(7))
@@ -119,7 +120,7 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.rows[0].grossSales").value(570.00))
                 .andExpect(jsonPath("$.rows[0].voids").value(50.00))
                 .andExpect(jsonPath("$.rows[0].refunds").value(90.00))
-                .andExpect(jsonPath("$.rows[0].discounts").value(10.00))
+                .andExpect(jsonPath("$.rows[0].discountsAtSale").value(10.00))
                 .andExpect(jsonPath("$.rows[0].extrasRemoved").value(0.00))
                 .andExpect(jsonPath("$.rows[0].netSales").value(420.00))
                 .andExpect(jsonPath("$.rows[0].averageOrderValue").value(84.00))
@@ -137,7 +138,7 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.totals.grossSales").value(660.00))
                 .andExpect(jsonPath("$.totals.voids").value(50.00))
                 .andExpect(jsonPath("$.totals.refunds").value(90.00))
-                .andExpect(jsonPath("$.totals.discounts").value(10.00))
+                .andExpect(jsonPath("$.totals.discountsAtSale").value(10.00))
                 .andExpect(jsonPath("$.totals.extrasRemoved").value(15.00))
                 .andExpect(jsonPath("$.totals.netSales").value(495.00))
                 .andExpect(jsonPath("$.totals.averageOrderValue").value(70.71))
@@ -145,7 +146,9 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.checks[0].status").value("PASS"))
                 .andExpect(jsonPath("$.checks[0].expected").value(495.00))
                 .andExpect(jsonPath("$.checks[0].actual").value(495.00))
-                .andExpect(jsonPath("$.checks[0].difference").value(0.00));
+                .andExpect(jsonPath("$.checks[0].difference").value(0.00))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(2))
+                .andExpect(jsonPath("$.rows[0].legacyDiscountsAfterPayment").doesNotExist());
     }
 
     @Test
@@ -156,6 +159,8 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.rows[*].orders", contains(2, 2, 1, 1, 1, 2)))
                 .andExpect(jsonPath("$.rows[*].grossSales", contains(160.0, 120.0, 50.0, 90.0, 120.0, 120.0)))
                 .andExpect(jsonPath("$.rows[*].netSales", contains(160.0, 120.0, 0.0, 0.0, 120.0, 95.0)))
+                // O7's R10 discount at sale sits in the 12:00 row.
+                .andExpect(jsonPath("$.rows[5].discountsAtSale").value(10.00))
                 .andExpect(jsonPath("$.totals.orders").value(9))
                 .andExpect(jsonPath("$.totals.grossSales").value(660.00))
                 .andExpect(jsonPath("$.totals.netSales").value(495.00))
@@ -180,24 +185,27 @@ class ReportsIntegrationTests {
         run("tender-summary", RANGE + "&groupBy=DAY").andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.category").value("PAYMENTS_ACCOUNTS"))
                 .andExpect(jsonPath("$.rows[*].period", contains("2026-10-05", "2026-10-06")))
-                .andExpect(jsonPath("$.rows[*].cash", contains(360.0, 40.0)))
+                .andExpect(jsonPath("$.rows[*].cash", contains(350.0, 40.0)))
                 .andExpect(jsonPath("$.rows[*].card", contains(90.0, 0.0)))
                 .andExpect(jsonPath("$.rows[*].account", contains(120.0, 50.0)))
-                .andExpect(jsonPath("$.rows[*].totalCollected", contains(570.0, 90.0)))
-                .andExpect(jsonPath("$.rows[*].cashPaidOut", contains(150.0, 0.0)))
+                .andExpect(jsonPath("$.rows[*].totalCollected", contains(560.0, 90.0)))
+                .andExpect(jsonPath("$.rows[*].cashPaidOut", contains(140.0, 0.0)))
                 .andExpect(jsonPath("$.rows[*].accountCredits", contains(0.0, 15.0)))
                 .andExpect(jsonPath("$.rows[*].netCashMovement", contains(210.0, 40.0)))
                 .andExpect(jsonPath("$.rows[*].splitOrders", contains(1, 0)))
                 .andExpect(jsonPath("$.totals.period").value("Total"))
-                .andExpect(jsonPath("$.totals.cash").value(400.00))
+                .andExpect(jsonPath("$.totals.cash").value(390.00))
                 .andExpect(jsonPath("$.totals.card").value(90.00))
                 .andExpect(jsonPath("$.totals.account").value(170.00))
-                .andExpect(jsonPath("$.totals.totalCollected").value(660.00))
-                .andExpect(jsonPath("$.totals.cashPaidOut").value(150.00))
+                .andExpect(jsonPath("$.totals.totalCollected").value(650.00))
+                .andExpect(jsonPath("$.totals.cashPaidOut").value(140.00))
                 .andExpect(jsonPath("$.totals.accountCredits").value(15.00))
                 .andExpect(jsonPath("$.totals.netCashMovement").value(250.00))
                 .andExpect(jsonPath("$.totals.splitOrders").value(1))
-                .andExpect(jsonPath("$.checks[*].key", contains("collected-equals-gross", "cash-matches-cashups")))
+                .andExpect(jsonPath("$.checks[*].key", contains("collected-equals-gross-less-sale-discounts", "cash-matches-cashups")))
+                .andExpect(jsonPath("$.checks[0].expected").value(650.00))
+                .andExpect(jsonPath("$.checks[0].actual").value(650.00))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(2))
                 .andExpect(jsonPath("$.checks[*].status", contains("PASS", "PASS")))
                 .andExpect(jsonPath("$.checks[1].expected").value(250.00))
                 .andExpect(jsonPath("$.checks[1].actual").value(250.00));
@@ -213,8 +221,8 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.rows[*].shiftId", contains((int) fixture.s1, (int) fixture.s2, (int) fixture.s3)))
                 .andExpect(jsonPath("$.rows[*].tradingDay", contains("2026-10-05", "2026-10-05", "2026-10-06")))
                 .andExpect(jsonPath("$.rows[*].openingFloat", contains(200.0, 300.0, 100.0)))
-                .andExpect(jsonPath("$.rows[*].cashSales", contains(290.0, 70.0, 40.0)))
-                .andExpect(jsonPath("$.rows[*].cashRefunds", contains(50.0, 100.0, 0.0)))
+                .andExpect(jsonPath("$.rows[*].cashSales", contains(290.0, 60.0, 40.0)))
+                .andExpect(jsonPath("$.rows[*].cashRefunds", contains(50.0, 90.0, 0.0)))
                 .andExpect(jsonPath("$.rows[*].expectedCash", contains(440.0, 270.0, 140.0)))
                 .andExpect(jsonPath("$.rows[*].status", contains("CLOSED", "CLOSED", "OPEN")))
                 .andExpect(jsonPath("$.rows[0].countedCash").value(440.00))
@@ -230,8 +238,8 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.rows[2].closedAt").value(nullValue()))
                 .andExpect(jsonPath("$.rows[2].closedBy").value(nullValue()))
                 .andExpect(jsonPath("$.totals.openingFloat").value(600.00))
-                .andExpect(jsonPath("$.totals.cashSales").value(400.00))
-                .andExpect(jsonPath("$.totals.cashRefunds").value(150.00))
+                .andExpect(jsonPath("$.totals.cashSales").value(390.00))
+                .andExpect(jsonPath("$.totals.cashRefunds").value(140.00))
                 .andExpect(jsonPath("$.totals.expectedCash").value(850.00))
                 .andExpect(jsonPath("$.totals.countedCash").value(700.00))
                 .andExpect(jsonPath("$.totals.variance").value(-10.00))
@@ -275,6 +283,43 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.checks[0].expected").value(490.00))
                 .andExpect(jsonPath("$.checks[0].actual").value(495.00))
                 .andExpect(jsonPath("$.checks[0].difference").value(5.00));
+    }
+
+    @Test
+    void tamperedSaleDiscount_failsCollectedEqualsGrossLessSaleDiscounts() throws Exception {
+        jdbc.update("UPDATE orders SET sale_discount = 15.00 WHERE id = ?", fixture.o7);
+
+        // Gross 660 - discounts at sale 15 = 645, but 650 was collected.
+        run("tender-summary", RANGE)
+                .andExpect(jsonPath("$.checks[0].key").value("collected-equals-gross-less-sale-discounts"))
+                .andExpect(jsonPath("$.checks[0].status").value("FAIL"))
+                .andExpect(jsonPath("$.checks[0].expected").value(645.00))
+                .andExpect(jsonPath("$.checks[0].actual").value(650.00))
+                .andExpect(jsonPath("$.checks[0].difference").value(5.00));
+    }
+
+    @Test
+    void legacyAfterPaymentDiscount_addsTheLegacyColumnOnlyWhenInRange_andNetStillAgrees() throws Exception {
+        // An old R5 after-payment discount on O1 (Monday), as an old database holds it.
+        fixture.legacyDiscount(fixture.o1, fixture.s1, "5.00", AuthTestHelper.cashierAId(mockMvc), AuthTestHelper.adminId(mockMvc),
+                ReportFixture.utc(MONDAY, 7, 30));
+
+        run("sales-summary", RANGE + "&groupBy=DAY")
+                .andExpect(jsonPath("$.columns[*].key", contains("period", "orders", "voidedOrRefundedOrders", "netOrders",
+                        "grossSales", "discountsAtSale", "voids", "refunds", "extrasRemoved", "legacyDiscountsAfterPayment",
+                        "netSales", "averageOrderValue")))
+                .andExpect(jsonPath("$.columns[9].label").value("Discounts after payment (legacy)"))
+                .andExpect(jsonPath("$.rows[0].legacyDiscountsAfterPayment").value(5.00))
+                .andExpect(jsonPath("$.rows[1].legacyDiscountsAfterPayment").value(0.00))
+                .andExpect(jsonPath("$.totals.legacyDiscountsAfterPayment").value(5.00))
+                .andExpect(jsonPath("$.totals.netSales").value(490.00))
+                .andExpect(jsonPath("$.checks[0].status").value("PASS"))
+                .andExpect(jsonPath("$.checks[0].actual").value(490.00));
+
+        // Tuesday alone holds no legacy discount: the column is absent.
+        run("sales-summary", "from=2026-10-06&to=2026-10-06")
+                .andExpect(jsonPath("$.columns[*].key", not(hasItem("legacyDiscountsAfterPayment"))))
+                .andExpect(jsonPath("$.rows[0].legacyDiscountsAfterPayment").doesNotExist());
     }
 
     @Test
@@ -366,8 +411,8 @@ class ReportsIntegrationTests {
         assertThat(bytes).startsWith(0xEF, 0xBB, 0xBF);
         var lines = new String(bytes, StandardCharsets.UTF_8).substring(1).split("\r\n");
         assertThat(lines).containsExactly(
-                "Date,Orders,Voided/refunded orders,Net orders,Gross sales,Voids,Refunds,Discounts,Extras removed,Net sales,Average order value",
-                "2026-10-05,7,2,5,570.00,50.00,90.00,10.00,0.00,420.00,84.00",
+                "Date,Orders,Voided/refunded orders,Net orders,Gross sales,Discounts at sale,Voids,Refunds,Extras removed,Net sales,Average order value",
+                "2026-10-05,7,2,5,570.00,10.00,50.00,90.00,0.00,420.00,84.00",
                 "2026-10-06,2,0,2,90.00,0.00,0.00,0.00,15.00,75.00,37.50");
     }
 

@@ -270,24 +270,22 @@ class ShiftActivityIntegrationTests {
         var chickenStockId = pos.createDailyComponentStock(lunchId, chickenId, 5);
         var shiftId = pos.openShift(cashierToken, "500.00");
 
-        var discounted = pos.placeCashOrder(cashierToken, "50.00", new LineReq(optionId));
+        // A R10 discount at sale: the customer pays R40.
+        var discounted = PosFlowHelper.json(pos.submitOrder(cashierToken, List.of(PaymentReq.cash("40.00")),
+                PosFlowHelper.DiscountReq.fixed("10.00", pos.authorizePin(cashierToken)), new LineReq(optionId))).get("id").asLong();
         var extrasRemoved = pos.placeCashOrder(cashierToken, "60.00",
                 new LineReq(optionId, 1, List.of(new ExtraReq(chickenStockId, 1))));
         var voided = pos.placeCashOrder(cashierToken, "50.00", new LineReq(optionId));
         pos.submitOrder(cashierToken, List.of(PaymentReq.card("50.00", "AUTH-SECRET-1")), new LineReq(optionId))
                 .andExpect(status().isCreated());
 
-        // The after-payment discount is retired; an old database still holds such rows.
-        com.beaconculinary.api.support.ReportFixture.empty(jdbcTemplate).legacyDiscount(discounted, shiftId, "10.00",
-                AuthTestHelper.cashierAId(mockMvc), AuthTestHelper.adminId(mockMvc),
-                java.sql.Timestamp.valueOf(LocalDateTime.now(ZoneOffset.UTC)));
         pos.markDone(extrasRemoved);
         pos.adjust(cashierToken, extrasRemoved, "EXTRAS_ONLY"); // REFUND of the 10.00 extra
         pos.adjust(cashierToken, voided, "WHOLE_ORDER");        // PENDING -> VOID, 50.00
 
         var body = activity(shiftId).andExpect(status().isOk())
                 .andExpect(jsonPath("$.totals.orderCount").value(4))
-                .andExpect(jsonPath("$.totals.salesByMethod.CASH").value(160.00))
+                .andExpect(jsonPath("$.totals.salesByMethod.CASH").value(150.00))
                 .andExpect(jsonPath("$.totals.salesByMethod.CARD").value(50.00))
                 .andExpect(jsonPath("$.totals.salesByMethod.ACCOUNT").value(0))
                 .andExpect(jsonPath("$.totals.voids.count").value(1))
@@ -297,25 +295,51 @@ class ShiftActivityIntegrationTests {
                 .andExpect(jsonPath("$.totals.discounts.amount").value(10.00))
                 .andExpect(jsonPath("$.totals.extrasRemoved.count").value(1))
                 .andExpect(jsonPath("$.totals.extrasRemoved.amount").value(10.00))
+                .andExpect(jsonPath("$.totals.legacyDiscountsAfterPayment").doesNotExist())
                 .andExpect(jsonPath("$.orders[0].orderId").value(discounted))
                 .andExpect(jsonPath("$.orders[0].discounted").value(true))
+                .andExpect(jsonPath("$.orders[0].saleDiscount").value(10.00))
                 .andExpect(jsonPath("$.orders[0].extrasRemoved").value(false))
-                .andExpect(jsonPath("$.orders[0].originalTotal").value(50.00))
+                .andExpect(jsonPath("$.orders[0].originalTotal").value(40.00))
                 .andExpect(jsonPath("$.orders[0].total").value(40.00))
-                .andExpect(jsonPath("$.orders[0].payments[0].amount").value(50.00))
+                .andExpect(jsonPath("$.orders[0].payments[0].amount").value(40.00))
                 .andExpect(jsonPath("$.orders[1].extrasRemoved").value(true))
                 .andExpect(jsonPath("$.orders[1].discounted").value(false))
+                .andExpect(jsonPath("$.orders[1].saleDiscount").value(0))
                 .andExpect(jsonPath("$.orders[2].status").value("VOIDED"))
                 .andExpect(jsonPath("$.orders[3].payments[0].method").value("CARD"))
-                .andExpect(jsonPath("$.adjustments[*].type", contains("DISCOUNT", "EXTRAS_REMOVED", "VOID")))
+                // A discount at sale is not an adjustment.
+                .andExpect(jsonPath("$.adjustments[*].type", contains("EXTRAS_REMOVED", "VOID")))
                 .andExpect(jsonPath("$.adjustments[0].crossShift").value(false))
-                .andExpect(jsonPath("$.expectedCashBreakdown.cashSales").value(160.00))
-                .andExpect(jsonPath("$.expectedCashBreakdown.cashRefundsProcessed").value(70.00))
+                .andExpect(jsonPath("$.expectedCashBreakdown.cashSales").value(150.00))
+                .andExpect(jsonPath("$.expectedCashBreakdown.cashRefundsProcessed").value(60.00))
                 .andExpect(jsonPath("$.expectedCashBreakdown.expectedCash").value(590.00))
                 .andReturn().getResponse().getContentAsString();
 
         assertThat(body).doesNotContain("AUTH-SECRET-1").doesNotContainIgnoringCase("cardReference");
         assertThat(list("").andReturn().getResponse().getContentAsString()).doesNotContain("AUTH-SECRET-1");
+    }
+
+    @Test
+    void legacyAfterPaymentDiscount_isFlaggedListedAndTotalledSeparately() throws Exception {
+        var optionId = pos.createDailyOption(lunchId, pos.createMealCatalog("Meal", "50.00", pos.createComponent("Beef", "15.00")), 10);
+        var shiftId = pos.openShift(cashierToken, "500.00");
+        var orderId = pos.placeCashOrder(cashierToken, "50.00", new LineReq(optionId));
+        // The retired after-payment discount, as an old database still holds it.
+        com.beaconculinary.api.support.ReportFixture.empty(jdbcTemplate).legacyDiscount(orderId, shiftId, "10.00",
+                AuthTestHelper.cashierAId(mockMvc), AuthTestHelper.adminId(mockMvc),
+                java.sql.Timestamp.valueOf(LocalDateTime.now(ZoneOffset.UTC)));
+
+        activity(shiftId).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totals.discounts.count").value(0))
+                .andExpect(jsonPath("$.totals.legacyDiscountsAfterPayment.count").value(1))
+                .andExpect(jsonPath("$.totals.legacyDiscountsAfterPayment.amount").value(10.00))
+                .andExpect(jsonPath("$.orders[0].discounted").value(true))
+                .andExpect(jsonPath("$.orders[0].saleDiscount").value(0))
+                .andExpect(jsonPath("$.orders[0].total").value(40.00))
+                .andExpect(jsonPath("$.adjustments[0].type").value("DISCOUNT"))
+                // Legacy discounts were paid out in cash, so they still reduce expected cash.
+                .andExpect(jsonPath("$.expectedCashBreakdown.expectedCash").value(540.00));
     }
 
     @Test
