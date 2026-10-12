@@ -227,14 +227,25 @@ class RefundPayoutIntegrationTests {
                 .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
-    private record DiscountReq(String requestedAction, String discountType, BigDecimal discountValue,
-                                String reasonCode, String note, String authorizationToken) {
+    private record DiscountAuthReq(String authorizationToken) {
     }
 
-    private ResultActions discount(long orderId, BigDecimal amount, String token) throws Exception {
-        var body = MAPPER.writeValueAsString(new DiscountReq("DISCOUNT", "FIXED_AMOUNT", amount, "CUSTOMER_COMPLAINT", null, token));
-        return mockMvc.perform(post("/orders/" + orderId + "/adjustments").header("Authorization", "Bearer " + cashierToken)
-                .contentType(MediaType.APPLICATION_JSON).content(body));
+    private record SaleDiscountReq(String type, BigDecimal value, String reasonCode, DiscountAuthReq authorization) {
+    }
+
+    private record DiscountedOrderReq(List<PaymentReq> payments, List<LineReq> lines, SaleDiscountReq discount) {
+    }
+
+    /** An order with a fixed discount at sale, approved with a fresh manager PIN token. */
+    private long placeDiscountedOrder(String fixedDiscount, PaymentReq... payments) throws Exception {
+        openShift();
+        var discount = new SaleDiscountReq("FIXED_AMOUNT", new BigDecimal(fixedDiscount), "STAFF", new DiscountAuthReq(authorize()));
+        var body = MAPPER.writeValueAsString(new DiscountedOrderReq(List.of(payments), List.of(new LineReq(optionId, 1, List.of())), discount));
+        var response = mockMvc.perform(post("/orders").header("Authorization", "Bearer " + cashierToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return MAPPER.readTree(response).get("id").asLong();
     }
 
     @Test
@@ -297,26 +308,23 @@ class RefundPayoutIntegrationTests {
                 .andExpect(jsonPath("$.expectedCash").value(500.00));
     }
 
+    // Discount before payment: replaces discountOnCardOnlyOrder_sameCashOutBehaviorAsRefund. The
+    // after-payment discount (which paid cash out of the drawer) is retired; a discount at sale
+    // just lowers what is charged and pays nothing out.
     @Test
-    void discountOnCardOnlyOrder_sameCashOutBehaviorAsRefund() throws Exception {
-        var orderId = placeOrder(PaymentReq.card("100.00"));
-        var token = authorize();
+    void discountedAccountOrder_chargesTheAccountTheDiscountedTotal_withNoCashImpact() throws Exception {
+        var accountId = createAccount();
+        placeDiscountedOrder("15.00", PaymentReq.account("85.00", accountId));
 
-        // Counterintuitive but intentional (Stage 4 Part C's worked example): the customer paid
-        // by card, but the cashier physically hands back cash from the drawer for the discount,
-        // so it reduces expectedCash even though the sale itself contributed zero cash.
-        discount(orderId, new BigDecimal("15.00"), token)
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.total").value(85.00))
-                .andExpect(jsonPath("$.adjustments[0].action").value("DISCOUNT"))
-                .andExpect(jsonPath("$.adjustments[0].refundMethod").value("CASH"));
+        mockMvc.perform(get("/admin/accounts/" + accountId + "/balance").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.totalCharged").value(85.00))
+                .andExpect(jsonPath("$.outstandingBalance").value(85.00));
 
         var shiftId = shiftRepository.findFirstByStatus(ShiftStatus.OPEN).orElseThrow().getId();
         mockMvc.perform(get("/shifts/" + shiftId + "/summary").header("Authorization", "Bearer " + cashierToken))
                 .andExpect(jsonPath("$.cashSalesTotal").value(0.00))
-                .andExpect(jsonPath("$.adjustmentsTotal").value(15.00))
-                .andExpect(jsonPath("$.expectedCash").value(485.00));
+                .andExpect(jsonPath("$.adjustmentsTotal").value(0.00))
+                .andExpect(jsonPath("$.expectedCash").value(500.00));
     }
 
     @Test

@@ -106,13 +106,51 @@ public class PosFlowHelper {
         }
     }
 
-    private record OrderReq(List<PaymentReq> payments, List<LineReq> lines) {
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private record OrderReq(List<PaymentReq> payments, List<LineReq> lines, DiscountReq discount) {
+    }
+
+    /** A discount at sale on POST /orders. Values are text so tests can send invalid ones. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record DiscountReq(String type, BigDecimal value, String reasonCode, String note, DiscountAuth authorization) {
+        public static DiscountReq fixed(String value, String authorizationToken) {
+            return new DiscountReq("FIXED_AMOUNT", new BigDecimal(value), "MANAGER_GOODWILL", null, DiscountAuth.token(authorizationToken));
+        }
+
+        public static DiscountReq percent(String value, String authorizationToken) {
+            return new DiscountReq("PERCENTAGE", new BigDecimal(value), "PROMOTION", null, DiscountAuth.token(authorizationToken));
+        }
+    }
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record DiscountAuth(String authorizationToken, String sessionToken) {
+        public static DiscountAuth token(String authorizationToken) {
+            return new DiscountAuth(authorizationToken, null);
+        }
+
+        public static DiscountAuth session(String sessionToken) {
+            return new DiscountAuth(null, sessionToken);
+        }
     }
 
     public ResultActions submitOrder(String token, List<PaymentReq> payments, LineReq... lines) throws Exception {
-        var body = MAPPER.writeValueAsString(new OrderReq(payments, List.of(lines)));
+        return submitOrder(token, payments, null, lines);
+    }
+
+    public ResultActions submitOrder(String token, List<PaymentReq> payments, DiscountReq discount, LineReq... lines) throws Exception {
+        var body = MAPPER.writeValueAsString(new OrderReq(payments, List.of(lines), discount));
         return mockMvc.perform(post("/orders").header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    /** A management session (manager PIN 654321), reusable until it expires. */
+    public String authorizeSession(String callerToken) throws Exception {
+        var body = MAPPER.writeValueAsString(new AuthorizeReq("654321"));
+        var response = mockMvc.perform(post("/admin/authorize-session").header("Authorization", "Bearer " + callerToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return MAPPER.readTree(response).get("sessionToken").asText();
     }
 
     public long placeCashOrder(String token, String amount, LineReq... lines) throws Exception {
@@ -176,20 +214,24 @@ public class PosFlowHelper {
     private record AdjustmentReq(String scope, String reasonCode, String note, String authorizationToken) {
     }
 
-    private record DiscountReq(String requestedAction, String discountType, BigDecimal discountValue, String reasonCode,
-                               String note, String authorizationToken) {
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private record RawAdjustmentReq(String requestedAction, String scope, String reasonCode, String discountType,
+                                    BigDecimal discountValue, String authorizationToken) {
+    }
+
+    /** POST /orders/{id}/adjustments with a chosen token, scope and requestedAction (null = void/refund),
+     * without asserting the outcome. */
+    public ResultActions adjustWith(String token, long orderId, String scope, String requestedAction, String authorizationToken)
+            throws Exception {
+        var isDiscount = "DISCOUNT".equals(requestedAction);
+        var body = MAPPER.writeValueAsString(new RawAdjustmentReq(requestedAction, scope, "CUSTOMER_COMPLAINT",
+                isDiscount ? "FIXED_AMOUNT" : null, isDiscount ? new BigDecimal("5.00") : null, authorizationToken));
+        return mockMvc.perform(post("/orders/" + orderId + "/adjustments").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
     public void adjust(String token, long orderId, String scope) throws Exception {
         var body = MAPPER.writeValueAsString(new AdjustmentReq(scope, "CUSTOMER_COMPLAINT", null, authorizePin(token)));
-        mockMvc.perform(post("/orders/" + orderId + "/adjustments").header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isCreated());
-    }
-
-    public void discountFixed(String token, long orderId, String amount) throws Exception {
-        var body = MAPPER.writeValueAsString(new DiscountReq("DISCOUNT", "FIXED_AMOUNT", new BigDecimal(amount),
-                "CUSTOMER_COMPLAINT", null, authorizePin(token)));
         mockMvc.perform(post("/orders/" + orderId + "/adjustments").header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());

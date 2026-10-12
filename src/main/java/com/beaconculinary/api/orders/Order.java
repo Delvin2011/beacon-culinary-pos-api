@@ -46,7 +46,17 @@ public class Order {
     @Column(name = "total")
     private BigDecimal total;
 
+    // What the meals + extras cost, before any discount at sale. Equals originalTotal when there
+    // was no discount (and for every order placed before discounts at sale existed).
+    @Column(name = "pre_discount_total")
+    private BigDecimal preDiscountTotal;
+
+    // The manager-approved discount given at checkout; 0 when none.
+    @Column(name = "sale_discount")
+    private BigDecimal saleDiscount = BigDecimal.ZERO;
+
     // Immutable snapshot of the total at creation, for audit — unlike total, this never changes.
+    // = preDiscountTotal - saleDiscount = the sum of the payments.
     @Column(name = "original_total")
     private BigDecimal originalTotal;
 
@@ -72,4 +82,13 @@ public class Order {
     // columns remain in the orders table, unused, flagged for a future cleanup.
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderPayment> payments = new ArrayList<>();
+
+    // The discount at sale's details and approval, or null when there was none.
+    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private OrderDiscount discount;
+
+    /** True when a discount was given at checkout — such an order can't be refunded. */
+    public boolean discountedAtSale() {
+        return saleDiscount != null && saleDiscount.signum() > 0;
+    }
 }

@@ -277,7 +277,10 @@ class ShiftActivityIntegrationTests {
         pos.submitOrder(cashierToken, List.of(PaymentReq.card("50.00", "AUTH-SECRET-1")), new LineReq(optionId))
                 .andExpect(status().isCreated());
 
-        pos.discountFixed(cashierToken, discounted, "10.00");
+        // The after-payment discount is retired; an old database still holds such rows.
+        com.beaconculinary.api.support.ReportFixture.empty(jdbcTemplate).legacyDiscount(discounted, shiftId, "10.00",
+                AuthTestHelper.cashierAId(mockMvc), AuthTestHelper.adminId(mockMvc),
+                java.sql.Timestamp.valueOf(LocalDateTime.now(ZoneOffset.UTC)));
         pos.markDone(extrasRemoved);
         pos.adjust(cashierToken, extrasRemoved, "EXTRAS_ONLY"); // REFUND of the 10.00 extra
         pos.adjust(cashierToken, voided, "WHOLE_ORDER");        // PENDING -> VOID, 50.00

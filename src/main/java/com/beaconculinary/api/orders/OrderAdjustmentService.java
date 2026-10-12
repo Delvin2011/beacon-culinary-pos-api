@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
@@ -23,8 +22,8 @@ import java.util.List;
  * ({@link OrderEventBroadcaster}) so the public board — which never subscribes to that
  * broadcaster — has no way to react to a change its payload wouldn't reflect anyway.
  *
- * Stage 3.2 adds a DISCOUNT branch on the same endpoint: money handed back on an already-paid
- * order, categorized separately from VOID/REFUND for reporting, with no lifecycle transition.
+ * Stage 3.2 added an after-payment DISCOUNT branch here; it is now retired (discounts are given at
+ * checkout, before payment). Old DISCOUNT rows remain readable; new ones are refused.
  *
  * Stage 3.3 lets either Stage 2.6's single-use authorizationToken or a longer-lived, reusable
  * management sessionToken authorize this call.
@@ -46,6 +45,15 @@ public class OrderAdjustmentService {
 
     @Transactional
     public OrderDto adjustOrder(Long orderId, CreateOrderAdjustmentRequest request) {
+        // Step 0, before any token is consumed or anything is written: discounts are now given
+        // at checkout (POST /orders), so the after-payment discount is retired. Old DISCOUNT rows
+        // stay readable; only creating new ones is refused.
+        if (request.getRequestedAction() == OrderAdjustmentRequestedAction.DISCOUNT) {
+            throw new OrderRuleException("DISCOUNT_AFTER_PAYMENT_RETIRED",
+                    "Discounts after payment are no longer available. Give the discount at checkout instead.");
+        }
+        rejectRefundOfDiscountedOrder(orderId, request);
+
         // Step 1: validate the authorization first, so any failure below still leaves a
         // single-use token unusable — see AdminAuthorizationService#consumeToken. A sessionToken
         // is validated but never consumed.
@@ -85,23 +93,19 @@ public class OrderAdjustmentService {
         adjustment.setRequestedBy(cashier);
         adjustment.setAuthorizedBy(admin);
 
-        if (request.getRequestedAction() == OrderAdjustmentRequestedAction.DISCOUNT) {
-            applyDiscount(order, request, adjustment);
-        } else {
-            if (request.getScope() == null) {
-                throw new InvalidOrderRequestException("scope is required.");
-            }
-            var action = order.getStatus() == OrderStatus.PENDING ? OrderAdjustmentAction.VOID : OrderAdjustmentAction.REFUND;
-            var amount = request.getScope() == OrderAdjustmentScope.WHOLE_ORDER
-                    ? adjustWholeOrder(order, action)
-                    : adjustExtrasOnly(order, action);
-
-            adjustment.setScope(request.getScope());
-            adjustment.setAction(action);
-            adjustment.setAmount(amount);
+        if (request.getScope() == null) {
+            throw new InvalidOrderRequestException("scope is required.");
         }
+        var action = order.getStatus() == OrderStatus.PENDING ? OrderAdjustmentAction.VOID : OrderAdjustmentAction.REFUND;
+        var amount = request.getScope() == OrderAdjustmentScope.WHOLE_ORDER
+                ? adjustWholeOrder(order, action)
+                : adjustExtrasOnly(order, action);
 
-        // Stage 4 Part C — every VOID/REFUND/DISCOUNT pays out as cash or an account-balance
+        adjustment.setScope(request.getScope());
+        adjustment.setAction(action);
+        adjustment.setAmount(amount);
+
+        // Stage 4 Part C — every VOID/REFUND (and legacy DISCOUNT) pays out as cash or an account-balance
         // credit, computed automatically from whether the order's payment included ACCOUNT
         // (mutually exclusive with CASH/CARD, so this is a clean binary — no allocation math).
         var accountPayment = order.getPayments().stream()
@@ -201,44 +205,21 @@ public class OrderAdjustmentService {
     }
 
     /**
-     * Stage 3.2 — money handed back on an already-paid order, categorized separately from
-     * VOID/REFUND. Whole-order only; no lifecycle transition; no stock change; no SSE broadcast,
-     * since nothing on the kitchen/public side changes.
+     * An order with a discount at sale can't have money paid back: a whole-order refund (the
+     * order has reached the kitchen) and remove-extras are refused. A void of a still-PENDING
+     * order is allowed — it cancels the sale and pays back what was actually paid. Runs before
+     * any token is consumed. Orders already voided/refunded fall through to the existing 409.
      */
-    private void applyDiscount(Order order, CreateOrderAdjustmentRequest request, OrderAdjustment adjustment) {
-        var discountType = request.getDiscountType();
-        var discountValue = request.getDiscountValue();
-        if (discountType == null) {
-            throw new InvalidOrderRequestException("discountType is required.");
+    private void rejectRefundOfDiscountedOrder(Long orderId, CreateOrderAdjustmentRequest request) {
+        var order = orderRepository.findById(orderId).orElse(null);
+        if (order == null || !order.discountedAtSale() || request.getScope() == null
+                || order.getStatus() == OrderStatus.VOIDED || order.getStatus() == OrderStatus.REFUNDED) {
+            return;
         }
-        if (discountValue == null) {
-            throw new InvalidOrderRequestException("discountValue is required.");
+        var isVoid = request.getScope() == OrderAdjustmentScope.WHOLE_ORDER && order.getStatus() == OrderStatus.PENDING;
+        if (!isVoid) {
+            throw new OrderRuleException("DISCOUNTED_ORDER_NOT_REFUNDABLE",
+                    "Orders with a discount at sale can't be refunded.");
         }
-
-        BigDecimal amount;
-        if (discountType == DiscountType.PERCENTAGE) {
-            if (discountValue.compareTo(BigDecimal.ZERO) <= 0 || discountValue.compareTo(BigDecimal.valueOf(100)) > 0) {
-                throw new InvalidOrderRequestException("discountValue must be in (0, 100] for a PERCENTAGE discount.");
-            }
-            amount = order.getTotal().multiply(discountValue)
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-        } else {
-            if (discountValue.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new InvalidOrderRequestException("discountValue must be positive for a FIXED_AMOUNT discount.");
-            }
-            amount = discountValue;
-        }
-
-        if (amount.compareTo(order.getTotal()) > 0) {
-            throw new InvalidOrderRequestException("Discount amount cannot exceed the order's current total.");
-        }
-
-        order.setTotal(order.getTotal().subtract(amount));
-
-        adjustment.setScope(OrderAdjustmentScope.WHOLE_ORDER);
-        adjustment.setAction(OrderAdjustmentAction.DISCOUNT);
-        adjustment.setDiscountType(discountType);
-        adjustment.setDiscountValue(discountValue);
-        adjustment.setAmount(amount);
     }
 }

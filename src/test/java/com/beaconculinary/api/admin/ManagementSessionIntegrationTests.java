@@ -212,17 +212,6 @@ class ManagementSessionIntegrationTests {
                 .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
-    private record DiscountReq(String requestedAction, String scope, String discountType, BigDecimal discountValue,
-                                String reasonCode, String note, String authorizationToken, String sessionToken) {
-    }
-
-    private ResultActions discountOrder(long orderId, String authorizationToken, String sessionToken) throws Exception {
-        var body = MAPPER.writeValueAsString(new DiscountReq("DISCOUNT", null, "FIXED_AMOUNT", new BigDecimal("5.00"),
-                "CUSTOMER_COMPLAINT", null, authorizationToken, sessionToken));
-        return mockMvc.perform(post("/orders/" + orderId + "/adjustments").header("Authorization", "Bearer " + cashierAToken)
-                .contentType(MediaType.APPLICATION_JSON).content(body));
-    }
-
     private long setUpOptionWithOpenShift(String adminToken) throws Exception {
         var beefId = createComponentAsAdmin(adminToken, "Beef", "15.00");
         var mealId = createMealCatalog(adminToken, "Meal", "50.00", beefId);
@@ -263,7 +252,9 @@ class ManagementSessionIntegrationTests {
     }
 
     @Test
-    void sameSessionToken_authorizesVoidThenDiscount_withoutReAuthorization() throws Exception {
+    // Discount before payment: was sameSessionToken_authorizesVoidThenDiscount_withoutReAuthorization.
+    // The after-payment discount is retired, so the second action is now another void.
+    void sameSessionToken_authorizesTwoVoids_withoutReAuthorization() throws Exception {
         var adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
         var optionId = setUpOptionWithOpenShift(adminToken);
         var order1 = placeOrder(optionId);
@@ -275,10 +266,10 @@ class ManagementSessionIntegrationTests {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("VOIDED"));
 
-        // Same, un-consumed session token authorizes a second, different kind of action.
-        discountOrder(order2, null, sessionToken)
+        // Same, un-consumed session token authorizes a second action.
+        voidOrder(order2, null, sessionToken)
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.adjustments[0].action").value("DISCOUNT"));
+                .andExpect(jsonPath("$.status").value("VOIDED"));
     }
 
     @Test

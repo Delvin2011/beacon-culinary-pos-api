@@ -79,7 +79,12 @@ public class OrderController {
 
     @ExceptionHandler(InvalidAuthorizationTokenException.class)
     public ResponseEntity<ErrorDto> handleInvalidAuthorizationToken(InvalidAuthorizationTokenException ex) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorDto(ex.getMessage()));
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorDto(ex.getMessage(), "AUTHORIZATION_INVALID"));
+    }
+
+    @ExceptionHandler(OrderRuleException.class)
+    public ResponseEntity<ErrorDto> handleOrderRule(OrderRuleException ex) {
+        return ResponseEntity.badRequest().body(new ErrorDto(ex.getMessage(), ex.getCode()));
     }
 
     @ExceptionHandler({OrderAlreadyAdjustedException.class, ExtrasAlreadyAdjustedException.class})

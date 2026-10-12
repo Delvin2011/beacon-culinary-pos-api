@@ -196,20 +196,23 @@ class AdminSellsOnOpenShiftIntegrationTests {
     }
 
     @Test
-    void adminVoidRefundDiscountOnCashierShift_attributedToThatShift() throws Exception {
+    // Discount before payment: was adminVoidRefundDiscountOnCashierShift_attributedToThatShift. The
+    // after-payment discount is retired, so the admin's discount is now given at sale instead.
+    void adminVoidRefundAndSaleDiscountOnCashierShift_attributedToThatShift() throws Exception {
         var shiftId = pos.openShift(cashierToken, "500.00");
         var toVoid = pos.placeCashOrder(cashierToken, "50.00", new LineReq(optionId));
         var toRefund = pos.placeCashOrder(cashierToken, "50.00", new LineReq(optionId));
-        var toDiscount = pos.placeCashOrder(cashierToken, "50.00", new LineReq(optionId));
         pos.markDone(toRefund);
 
         pos.adjust(adminToken, toVoid, "WHOLE_ORDER");
         pos.adjust(adminToken, toRefund, "WHOLE_ORDER");
-        pos.discountFixed(adminToken, toDiscount, "10.00");
+        pos.submitOrder(adminToken, List.of(PaymentReq.cash("40.00")),
+                        PosFlowHelper.DiscountReq.fixed("10.00", pos.authorizePin(adminToken)), new LineReq(optionId))
+                .andExpect(status().isCreated());
 
         var adjustmentShiftIds = jdbcTemplate.queryForList("SELECT shift_id FROM order_adjustments", Long.class);
-        assertThat(adjustmentShiftIds).hasSize(3).containsOnly(shiftId);
-        // 500 + 150 cash sales - (50 void + 50 refund + 10 discount)
+        assertThat(adjustmentShiftIds).hasSize(2).containsOnly(shiftId);
+        // 500 + (50 + 50 + 40) cash taken - (50 void + 50 refund); the discount at sale pays nothing out.
         assertThat(expectedCash(shiftId)).isEqualByComparingTo("540.00");
     }
 
