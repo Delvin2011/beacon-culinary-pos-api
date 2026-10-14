@@ -32,9 +32,12 @@ public class UserService {
     }
 
     /** Public, pre-login list for the POS login screen's cashier tile grid. */
-    public List<CashierSummaryDto> getActiveCashiers() {
-        return userRepository.findByActiveTrueAndRoleIn(List.of(Role.CASHIER, Role.ADMIN))
+    /** The active users who log in by PIN on the given screen. The kitchen screen lists only users
+     * with a PIN set (the Head Chef's PIN is optional); the POS list is unchanged. */
+    public List<CashierSummaryDto> getLoginTiles(LoginScreen screen) {
+        return userRepository.findByActiveTrueAndRoleIn(screen.roles())
                 .stream()
+                .filter(user -> !screen.requiresPin() || user.getPinHash() != null)
                 .map(userMapper::toCashierSummaryDto)
                 .toList();
     }

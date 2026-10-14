@@ -33,12 +33,52 @@ public class StockTakeService {
 
     @Transactional
     public StockTakeDto create(CreateStockTakeRequest request) {
-        var location = resolveActiveLocation(request.getLocationId());
-
         var stockTake = new StockTake();
-        stockTake.setLocation(location);
         stockTake.setSubmittedBy(authService.getCurrentUser());
         stockTake.setStatus(StockTakeStatus.SUBMITTED);
+        applyCount(stockTake, request);
+
+        stockTakeRepository.save(stockTake);
+        return inventoryMapper.toDto(stockTake);
+    }
+
+    /** Corrects the caller's own count while it is still SUBMITTED (not yet reviewed). The lines
+     * are replaced and re-snapshotted (expected quantity and unit cost as of now), exactly as if
+     * the count had been submitted afresh. */
+    @Transactional
+    public StockTakeDto update(Long id, CreateStockTakeRequest request) {
+        var stockTake = loadOwnPending(id);
+        stockTake.getLines().clear();
+        applyCount(stockTake, request);
+        stockTakeRepository.save(stockTake);
+        return inventoryMapper.toDto(stockTake);
+    }
+
+    /** Withdraws the caller's own count while it is still SUBMITTED; no adjustment is applied. */
+    @Transactional
+    public StockTakeDto cancel(Long id) {
+        var stockTake = loadOwnPending(id);
+        stockTake.setStatus(StockTakeStatus.CANCELLED);
+        stockTakeRepository.save(stockTake);
+        return inventoryMapper.toDto(stockTake);
+    }
+
+    /** Only whoever submitted a count may edit or cancel it, and only before it is reviewed.
+     * Reviewers can see everyone's counts but never edit someone else's. */
+    private StockTake loadOwnPending(Long id) {
+        var stockTake = stockTakeRepository.findWithLinesById(id).orElseThrow(StockTakeNotFoundException::new);
+        if (!stockTake.getSubmittedBy().getId().equals(authService.getCurrentUser().getId())) {
+            throw new AccessDeniedException("Only whoever submitted a stock take can edit or cancel it.");
+        }
+        if (stockTake.getStatus() != StockTakeStatus.SUBMITTED) {
+            throw new StockItemNotPendingException("Stock take is no longer pending (" + stockTake.getStatus() + ").");
+        }
+        return stockTake;
+    }
+
+    private void applyCount(StockTake stockTake, CreateStockTakeRequest request) {
+        var location = resolveActiveLocation(request.getLocationId());
+        stockTake.setLocation(location);
 
         for (var lineRequest : request.getLines()) {
             var ingredient = ingredientRepository.findById(lineRequest.getIngredientId())
@@ -62,9 +102,6 @@ public class StockTakeService {
             line.setVarianceValue(varianceQuantity.multiply(unitCost).setScale(2, RoundingMode.HALF_UP));
             stockTake.getLines().add(line);
         }
-
-        stockTakeRepository.save(stockTake);
-        return inventoryMapper.toDto(stockTake);
     }
 
     @Transactional(readOnly = true)

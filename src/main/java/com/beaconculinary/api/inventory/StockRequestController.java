@@ -37,6 +37,23 @@ public class StockRequestController {
         return stockRequestService.action(id, request);
     }
 
+    /** Edits the caller's own request while still REQUESTED (403 for anyone else's, 409 once actioned). */
+    @PutMapping("/{id}")
+    public StockRequestDto update(@PathVariable Long id, @Valid @RequestBody CreateStockRequestRequest request) {
+        return stockRequestService.update(id, request);
+    }
+
+    /** Cancels the caller's own request while still REQUESTED. */
+    @PostMapping("/{id}/cancel")
+    public StockRequestDto cancel(@PathVariable Long id) {
+        return stockRequestService.cancel(id);
+    }
+
+    @ExceptionHandler(StockItemNotPendingException.class)
+    public ResponseEntity<ErrorDto> handleNotPending(StockItemNotPendingException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage()));
+    }
+
     @ExceptionHandler(StockRequestNotFoundException.class)
     public ResponseEntity<Void> handleNotFound() {
         return ResponseEntity.notFound().build();

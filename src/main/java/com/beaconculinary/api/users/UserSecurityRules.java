@@ -12,6 +12,6 @@ public class UserSecurityRules implements SecurityRules {
     public void configure(AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry registry) {
         registry
             .requestMatchers(HttpMethod.POST, "/users").permitAll()
-            .requestMatchers(HttpMethod.GET, "/users/cashiers").permitAll();
+            .requestMatchers(HttpMethod.GET, "/users/cashiers", "/users/login-tiles").permitAll();
     }
 }

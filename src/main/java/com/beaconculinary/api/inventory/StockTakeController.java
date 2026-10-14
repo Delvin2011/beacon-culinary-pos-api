@@ -37,6 +37,23 @@ public class StockTakeController {
         return stockTakeService.review(id, request);
     }
 
+    /** Corrects the caller's own count while still SUBMITTED (403 for anyone else's, 409 once reviewed). */
+    @PutMapping("/{id}")
+    public StockTakeDto update(@PathVariable Long id, @Valid @RequestBody CreateStockTakeRequest request) {
+        return stockTakeService.update(id, request);
+    }
+
+    /** Cancels the caller's own count while still SUBMITTED. */
+    @PostMapping("/{id}/cancel")
+    public StockTakeDto cancel(@PathVariable Long id) {
+        return stockTakeService.cancel(id);
+    }
+
+    @ExceptionHandler(StockItemNotPendingException.class)
+    public ResponseEntity<ErrorDto> handleNotPending(StockItemNotPendingException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage()));
+    }
+
     @ExceptionHandler(StockTakeNotFoundException.class)
     public ResponseEntity<Void> handleNotFound() {
         return ResponseEntity.notFound().build();
