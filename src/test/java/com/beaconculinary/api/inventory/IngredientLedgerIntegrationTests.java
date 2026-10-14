@@ -84,9 +84,9 @@ class IngredientLedgerIntegrationTests {
 
     private void createGrv(long ingredientId, String quantity, String costPerUnit, String supplierName) throws Exception {
         var body = "{\"invoiceNumber\":\"INV-" + ingredientId + "-" + supplierName.replace(" ", "") + "\","
-                + "\"supplierName\":\"" + supplierName + "\","
+                + "\"pricesIncludeVat\":true,\"supplierName\":\"" + supplierName + "\","
                 + "\"lines\":[{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":" + quantity
-                + ",\"costPerUnit\":" + costPerUnit + "}]}";
+                + ",\"unitPrice\":" + costPerUnit + "}]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());
@@ -200,7 +200,7 @@ class IngredientLedgerIntegrationTests {
     void grvAndWasteAndStockTake_onNonexistentIngredient_returns400() throws Exception {
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"ingredientId\":999999999,\"quantity\":1,\"costPerUnit\":1,\"supplierName\":\"X\"}"))
+                        .content("{\"ingredientId\":999999999,\"quantity\":1,\"unitPrice\":1,\"pricesIncludeVat\":true,\"supplierName\":\"X\"}"))
                 .andExpect(status().isBadRequest());
     }
 }

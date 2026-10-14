@@ -18,4 +18,6 @@ public class UpdateIngredientRequest {
     private boolean active;
 
     private String itemCode;
+    // GRV VAT handling: optional; STANDARD when a new ingredient leaves it out, unchanged on update.
+    private VatCode defaultVatCode;
 }

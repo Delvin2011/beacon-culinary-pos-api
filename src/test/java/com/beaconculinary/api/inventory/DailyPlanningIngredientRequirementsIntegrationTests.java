@@ -106,8 +106,8 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
     }
 
     private void createGrv(long ingredientId, String quantity) throws Exception {
-        var body = "{\"invoiceNumber\":\"INV-" + ingredientId + "-" + quantity + "\",\"supplierName\":\"Supplier A\","
-                + "\"lines\":[{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":" + quantity + ",\"costPerUnit\":1.00}]}";
+        var body = "{\"invoiceNumber\":\"INV-" + ingredientId + "-" + quantity + "\",\"pricesIncludeVat\":true,\"supplierName\":\"Supplier A\","
+                + "\"lines\":[{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":" + quantity + ",\"unitPrice\":1.00}]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());

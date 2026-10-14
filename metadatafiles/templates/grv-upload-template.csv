@@ -1,0 +1,4 @@
+Invoice Number,Supplier Name,Ingredient Name,Quantity,Unit Price,Prices Include VAT,VAT Code,Invoice Total,Note
+INV-88231,Acme Foods,Beef Mince,10,100.00,N,STANDARD,1650.00,Exclusive invoice - VAT is added automatically
+INV-88231,Acme Foods,Rice,10,50.00,N,ZERO_RATED,1650.00,
+INV-88232,Fresh Farms,Chicken Portions,50,18.00,Y,,900.00,Inclusive invoice - blank VAT Code uses the ingredient default

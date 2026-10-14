@@ -11,4 +11,5 @@ public class IngredientDto {
     private String countSheetCategoryName;
     private boolean active;
     private String itemCode;
+    private VatCode defaultVatCode;
 }

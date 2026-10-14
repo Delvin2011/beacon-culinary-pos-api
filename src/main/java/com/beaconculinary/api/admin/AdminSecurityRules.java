@@ -26,7 +26,9 @@ public class AdminSecurityRules implements SecurityRules {
                     "/admin/grv", "/admin/grv/**",
                     "/admin/stock-takes", "/admin/stock-takes/**",
                     "/admin/purchase-orders", "/admin/purchase-orders/**",
-                    "/admin/waste", "/admin/waste/**")
+                    "/admin/waste", "/admin/waste/**",
+                    // GRV VAT handling: the standard rate, for the GRV screen's live preview.
+                    "/admin/settings/vat")
                 .hasAnyRole(Role.STOCK_ADMIN.name(), Role.ADMIN.name())
             .requestMatchers("/admin/**").hasRole(Role.ADMIN.name());
     }

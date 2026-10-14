@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -57,7 +58,8 @@ public class StockTakeService {
             line.setActualQuantity(lineRequest.getActualQuantity());
             line.setUnitCost(unitCost);
             line.setVarianceQuantity(varianceQuantity);
-            line.setVarianceValue(varianceQuantity.multiply(unitCost));
+            // Unit costs now carry 4 dp (GRV VAT handling); the value is money, so 2 dp half-up.
+            line.setVarianceValue(varianceQuantity.multiply(unitCost).setScale(2, RoundingMode.HALF_UP));
             stockTake.getLines().add(line);
         }
 
