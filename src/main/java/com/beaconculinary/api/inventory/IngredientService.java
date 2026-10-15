@@ -32,6 +32,7 @@ public class IngredientService {
         ingredient.setUnit(request.getUnit());
         ingredient.setCountSheetCategory(resolveCategory(request.getCountSheetCategoryId()));
         ingredient.setItemCode(request.getItemCode());
+        ingredient.setDefaultVatCode(request.getDefaultVatCode() == null ? VatCode.STANDARD : request.getDefaultVatCode());
         ingredientRepository.save(ingredient);
         return inventoryMapper.toDto(ingredient);
     }
@@ -44,6 +45,9 @@ public class IngredientService {
         ingredient.setCountSheetCategory(resolveCategory(request.getCountSheetCategoryId()));
         ingredient.setActive(request.isActive());
         ingredient.setItemCode(request.getItemCode());
+        if (request.getDefaultVatCode() != null) {
+            ingredient.setDefaultVatCode(request.getDefaultVatCode());
+        }
         ingredientRepository.save(ingredient);
         return inventoryMapper.toDto(ingredient);
     }
@@ -104,6 +108,7 @@ public class IngredientService {
             String name = CsvImportUtils.cellAt(cells, columns.get("NAME"));
             String unitRaw = CsvImportUtils.cellAt(cells, columns.get("UNIT"));
             String categoryRaw = CsvImportUtils.cellAt(cells, columns.get("CATEGORY"));
+            String vatRaw = columns.containsKey("VAT") ? CsvImportUtils.cellAt(cells, columns.get("VAT")) : null;
 
             if (name == null || name.isBlank()) {
                 errors.add("Row " + lineNumber + ": name is required.");
@@ -122,7 +127,19 @@ public class IngredientService {
                 continue;
             }
 
-            rowsByName.put(name.trim().toUpperCase(), new ParsedIngredientRow(name.trim(), unit, category));
+            // GRV VAT handling: optional; blank means STANDARD for a new ingredient and "leave as is"
+            // for an existing one, so re-importing the master list never wipes codes set by an admin.
+            VatCode vatCode = null;
+            if (vatRaw != null && !vatRaw.isBlank()) {
+                vatCode = parseVatCode(vatRaw);
+                if (vatCode == null) {
+                    errors.add("Row " + lineNumber + ": default VAT code '" + vatRaw + "' must be one of "
+                            + List.of(VatCode.values()) + ".");
+                    continue;
+                }
+            }
+
+            rowsByName.put(name.trim().toUpperCase(), new ParsedIngredientRow(name.trim(), unit, category, vatCode));
         }
 
         if (!errors.isEmpty()) {
@@ -146,13 +163,27 @@ public class IngredientService {
             }
             ingredient.setUnit(row.unit());
             ingredient.setCountSheetCategory(row.category());
+            if (row.vatCode() != null) {
+                ingredient.setDefaultVatCode(row.vatCode());
+            } else if (ingredient.getId() == null) {
+                ingredient.setDefaultVatCode(VatCode.STANDARD);
+            }
             saved.add(ingredientRepository.save(ingredient));
         }
 
         return new BulkIngredientImportResultDto(created, updated, saved.stream().map(inventoryMapper::toDto).toList());
     }
 
-    private record ParsedIngredientRow(String name, IngredientUnit unit, CountSheetCategory category) {
+    private record ParsedIngredientRow(String name, IngredientUnit unit, CountSheetCategory category, VatCode vatCode) {
+    }
+
+    /** "Zero rated", "ZERO-RATED" and "zero_rated" all read as ZERO_RATED. */
+    static VatCode parseVatCode(String raw) {
+        try {
+            return VatCode.valueOf(raw.trim().toUpperCase().replaceAll("[\\s-]+", "_"));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private Map<String, Integer> parseHeader(String headerLine, String delimiter) {
@@ -166,6 +197,8 @@ public class IngredientService {
                 columns.put("UNIT", i);
             } else if (normalized.contains("COUNTSHEET")) {
                 columns.put("CATEGORY", i);
+            } else if (normalized.contains("VAT")) {
+                columns.put("VAT", i);
             }
         }
         if (!columns.keySet().containsAll(List.of("NAME", "UNIT", "CATEGORY"))) {

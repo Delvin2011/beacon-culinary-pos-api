@@ -33,3 +33,7 @@ springdoc:
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+# GRV VAT handling: the standard VAT rate, snapshotted onto every GRV line.
+vat:
+  standard-rate: 0.15

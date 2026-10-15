@@ -51,12 +51,61 @@ public class StockRequestService {
 
     @Transactional
     public StockRequestDto create(CreateStockRequestRequest request) {
+        var currentUser = authService.getCurrentUser();
+        // Head Chef: Issue (transfer) and Waste requests only — purchase-order requests stay with
+        // the stock roles and admins.
+        if (currentUser.getRole() == Role.HEAD_CHEF && request.getRequestType() == StockRequestType.ORDER) {
+            throw new AccessDeniedException("The Head Chef cannot raise purchase-order requests.");
+        }
+
         var stockRequest = new StockRequest();
         stockRequest.setRequestType(request.getRequestType());
         stockRequest.setSource(StockRequestSource.MANUAL);
-        stockRequest.setRequestedBy(authService.getCurrentUser());
+        stockRequest.setRequestedBy(currentUser);
         stockRequest.setStatus(StockRequestStatus.REQUESTED);
+        applyContent(stockRequest, request);
 
+        stockRequestRepository.save(stockRequest);
+        return toDto(stockRequest);
+    }
+
+    /** Edits the caller's own request while it is still REQUESTED (nothing actioned yet). The
+     * request type can't change; the location (Waste) and lines are replaced. */
+    @Transactional
+    public StockRequestDto update(Long id, CreateStockRequestRequest request) {
+        var stockRequest = loadOwnPending(id);
+        if (request.getRequestType() != stockRequest.getRequestType()) {
+            throw new InvalidInventoryRequestException("requestType cannot be changed; cancel this request and raise a new one.");
+        }
+        stockRequest.getLines().clear();
+        applyContent(stockRequest, request);
+        stockRequestRepository.save(stockRequest);
+        return toDto(stockRequest);
+    }
+
+    /** Withdraws the caller's own request while it is still REQUESTED; nothing is moved. */
+    @Transactional
+    public StockRequestDto cancel(Long id) {
+        var stockRequest = loadOwnPending(id);
+        stockRequest.setStatus(StockRequestStatus.CANCELLED);
+        stockRequestRepository.save(stockRequest);
+        return toDto(stockRequest);
+    }
+
+    /** Only whoever submitted a request may edit or cancel it, and only before it is actioned.
+     * Approvers can see everyone's requests but never edit someone else's. */
+    private StockRequest loadOwnPending(Long id) {
+        var stockRequest = stockRequestRepository.findWithLinesById(id).orElseThrow(StockRequestNotFoundException::new);
+        if (!stockRequest.getRequestedBy().getId().equals(authService.getCurrentUser().getId())) {
+            throw new AccessDeniedException("Only whoever submitted a stock request can edit or cancel it.");
+        }
+        if (stockRequest.getStatus() != StockRequestStatus.REQUESTED) {
+            throw new StockItemNotPendingException("Stock request is no longer pending (" + stockRequest.getStatus() + ").");
+        }
+        return stockRequest;
+    }
+
+    private void applyContent(StockRequest stockRequest, CreateStockRequestRequest request) {
         if (request.getRequestType() == StockRequestType.WASTE) {
             stockRequest.setLocation(resolveActiveLocation(request.getLocationId()));
         }
@@ -73,9 +122,6 @@ public class StockRequestService {
             line.setReason(lineRequest.getReason());
             stockRequest.getLines().add(line);
         }
-
-        stockRequestRepository.save(stockRequest);
-        return toDto(stockRequest);
     }
 
     @Transactional(readOnly = true)
@@ -97,7 +143,8 @@ public class StockRequestService {
             return actionOrder(stockRequest, request);
         }
 
-        if (stockRequest.getStatus() == StockRequestStatus.ACTIONED || stockRequest.getStatus() == StockRequestStatus.REJECTED) {
+        if (stockRequest.getStatus() == StockRequestStatus.ACTIONED || stockRequest.getStatus() == StockRequestStatus.REJECTED
+                || stockRequest.getStatus() == StockRequestStatus.CANCELLED) {
             throw new StockRequestAlreadyFinalizedException();
         }
 

@@ -19,7 +19,16 @@ public class CreateGrvLineRequest {
     @DecimalMin(value = "0.0001", message = "quantityReceived must be positive")
     private BigDecimal quantityReceived;
 
-    @NotNull(message = "costPerUnit is required")
-    @DecimalMin(value = "0.00", message = "costPerUnit cannot be negative")
+    // GRV VAT handling: the unit price exactly as written on the invoice — VAT-inclusive or
+    // VAT-exclusive according to the GRV's pricesIncludeVat.
+    @NotNull(message = "unitPrice is required")
+    @DecimalMin(value = "0.00", message = "unitPrice cannot be negative")
+    private BigDecimal unitPrice;
+
+    // Optional; falls back to the ingredient's default VAT code.
+    private VatCode vatCode;
+
+    // Retired: replaced by unitPrice + pricesIncludeVat. Accepted here only so a request that still
+    // sends it is refused with a clear 400 instead of being silently ignored.
     private BigDecimal costPerUnit;
 }

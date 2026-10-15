@@ -1,5 +1,6 @@
 package com.beaconculinary.api.users;
 
+import com.beaconculinary.api.auth.AuthService;
 import lombok.AllArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
@@ -15,6 +16,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final AuthService authService;
 
     public Iterable<UserDto> getAllUsers(String sortBy) {
         if (!Set.of("name", "email").contains(sortBy))
@@ -32,9 +34,12 @@ public class UserService {
     }
 
     /** Public, pre-login list for the POS login screen's cashier tile grid. */
-    public List<CashierSummaryDto> getActiveCashiers() {
-        return userRepository.findByActiveTrueAndRoleIn(List.of(Role.CASHIER, Role.ADMIN))
+    /** The active users who log in by PIN on the given screen. The kitchen screen lists only users
+     * with a PIN set (the Head Chef's PIN is optional); the POS list is unchanged. */
+    public List<CashierSummaryDto> getLoginTiles(LoginScreen screen) {
+        return userRepository.findByActiveTrueAndRoleIn(screen.roles())
                 .stream()
+                .filter(user -> !screen.requiresPin() || user.getPinHash() != null)
                 .map(userMapper::toCashierSummaryDto)
                 .toList();
     }
@@ -65,14 +70,25 @@ public class UserService {
         userRepository.delete(user);
     }
 
+    /** Changes the caller's own password. Admins reset other people's through /admin/staff. */
     public void changePassword(Long userId, ChangePasswordRequest request) {
+        var currentUser = authService.getCurrentUser();
+        if (!currentUser.getId().equals(userId)) {
+            throw new NotOwnAccountException("You can only change your own password.");
+        }
         var user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
 
-        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+        if (user.getPassword() == null || request.getOldPassword() == null
+                || !passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
             throw new AccessDeniedException("Password does not match");
         }
+        var newPassword = request.getNewPassword();
+        if (newPassword == null || newPassword.length() < 6 || newPassword.length() > 25) {
+            throw new InvalidPasswordException("Password must be between 6 and 25 characters.");
+        }
 
-        user.setPassword(request.getNewPassword());
+        // Previously stored as plain text, which left the user unable to log in again.
+        user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
     }
 }

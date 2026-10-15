@@ -18,6 +18,6 @@ public class StockRequestSecurityRules implements SecurityRules {
             .requestMatchers(HttpMethod.POST, "/stock-requests/*/action")
                 .hasAnyRole(Role.STOCK_ADMIN.name(), Role.ADMIN.name())
             .requestMatchers("/stock-requests", "/stock-requests/**")
-                .hasAnyRole(Role.STOCK_CLERK.name(), Role.STOCK_ADMIN.name(), Role.ADMIN.name());
+                .hasAnyRole(Role.STOCK_CLERK.name(), Role.HEAD_CHEF.name(), Role.STOCK_ADMIN.name(), Role.ADMIN.name());
     }
 }

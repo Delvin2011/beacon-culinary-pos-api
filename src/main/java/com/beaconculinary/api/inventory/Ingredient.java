@@ -36,4 +36,10 @@ public class Ingredient {
     // item search.
     @Column(name = "item_code")
     private String itemCode;
+
+    // GRV VAT handling: the usual VAT treatment of this item, used when a GRV line gives no code
+    // (zero-rated staples such as rice, eggs, milk; STANDARD otherwise).
+    @Column(name = "default_vat_code")
+    @Enumerated(EnumType.STRING)
+    private VatCode defaultVatCode = VatCode.STANDARD;
 }

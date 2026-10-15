@@ -169,8 +169,8 @@ class OrderStockRequestIntegrationTests {
                 .andReturn().getResponse().getContentAsString();
         var poLineId = MAPPER.readTree(poDetail).get("lines").get(0).get("id").asLong();
 
-        var grvBody = "{\"invoiceNumber\":\"INV-ORDER-1\",\"purchaseOrderId\":" + purchaseOrderId + ",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + riceId + ",\"purchaseOrderLineId\":" + poLineId + ",\"quantityReceived\":10,\"costPerUnit\":5.00}]}";
+        var grvBody = "{\"invoiceNumber\":\"INV-ORDER-1\",\"purchaseOrderId\":" + purchaseOrderId + ",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + riceId + ",\"purchaseOrderLineId\":" + poLineId + ",\"quantityReceived\":10,\"unitPrice\":5.00}]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(grvBody))
                 .andExpect(status().isCreated())

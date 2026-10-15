@@ -79,6 +79,10 @@ public class AuthService {
         }
 
         var user = userRepository.findById(jwt.getUserId()).orElseThrow();
+        // A deactivated user's existing refresh token stops working too.
+        if (!user.isActive()) {
+            throw new BadCredentialsException("Invalid refresh token");
+        }
         return jwtService.generateAccessToken(user);
     }
 }

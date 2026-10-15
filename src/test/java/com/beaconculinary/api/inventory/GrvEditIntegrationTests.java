@@ -102,13 +102,13 @@ class GrvEditIntegrationTests {
     @Test
     void update_sameDay_updatesHeaderAndLineFieldsAndReturnsUpdatedGrv() throws Exception {
         var ingredientId = createIngredient("Edit Rice");
-        var created = postGrv("{\"invoiceNumber\":\"INV-900\",\"supplierName\":\"Acme Foods\",\"note\":\"Original note\",\"lines\":["
-                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":10,\"costPerUnit\":5.00}]}");
+        var created = postGrv("{\"invoiceNumber\":\"INV-900\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"note\":\"Original note\",\"lines\":["
+                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":10,\"unitPrice\":5.00}]}");
         var id = created.get("id").asLong();
         var lineId = created.get("lines").get(0).get("id").asLong();
 
-        var patchBody = "{\"invoiceNumber\":\"INV-900-CORRECTED\",\"supplierName\":\"Acme Foods Ltd\",\"note\":\"Fixed cost\",\"lines\":["
-                + "{\"id\":" + lineId + ",\"quantityReceived\":6,\"costPerUnit\":5.50}]}";
+        var patchBody = "{\"invoiceNumber\":\"INV-900-CORRECTED\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods Ltd\",\"note\":\"Fixed cost\",\"lines\":["
+                + "{\"id\":" + lineId + ",\"quantityReceived\":6,\"unitPrice\":5.50}]}";
         mockMvc.perform(patch("/admin/grv/" + id).header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(patchBody))
                 .andExpect(status().isOk())
@@ -127,16 +127,16 @@ class GrvEditIntegrationTests {
     @Test
     void update_changedQuantity_adjustsStockMovementSoTotalStockMatchesCorrectedValue() throws Exception {
         var ingredientId = createIngredient("Edit Stock Rice");
-        var created = postGrv("{\"invoiceNumber\":\"INV-901\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":10,\"costPerUnit\":5.00}]}");
+        var created = postGrv("{\"invoiceNumber\":\"INV-901\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":10,\"unitPrice\":5.00}]}");
         var id = created.get("id").asLong();
         var lineId = created.get("lines").get(0).get("id").asLong();
 
         mockMvc.perform(get("/admin/ingredients/" + ingredientId + "/stock").header("Authorization", "Bearer " + adminToken))
                 .andExpect(jsonPath("$.totalStock").value(10.0));
 
-        var patchBody = "{\"invoiceNumber\":\"INV-901\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"id\":" + lineId + ",\"quantityReceived\":6,\"costPerUnit\":5.00}]}";
+        var patchBody = "{\"invoiceNumber\":\"INV-901\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"id\":" + lineId + ",\"quantityReceived\":6,\"unitPrice\":5.00}]}";
         mockMvc.perform(patch("/admin/grv/" + id).header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(patchBody))
                 .andExpect(status().isOk());
@@ -152,14 +152,14 @@ class GrvEditIntegrationTests {
         var ingredientId = createIngredient("Edit Variance Rice");
         var po = createPurchaseOrder(ingredientId, 10.0);
 
-        var created = postGrv("{\"invoiceNumber\":\"INV-902\",\"purchaseOrderId\":" + po[0] + ",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + ingredientId + ",\"purchaseOrderLineId\":" + po[1] + ",\"quantityReceived\":7,\"costPerUnit\":5.00}]}");
+        var created = postGrv("{\"invoiceNumber\":\"INV-902\",\"purchaseOrderId\":" + po[0] + ",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + ingredientId + ",\"purchaseOrderLineId\":" + po[1] + ",\"quantityReceived\":7,\"unitPrice\":5.00}]}");
         var id = created.get("id").asLong();
         var lineId = created.get("lines").get(0).get("id").asLong();
         Assertions.assertThat(created.get("lines").get(0).get("receiptVariance").asDouble()).isEqualTo(-3.0);
 
-        var patchBody = "{\"invoiceNumber\":\"INV-902\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"id\":" + lineId + ",\"quantityReceived\":10,\"costPerUnit\":5.00}]}";
+        var patchBody = "{\"invoiceNumber\":\"INV-902\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"id\":" + lineId + ",\"quantityReceived\":10,\"unitPrice\":5.00}]}";
         mockMvc.perform(patch("/admin/grv/" + id).header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(patchBody))
                 .andExpect(status().isOk())
@@ -171,15 +171,15 @@ class GrvEditIntegrationTests {
     void update_lineIdNotBelongingToThisGrv_returns400() throws Exception {
         var ingredientId = createIngredient("Foreign Line Rice");
         var otherIngredientId = createIngredient("Other Grv Rice");
-        var created = postGrv("{\"invoiceNumber\":\"INV-903\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":10,\"costPerUnit\":5.00}]}");
+        var created = postGrv("{\"invoiceNumber\":\"INV-903\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":10,\"unitPrice\":5.00}]}");
         var id = created.get("id").asLong();
-        var otherGrv = postGrv("{\"invoiceNumber\":\"INV-904\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + otherIngredientId + ",\"quantityReceived\":5,\"costPerUnit\":5.00}]}");
+        var otherGrv = postGrv("{\"invoiceNumber\":\"INV-904\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + otherIngredientId + ",\"quantityReceived\":5,\"unitPrice\":5.00}]}");
         var foreignLineId = otherGrv.get("lines").get(0).get("id").asLong();
 
-        var patchBody = "{\"invoiceNumber\":\"INV-903\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"id\":" + foreignLineId + ",\"quantityReceived\":6,\"costPerUnit\":5.00}]}";
+        var patchBody = "{\"invoiceNumber\":\"INV-903\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"id\":" + foreignLineId + ",\"quantityReceived\":6,\"unitPrice\":5.00}]}";
         mockMvc.perform(patch("/admin/grv/" + id).header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(patchBody))
                 .andExpect(status().isBadRequest());
@@ -189,16 +189,16 @@ class GrvEditIntegrationTests {
     void update_omittingAnExistingLine_returns400() throws Exception {
         var riceId = createIngredient("Omit Rice");
         var chickenId = createIngredient("Omit Chicken");
-        var created = postGrv("{\"invoiceNumber\":\"INV-905\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + riceId + ",\"quantityReceived\":10,\"costPerUnit\":5.00},"
-                + "{\"ingredientId\":" + chickenId + ",\"quantityReceived\":8,\"costPerUnit\":42.00}]}");
+        var created = postGrv("{\"invoiceNumber\":\"INV-905\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + riceId + ",\"quantityReceived\":10,\"unitPrice\":5.00},"
+                + "{\"ingredientId\":" + chickenId + ",\"quantityReceived\":8,\"unitPrice\":42.00}]}");
         var id = created.get("id").asLong();
         var riceLineId = created.get("lines").get(0).get("id").asLong();
 
         // Only names one of the two existing lines — must be rejected, not treated as "delete
         // the other line".
-        var patchBody = "{\"invoiceNumber\":\"INV-905\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"id\":" + riceLineId + ",\"quantityReceived\":6,\"costPerUnit\":5.00}]}";
+        var patchBody = "{\"invoiceNumber\":\"INV-905\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"id\":" + riceLineId + ",\"quantityReceived\":6,\"unitPrice\":5.00}]}";
         mockMvc.perform(patch("/admin/grv/" + id).header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(patchBody))
                 .andExpect(status().isBadRequest());
@@ -207,13 +207,13 @@ class GrvEditIntegrationTests {
     @Test
     void update_nonPositiveQuantityReceived_returns400() throws Exception {
         var ingredientId = createIngredient("Invalid Quantity Rice");
-        var created = postGrv("{\"invoiceNumber\":\"INV-906\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":10,\"costPerUnit\":5.00}]}");
+        var created = postGrv("{\"invoiceNumber\":\"INV-906\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":10,\"unitPrice\":5.00}]}");
         var id = created.get("id").asLong();
         var lineId = created.get("lines").get(0).get("id").asLong();
 
-        var patchBody = "{\"invoiceNumber\":\"INV-906\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"id\":" + lineId + ",\"quantityReceived\":0,\"costPerUnit\":5.00}]}";
+        var patchBody = "{\"invoiceNumber\":\"INV-906\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"id\":" + lineId + ",\"quantityReceived\":0,\"unitPrice\":5.00}]}";
         mockMvc.perform(patch("/admin/grv/" + id).header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(patchBody))
                 .andExpect(status().isBadRequest());
@@ -221,7 +221,7 @@ class GrvEditIntegrationTests {
 
     @Test
     void update_unknownGrvId_returns404() throws Exception {
-        var patchBody = "{\"invoiceNumber\":\"INV-907\",\"supplierName\":\"Acme Foods\",\"lines\":[{\"id\":1,\"quantityReceived\":6,\"costPerUnit\":5.00}]}";
+        var patchBody = "{\"invoiceNumber\":\"INV-907\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":[{\"id\":1,\"quantityReceived\":6,\"unitPrice\":5.00}]}";
         mockMvc.perform(patch("/admin/grv/999999999").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(patchBody))
                 .andExpect(status().isNotFound());
@@ -230,8 +230,8 @@ class GrvEditIntegrationTests {
     @Test
     void update_receivedOnAPreviousDay_returns409AndLeavesGrvUnchanged() throws Exception {
         var ingredientId = createIngredient("Stale Grv Rice");
-        var created = postGrv("{\"invoiceNumber\":\"INV-908\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":10,\"costPerUnit\":5.00}]}");
+        var created = postGrv("{\"invoiceNumber\":\"INV-908\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":10,\"unitPrice\":5.00}]}");
         var id = created.get("id").asLong();
         var lineId = created.get("lines").get(0).get("id").asLong();
 
@@ -240,8 +240,8 @@ class GrvEditIntegrationTests {
         jdbcTemplate.update("UPDATE grv SET received_at = ? WHERE id = ?",
                 Timestamp.valueOf(LocalDateTime.now().minusDays(2)), id);
 
-        var patchBody = "{\"invoiceNumber\":\"INV-908-SHOULD-NOT-APPLY\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"id\":" + lineId + ",\"quantityReceived\":1,\"costPerUnit\":1.00}]}";
+        var patchBody = "{\"invoiceNumber\":\"INV-908-SHOULD-NOT-APPLY\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"id\":" + lineId + ",\"quantityReceived\":1,\"unitPrice\":1.00}]}";
         mockMvc.perform(patch("/admin/grv/" + id).header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(patchBody))
                 .andExpect(status().isConflict())

@@ -39,6 +39,35 @@ public class GrvLine {
     @Column(name = "quantity_received")
     private BigDecimal quantityReceived;
 
+    // The ledger cost: always the VAT-inclusive unit cost (4 dp), whatever basis the invoice used.
     @Column(name = "cost_per_unit")
     private BigDecimal costPerUnit;
+
+    // GRV VAT handling: the unit price exactly as written on the invoice, the VAT code and rate
+    // snapshotted at capture, and both bases. On legacy lines (before V88) only
+    // unitPriceAsInvoiced, unitCostInclVat and lineInclVat are filled; the VAT split stays null.
+    @Column(name = "unit_price_as_invoiced")
+    private BigDecimal unitPriceAsInvoiced;
+
+    @Column(name = "vat_code")
+    @Enumerated(EnumType.STRING)
+    private VatCode vatCode;
+
+    @Column(name = "vat_rate")
+    private BigDecimal vatRate;
+
+    @Column(name = "unit_cost_excl_vat")
+    private BigDecimal unitCostExclVat;
+
+    @Column(name = "unit_cost_incl_vat")
+    private BigDecimal unitCostInclVat;
+
+    @Column(name = "line_excl_vat")
+    private BigDecimal lineExclVat;
+
+    @Column(name = "line_vat")
+    private BigDecimal lineVat;
+
+    @Column(name = "line_incl_vat")
+    private BigDecimal lineInclVat;
 }

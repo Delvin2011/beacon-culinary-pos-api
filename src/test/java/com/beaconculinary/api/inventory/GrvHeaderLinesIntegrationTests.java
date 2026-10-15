@@ -95,10 +95,10 @@ class GrvHeaderLinesIntegrationTests {
         var chickenId = createIngredient("Multi Chicken");
         var oilId = createIngredient("Multi Oil");
 
-        var body = "{\"invoiceNumber\":\"INV-100\",\"supplierName\":\"Acme Foods\",\"note\":\"Weekly delivery\",\"lines\":["
-                + "{\"ingredientId\":" + riceId + ",\"quantityReceived\":10,\"costPerUnit\":5.00},"
-                + "{\"ingredientId\":" + chickenId + ",\"quantityReceived\":8,\"costPerUnit\":42.00},"
-                + "{\"ingredientId\":" + oilId + ",\"quantityReceived\":4,\"costPerUnit\":30.00}]}";
+        var body = "{\"invoiceNumber\":\"INV-100\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"note\":\"Weekly delivery\",\"lines\":["
+                + "{\"ingredientId\":" + riceId + ",\"quantityReceived\":10,\"unitPrice\":5.00},"
+                + "{\"ingredientId\":" + chickenId + ",\"quantityReceived\":8,\"unitPrice\":42.00},"
+                + "{\"ingredientId\":" + oilId + ",\"quantityReceived\":4,\"unitPrice\":30.00}]}";
         var response = postGrv(body);
         var node = MAPPER.readTree(response);
 
@@ -129,15 +129,15 @@ class GrvHeaderLinesIntegrationTests {
         var shortPo = createPurchaseOrder(shortId, 10.0);
         var overPo = createPurchaseOrder(overId, 10.0);
 
-        var body = "{\"invoiceNumber\":\"INV-200\",\"purchaseOrderId\":" + shortPo[0] + ",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + shortId + ",\"purchaseOrderLineId\":" + shortPo[1] + ",\"quantityReceived\":7,\"costPerUnit\":5.00}]}";
+        var body = "{\"invoiceNumber\":\"INV-200\",\"purchaseOrderId\":" + shortPo[0] + ",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + shortId + ",\"purchaseOrderLineId\":" + shortPo[1] + ",\"quantityReceived\":7,\"unitPrice\":5.00}]}";
         var response = postGrv(body);
         var line = MAPPER.readTree(response).get("lines").get(0);
         org.assertj.core.api.Assertions.assertThat(line.get("quantityOrdered").asDouble()).isEqualTo(10.0);
         org.assertj.core.api.Assertions.assertThat(line.get("receiptVariance").asDouble()).isEqualTo(-3.0);
 
-        var overBody = "{\"invoiceNumber\":\"INV-201\",\"purchaseOrderId\":" + overPo[0] + ",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + overId + ",\"purchaseOrderLineId\":" + overPo[1] + ",\"quantityReceived\":13,\"costPerUnit\":5.00}]}";
+        var overBody = "{\"invoiceNumber\":\"INV-201\",\"purchaseOrderId\":" + overPo[0] + ",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + overId + ",\"purchaseOrderLineId\":" + overPo[1] + ",\"quantityReceived\":13,\"unitPrice\":5.00}]}";
         var overResponse = postGrv(overBody);
         var overLine = MAPPER.readTree(overResponse).get("lines").get(0);
         org.assertj.core.api.Assertions.assertThat(overLine.get("quantityOrdered").asDouble()).isEqualTo(10.0);
@@ -148,8 +148,8 @@ class GrvHeaderLinesIntegrationTests {
     void create_lineWithoutPurchaseOrderLink_leavesQuantityOrderedAndVarianceNull() throws Exception {
         var ingredientId = createIngredient("Ad Hoc Rice");
 
-        var body = "{\"invoiceNumber\":\"INV-300\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":5,\"costPerUnit\":5.00}]}";
+        var body = "{\"invoiceNumber\":\"INV-300\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":5,\"unitPrice\":5.00}]}";
         var response = postGrv(body);
         var line = MAPPER.readTree(response).get("lines").get(0);
 
@@ -163,9 +163,9 @@ class GrvHeaderLinesIntegrationTests {
         var submittedIngredientId = createIngredient("Different Rice");
         var po = createPurchaseOrder(poIngredientId, 10.0);
 
-        var body = "{\"invoiceNumber\":\"INV-400\",\"supplierName\":\"Acme Foods\",\"lines\":["
+        var body = "{\"invoiceNumber\":\"INV-400\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
                 + "{\"ingredientId\":" + submittedIngredientId + ",\"purchaseOrderLineId\":" + po[1]
-                + ",\"quantityReceived\":5,\"costPerUnit\":5.00}]}";
+                + ",\"quantityReceived\":5,\"unitPrice\":5.00}]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest());
@@ -176,12 +176,12 @@ class GrvHeaderLinesIntegrationTests {
         var ingredientId = createIngredient("Partial Delivery Rice");
         var po = createPurchaseOrder(ingredientId, 10.0);
 
-        var firstBody = "{\"invoiceNumber\":\"INV-500\",\"purchaseOrderId\":" + po[0] + ",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + ingredientId + ",\"purchaseOrderLineId\":" + po[1] + ",\"quantityReceived\":6,\"costPerUnit\":5.00}]}";
+        var firstBody = "{\"invoiceNumber\":\"INV-500\",\"purchaseOrderId\":" + po[0] + ",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + ingredientId + ",\"purchaseOrderLineId\":" + po[1] + ",\"quantityReceived\":6,\"unitPrice\":5.00}]}";
         postGrv(firstBody);
 
-        var secondBody = "{\"invoiceNumber\":\"INV-501\",\"purchaseOrderId\":" + po[0] + ",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + ingredientId + ",\"purchaseOrderLineId\":" + po[1] + ",\"quantityReceived\":6,\"costPerUnit\":5.00}]}";
+        var secondBody = "{\"invoiceNumber\":\"INV-501\",\"purchaseOrderId\":" + po[0] + ",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + ingredientId + ",\"purchaseOrderLineId\":" + po[1] + ",\"quantityReceived\":6,\"unitPrice\":5.00}]}";
         var secondResponse = postGrv(secondBody);
         var secondLine = MAPPER.readTree(secondResponse).get("lines").get(0);
 
@@ -204,10 +204,10 @@ class GrvHeaderLinesIntegrationTests {
         var adHocIngredientId = createIngredient("Ad Hoc Rice For List");
         var po = createPurchaseOrder(linkedIngredientId, 10.0);
 
-        postGrv("{\"invoiceNumber\":\"INV-600\",\"purchaseOrderId\":" + po[0] + ",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + linkedIngredientId + ",\"purchaseOrderLineId\":" + po[1] + ",\"quantityReceived\":5,\"costPerUnit\":5.00}]}");
-        postGrv("{\"invoiceNumber\":\"INV-601\",\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + adHocIngredientId + ",\"quantityReceived\":5,\"costPerUnit\":5.00}]}");
+        postGrv("{\"invoiceNumber\":\"INV-600\",\"purchaseOrderId\":" + po[0] + ",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + linkedIngredientId + ",\"purchaseOrderLineId\":" + po[1] + ",\"quantityReceived\":5,\"unitPrice\":5.00}]}");
+        postGrv("{\"invoiceNumber\":\"INV-601\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + adHocIngredientId + ",\"quantityReceived\":5,\"unitPrice\":5.00}]}");
 
         mockMvc.perform(get("/admin/grv").param("purchaseOrderId", String.valueOf(po[0]))
                         .header("Authorization", "Bearer " + adminToken))
@@ -219,8 +219,8 @@ class GrvHeaderLinesIntegrationTests {
     @Test
     void create_missingInvoiceNumber_returns400() throws Exception {
         var ingredientId = createIngredient("No Invoice Rice");
-        var body = "{\"supplierName\":\"Acme Foods\",\"lines\":["
-                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":5,\"costPerUnit\":5.00}]}";
+        var body = "{\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":["
+                + "{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":5,\"unitPrice\":5.00}]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest());
@@ -228,7 +228,7 @@ class GrvHeaderLinesIntegrationTests {
 
     @Test
     void create_withNoLines_returns400() throws Exception {
-        var body = "{\"invoiceNumber\":\"INV-700\",\"supplierName\":\"Acme Foods\",\"lines\":[]}";
+        var body = "{\"invoiceNumber\":\"INV-700\",\"pricesIncludeVat\":true,\"supplierName\":\"Acme Foods\",\"lines\":[]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest());

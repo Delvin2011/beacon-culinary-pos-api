@@ -86,8 +86,8 @@ class WasteAndStockTakeListIntegrationTests {
     }
 
     private void createGrv(long ingredientId, String quantity) throws Exception {
-        var body = "{\"invoiceNumber\":\"INV-" + ingredientId + "-" + quantity + "\",\"supplierName\":\"Test Supplier\","
-                + "\"lines\":[{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":" + quantity + ",\"costPerUnit\":10}]}";
+        var body = "{\"invoiceNumber\":\"INV-" + ingredientId + "-" + quantity + "\",\"pricesIncludeVat\":true,\"supplierName\":\"Test Supplier\","
+                + "\"lines\":[{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":" + quantity + ",\"unitPrice\":10}]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());

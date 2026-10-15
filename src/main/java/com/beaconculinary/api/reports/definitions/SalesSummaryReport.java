@@ -51,7 +51,9 @@ public class SalesSummaryReport implements ReportDefinition {
 
     @Override
     public Set<Role> allowedRoles() {
-        return Set.of(Role.ADMIN);
+        // The Head Chef reviews food sales to support production planning. Tender Summary and
+        // Cash-up show cash and stay ADMIN-only.
+        return Set.of(Role.ADMIN, Role.HEAD_CHEF);
     }
 
     @Override

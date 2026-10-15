@@ -10,5 +10,10 @@ public enum Role {
     STOCK_CLERK,
     // Stage 5 Revision — authorizes/performs stock actions (GRV, Stock Take, Purchase Orders,
     // direct Waste, actioning Stock Requests). ADMIN is a superset of every STOCK_ADMIN right.
-    STOCK_ADMIN
+    STOCK_ADMIN,
+    // Head Chef — plans daily menus (create/edit/confirm), views the catalog and ingredient stock,
+    // requests stock issues and waste, submits stock takes, uses the kitchen display, and reviews
+    // food sales (Sales Summary). Never approves, never holds manager-PIN authority, and never
+    // raises purchase-order requests.
+    HEAD_CHEF
 }

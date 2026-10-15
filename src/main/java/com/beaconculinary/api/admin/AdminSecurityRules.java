@@ -17,6 +17,27 @@ public class AdminSecurityRules implements SecurityRules {
         registry
             .requestMatchers(HttpMethod.POST, "/admin/authorize", "/admin/authorize-session")
                 .hasAnyRole(Role.CASHIER.name(), Role.ADMIN.name())
+            // Head Chef: read-only on ingredients (stock and movements) and the menu catalog; full
+            // daily planning (create/edit/confirm); reports, where each report's own allowedRoles
+            // decides what may run (only Sales Summary for the Head Chef). These come before the
+            // STOCK_ADMIN and ADMIN rules below because the first matching rule wins.
+            // Read-only for the Head Chef: ingredients, GRVs (deliveries) and waste history. Capturing
+            // or editing GRVs, direct waste posting and uploads stay STOCK_ADMIN/ADMIN (rule below).
+            .requestMatchers(HttpMethod.GET,
+                    "/admin/ingredients", "/admin/ingredients/**",
+                    "/admin/grv", "/admin/grv/**",
+                    "/admin/waste", "/admin/waste/**")
+                .hasAnyRole(Role.HEAD_CHEF.name(), Role.STOCK_ADMIN.name(), Role.ADMIN.name())
+            .requestMatchers(HttpMethod.GET,
+                    "/admin/meal-catalog", "/admin/meal-catalog/**",
+                    "/admin/component-catalog", "/admin/component-catalog/**")
+                .hasAnyRole(Role.HEAD_CHEF.name(), Role.ADMIN.name())
+            .requestMatchers(
+                    "/admin/daily-options", "/admin/daily-options/**",
+                    "/admin/daily-component-stock", "/admin/daily-component-stock/**",
+                    "/admin/daily-planning/**",
+                    "/admin/reports", "/admin/reports/**")
+                .hasAnyRole(Role.HEAD_CHEF.name(), Role.ADMIN.name())
             // Stage 5 Revision: Ingredient Master, GRV, Stock Take, Purchase Orders, and direct
             // Waste move from ADMIN-only to STOCK_ADMIN (ADMIN still passes, as a superset).
             // Recipes/catalog/daily-planning stay ADMIN-only, falling through to the rule below.
@@ -26,7 +47,9 @@ public class AdminSecurityRules implements SecurityRules {
                     "/admin/grv", "/admin/grv/**",
                     "/admin/stock-takes", "/admin/stock-takes/**",
                     "/admin/purchase-orders", "/admin/purchase-orders/**",
-                    "/admin/waste", "/admin/waste/**")
+                    "/admin/waste", "/admin/waste/**",
+                    // GRV VAT handling: the standard rate, for the GRV screen's live preview.
+                    "/admin/settings/vat")
                 .hasAnyRole(Role.STOCK_ADMIN.name(), Role.ADMIN.name())
             .requestMatchers("/admin/**").hasRole(Role.ADMIN.name());
     }

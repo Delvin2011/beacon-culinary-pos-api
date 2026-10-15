@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +37,15 @@ public class Grv {
 
     @Column(name = "note")
     private String note;
+
+    // GRV VAT handling: whether the invoice's unit prices include VAT, chosen explicitly per
+    // invoice. TRUE for every GRV captured before VAT handling (V88).
+    @Column(name = "prices_include_vat")
+    private Boolean pricesIncludeVat;
+
+    // The invoice total as printed (VAT-inclusive), for the invoice check; null when not given.
+    @Column(name = "invoice_total_incl_vat")
+    private BigDecimal invoiceTotalInclVat;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "received_by")

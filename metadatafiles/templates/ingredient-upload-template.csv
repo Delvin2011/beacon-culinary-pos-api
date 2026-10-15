@@ -1,0 +1,6 @@
+Name,Unit,Count Sheet,Default VAT Code
+Beef Mince,KG,MEAT,STANDARD
+Chicken Portions,KG,POULTRY,STANDARD
+Rice,KG,DRYSTOCK,ZERO_RATED
+Eggs,EACH,DAIRY,ZERO_RATED
+Salt,KG,DRYSTOCK,

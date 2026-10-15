@@ -24,10 +24,18 @@ public class UserController {
         return userService.getAllUsers(sortBy);
     }
 
-    /** Public, pre-login endpoint for the POS login screen's cashier tile grid — no auth, no pagination. */
+    /** Public, pre-login endpoint for the POS login screen's cashier tile grid — no auth, no pagination.
+     * Kept for compatibility; equivalent to GET /users/login-tiles?screen=POS. */
     @GetMapping("/cashiers")
     public List<CashierSummaryDto> getCashiers() {
-        return userService.getActiveCashiers();
+        return userService.getLoginTiles(LoginScreen.POS);
+    }
+
+    /** Public, pre-login tile grid for one PIN-login screen: POS (cashiers and admins) or KITCHEN
+     * (kitchen staff and the Head Chef, with a PIN set). */
+    @GetMapping("/login-tiles")
+    public List<CashierSummaryDto> getLoginTiles(@RequestParam LoginScreen screen) {
+        return userService.getLoginTiles(screen);
     }
 
     @GetMapping("/{id}")
@@ -62,6 +70,16 @@ public class UserController {
             @PathVariable Long id,
             @RequestBody ChangePasswordRequest request) {
         userService.changePassword(id, request);
+    }
+
+    @ExceptionHandler(NotOwnAccountException.class)
+    public ResponseEntity<Void> handleNotOwnAccount() {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    }
+
+    @ExceptionHandler(InvalidPasswordException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidPassword(InvalidPasswordException ex) {
+        return ResponseEntity.badRequest().body(Map.of("newPassword", ex.getMessage()));
     }
 
     @ExceptionHandler(DuplicateUserException.class)

@@ -130,4 +130,42 @@ class BulkIngredientImportIntegrationTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0]").value(containsString("COUNT SHEET")));
     }
+
+    @Test
+    void defaultVatCode_setOnNewIngredients_blankMeansStandard_andBlankKeepsAnExistingCode() throws Exception {
+        // An existing ingredient an admin has already marked zero-rated.
+        var existing = new Ingredient();
+        existing.setName("Chicken Portions");
+        existing.setUnit(IngredientUnit.KG);
+        existing.setCountSheetCategory(countSheetCategoryRepository.findByNameIgnoreCase("POULTRY").orElseThrow());
+        existing.setDefaultVatCode(VatCode.ZERO_RATED);
+        ingredientRepository.save(existing);
+
+        var file = csv("""
+                NAME,UNIT,COUNT SHEET,DEFAULT VAT CODE
+                Chicken Portions,KG,POULTRY,
+                Beef Chuck,KG,MEAT,
+                Bad Row,KG,MEAT,zero rated
+                """);
+
+        mockMvc.perform(multipart("/admin/ingredients/bulk-import").file(file)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ingredients[?(@.name == 'Chicken Portions')].defaultVatCode").value("ZERO_RATED"))
+                .andExpect(jsonPath("$.ingredients[?(@.name == 'Beef Chuck')].defaultVatCode").value("STANDARD"))
+                .andExpect(jsonPath("$.ingredients[?(@.name == 'Bad Row')].defaultVatCode").value("ZERO_RATED"));
+    }
+
+    @Test
+    void invalidDefaultVatCode_isARowError() throws Exception {
+        var file = csv("""
+                NAME,UNIT,COUNT SHEET,DEFAULT VAT CODE
+                Beef Chuck,KG,MEAT,LUXURY
+                """);
+
+        mockMvc.perform(multipart("/admin/ingredients/bulk-import").file(file)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0]").value(containsString("default VAT code 'LUXURY'")));
+    }
 }

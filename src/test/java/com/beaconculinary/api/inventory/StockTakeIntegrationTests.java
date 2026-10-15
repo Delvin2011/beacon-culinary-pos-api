@@ -90,9 +90,9 @@ class StockTakeIntegrationTests {
     }
 
     private void receiveIntoMainStore(long ingredientId, String quantity, String costPerUnit) throws Exception {
-        var body = "{\"invoiceNumber\":\"INV-" + ingredientId + "-" + quantity + "\",\"supplierName\":\"Supplier A\","
+        var body = "{\"invoiceNumber\":\"INV-" + ingredientId + "-" + quantity + "\",\"pricesIncludeVat\":true,\"supplierName\":\"Supplier A\","
                 + "\"lines\":[{\"ingredientId\":" + ingredientId + ",\"quantityReceived\":" + quantity
-                + ",\"costPerUnit\":" + costPerUnit + "}]}";
+                + ",\"unitPrice\":" + costPerUnit + "}]}";
         mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());
@@ -138,6 +138,24 @@ class StockTakeIntegrationTests {
                 .andExpect(jsonPath("$.lines[0].varianceQuantity").value(5.0))
                 .andExpect(jsonPath("$.lines[0].varianceValue").value(25.0))
                 .andExpect(jsonPath("$.lines[0].appliedAdjustmentQuantity").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void submit_usesThe4dpVatInclusiveCost_andRoundsTheVarianceValueTo2dp() throws Exception {
+        var riceId = createIngredient("VAT Cost Rice");
+        // VAT-exclusive invoice: 7 x 10.01 = 70.07 + 10.51 VAT = 80.58 -> ledger cost 80.58 / 7 = 11.5114.
+        mockMvc.perform(post("/admin/grv").header("Authorization", "Bearer " + stockAdminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"invoiceNumber\":\"INV-VAT-" + riceId + "\",\"pricesIncludeVat\":false,\"supplierName\":\"Supplier A\","
+                                + "\"lines\":[{\"ingredientId\":" + riceId + ",\"quantityReceived\":7,\"unitPrice\":10.01,\"vatCode\":\"STANDARD\"}]}"))
+                .andExpect(status().isCreated());
+
+        var id = submitStockTake(stockClerkToken, mainStoreId, riceId, "6.0000");
+
+        mockMvc.perform(get("/stock-takes/" + id).header("Authorization", "Bearer " + stockAdminToken))
+                .andExpect(jsonPath("$.lines[0].unitCost").value(11.5114))
+                .andExpect(jsonPath("$.lines[0].varianceQuantity").value(-1.0))
+                .andExpect(jsonPath("$.lines[0].varianceValue").value(-11.51));
     }
 
     @Test

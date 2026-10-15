@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 public class KitchenSecurityRules implements SecurityRules {
     @Override
     public void configure(AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry registry) {
-        registry.requestMatchers("/kitchen/**").hasAnyRole(Role.KITCHEN.name(), Role.ADMIN.name());
+        // The Head Chef has the same kitchen-display rights as KITCHEN.
+        registry.requestMatchers("/kitchen/**").hasAnyRole(Role.KITCHEN.name(), Role.HEAD_CHEF.name(), Role.ADMIN.name());
     }
 }
