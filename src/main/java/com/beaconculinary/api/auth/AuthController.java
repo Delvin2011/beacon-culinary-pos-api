@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
@@ -83,7 +84,8 @@ public class AuthController {
         return ResponseEntity.ok(userDto);
     }
 
-    @ExceptionHandler(BadCredentialsException.class)
+    // A deactivated account (DisabledException) gets the same 401 as a wrong password.
+    @ExceptionHandler({BadCredentialsException.class, DisabledException.class})
     public ResponseEntity<Void> handleBadCredentialsException() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }

@@ -72,6 +72,16 @@ public class UserController {
         userService.changePassword(id, request);
     }
 
+    @ExceptionHandler(NotOwnAccountException.class)
+    public ResponseEntity<Void> handleNotOwnAccount() {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    }
+
+    @ExceptionHandler(InvalidPasswordException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidPassword(InvalidPasswordException ex) {
+        return ResponseEntity.badRequest().body(Map.of("newPassword", ex.getMessage()));
+    }
+
     @ExceptionHandler(DuplicateUserException.class)
     public ResponseEntity<Map<String, String>> handleDuplicateUser() {
         return ResponseEntity.badRequest().body(

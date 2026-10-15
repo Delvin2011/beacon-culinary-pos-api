@@ -21,7 +21,12 @@ public class AdminSecurityRules implements SecurityRules {
             // daily planning (create/edit/confirm); reports, where each report's own allowedRoles
             // decides what may run (only Sales Summary for the Head Chef). These come before the
             // STOCK_ADMIN and ADMIN rules below because the first matching rule wins.
-            .requestMatchers(HttpMethod.GET, "/admin/ingredients", "/admin/ingredients/**")
+            // Read-only for the Head Chef: ingredients, GRVs (deliveries) and waste history. Capturing
+            // or editing GRVs, direct waste posting and uploads stay STOCK_ADMIN/ADMIN (rule below).
+            .requestMatchers(HttpMethod.GET,
+                    "/admin/ingredients", "/admin/ingredients/**",
+                    "/admin/grv", "/admin/grv/**",
+                    "/admin/waste", "/admin/waste/**")
                 .hasAnyRole(Role.HEAD_CHEF.name(), Role.STOCK_ADMIN.name(), Role.ADMIN.name())
             .requestMatchers(HttpMethod.GET,
                     "/admin/meal-catalog", "/admin/meal-catalog/**",

@@ -211,12 +211,23 @@ class HeadChefRoleIntegrationTests {
     }
 
     @Test
-    void neverPosCashGrvPurchaseOrdersOrManagerAuthority() throws Exception {
-        for (var request : List.of(get("/admin/grv"), get("/admin/purchase-orders"), get("/admin/shifts"),
+    void grvAndWasteHistory_areReadOnly() throws Exception {
+        as(headChef, get("/admin/grv")).andExpect(status().isOk());
+        as(headChef, get("/admin/waste")).andExpect(status().isOk());
+        // No capturing, editing or uploading GRVs, and no direct waste posting.
+        as(headChef, post("/admin/grv"), "{}").andExpect(status().isForbidden());
+        as(headChef, org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/admin/grv/1"), "{}")
+                .andExpect(status().isForbidden());
+        as(headChef, post("/admin/grv/bulk-import")).andExpect(status().isForbidden());
+        as(headChef, post("/admin/waste"), "{}").andExpect(status().isForbidden());
+    }
+
+    @Test
+    void neverPosCashPurchaseOrdersApprovalsOrManagerAuthority() throws Exception {
+        for (var request : List.of(get("/admin/purchase-orders"), get("/admin/shifts"),
                 get("/admin/settings/vat"), get("/orders/today"), get("/shifts/open"), get("/admin/recipes"))) {
             as(headChef, request).andExpect(status().isForbidden());
         }
-        as(headChef, post("/admin/waste"), "{}").andExpect(status().isForbidden());
         // Can't request manager authorization, and the Head Chef's PIN authorizes nothing.
         as(headChef, post("/admin/authorize"), "{\"pin\":\"654321\"}").andExpect(status().isForbidden());
         var cashier = AuthTestHelper.loginAsCashier(mockMvc);
