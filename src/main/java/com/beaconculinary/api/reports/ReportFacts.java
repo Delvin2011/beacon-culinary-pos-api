@@ -31,6 +31,12 @@ public class ReportFacts {
     public record SalesFacts(String bucket, long orders, long voidedOrRefunded, BigDecimal grossSales,
                              BigDecimal discountsAtSale, BigDecimal voids, BigDecimal refunds, BigDecimal extrasRemoved,
                              BigDecimal legacyDiscounts, long legacyDiscountCount, BigDecimal netSales, BigDecimal orderTotals) {
+        /** A bucket with no sales orders (e.g. a day with only complimentary orders). */
+        public static SalesFacts none(String bucket) {
+            var zero = BigDecimal.ZERO;
+            return new SalesFacts(bucket, 0, 0, zero, zero, zero, zero, zero, zero, 0, zero, zero);
+        }
+
         public long netOrders() {
             return orders - voidedOrRefunded;
         }
@@ -48,6 +54,14 @@ public class ReportFacts {
 
     /** Paid out by refund method, by day processed. */
     public record PaidOutFacts(String bucket, BigDecimal cashPaidOut, BigDecimal accountCredits) {
+    }
+
+    /** Complimentary orders that weren't voided and their list value (v_complimentary_facts,
+     * V92), by day of sale or the order's hour. Outside every sales figure. */
+    public record ComplimentaryFacts(String bucket, long orders, BigDecimal value) {
+        public static ComplimentaryFacts none(String bucket) {
+            return new ComplimentaryFacts(bucket, 0, BigDecimal.ZERO);
+        }
     }
 
     /** One shift with everything the cash-up shows, snapshot parts included (null for open or
@@ -118,6 +132,33 @@ public class ReportFacts {
                 + " GROUP BY " + bucket + " ORDER BY bucket";
         return jdbc.query(sql, rangeParams(range), (rs, i) -> new PaidOutFacts(rs.getString("bucket"),
                 rs.getBigDecimal("cash_paid_out"), rs.getBigDecimal("account_credits")));
+    }
+
+    private static final String COMPLIMENTARY_SELECT = """
+            COUNT(*) AS orders, COALESCE(SUM(list_value), 0) AS value
+            FROM v_complimentary_facts
+            WHERE shift_opened_at_utc >= :from AND shift_opened_at_utc < :to
+            """;
+
+    public List<ComplimentaryFacts> complimentary(ReportRange range, GroupBy groupBy) {
+        var bucket = groupBy.bucketSql("day_of_sale", "sale_hour");
+        var sql = "SELECT " + bucket + " AS bucket, " + COMPLIMENTARY_SELECT + " GROUP BY " + bucket + " ORDER BY bucket";
+        return jdbc.query(sql, rangeParams(range), (rs, i) -> new ComplimentaryFacts(rs.getString("bucket"),
+                rs.getLong("orders"), rs.getBigDecimal("value")));
+    }
+
+    public ComplimentaryFacts complimentaryTotals(ReportRange range) {
+        return jdbc.queryForObject("SELECT " + COMPLIMENTARY_SELECT, rangeParams(range),
+                (rs, i) -> new ComplimentaryFacts(null, rs.getLong("orders"), rs.getBigDecimal("value")));
+    }
+
+    /** Complimentary orders rung in each shift opened in the range; shifts with none are absent. */
+    public Map<Long, ComplimentaryFacts> complimentaryByShift(ReportRange range) {
+        var byShift = new HashMap<Long, ComplimentaryFacts>();
+        jdbc.query("SELECT shift_id, " + COMPLIMENTARY_SELECT + " GROUP BY shift_id", rangeParams(range), rs -> {
+            byShift.put(rs.getLong("shift_id"), new ComplimentaryFacts(null, rs.getLong("orders"), rs.getBigDecimal("value")));
+        });
+        return byShift;
     }
 
     /** Cash collected on each shift's orders minus cash paid out by adjustments it processed,

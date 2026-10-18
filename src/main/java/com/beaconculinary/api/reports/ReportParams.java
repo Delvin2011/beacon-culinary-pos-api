@@ -37,6 +37,17 @@ public class ReportParams {
         return (Long) values.get(name);
     }
 
+    /** An ID parameter; null when unset. */
+    public Long id(String name) {
+        return (Long) values.get(name);
+    }
+
+    /** The LIMIT parameter as a row count; null for "ALL". */
+    public Integer limit() {
+        var limit = (String) values.get("limit");
+        return limit == null || limit.equals("ALL") ? null : Integer.valueOf(limit);
+    }
+
     /** Echoed in meta.params: every parameter, with defaults applied (null when unset). */
     public Map<String, Object> asMap() {
         var echo = new LinkedHashMap<String, Object>();

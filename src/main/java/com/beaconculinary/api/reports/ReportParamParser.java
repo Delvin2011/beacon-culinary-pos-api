@@ -12,12 +12,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Reports R1 §1.4: turns raw query parameters into typed values per a report's spec. Applies
  * defaults (DATE defaults "today"/"today-N" are Johannesburg days), ignores parameters the spec
  * doesn't declare, and rejects bad values with field-level messages. When a spec has from/to:
- * from must not be after to, and the range is at most 366 days inclusive.
+ * from must not be after to, and the range is at most 366 days inclusive. R2: a required
+ * parameter that's missing is refused ("Select an account"), an ID must be one of its spec's
+ * options, and a LIMIT is "ALL" or a positive whole number (kept as text, e.g. "ALL" or "10").
  */
 @Component
 @AllArgsConstructor
@@ -34,6 +37,9 @@ public class ReportParamParser {
             var input = raw.get(spec.name());
             var text = input == null || input.isBlank() ? spec.defaultValue() : input.trim();
             if (text == null) {
+                if (spec.requiresValue()) {
+                    errors.put(spec.name(), missing(spec));
+                }
                 values.put(spec.name(), null);
                 continue;
             }
@@ -75,6 +81,23 @@ public class ReportParamParser {
                 yield Boolean.parseBoolean(text);
             }
             case USER -> Long.valueOf(text);
+            case ID -> {
+                var id = Long.valueOf(text);
+                if (spec.options() != null && spec.optionLabel(id) == null) {
+                    throw new IllegalArgumentException(text);
+                }
+                yield id;
+            }
+            case LIMIT -> {
+                if (text.equalsIgnoreCase("ALL")) {
+                    yield "ALL";
+                }
+                var rows = Integer.parseInt(text);
+                if (rows <= 0) {
+                    throw new IllegalArgumentException(text);
+                }
+                yield Integer.toString(rows);
+            }
         };
     }
 
@@ -95,9 +118,22 @@ public class ReportParamParser {
     private static String message(ReportParamSpec spec) {
         return switch (spec.type()) {
             case DATE -> spec.label() + " must be a date in the format yyyy-MM-dd.";
-            case ENUM -> spec.label() + " must be one of " + String.join(", ", spec.options()) + ".";
+            case ENUM -> spec.label() + " must be one of "
+                    + spec.options().stream().map(Object::toString).collect(Collectors.joining(", ")) + ".";
             case BOOLEAN -> spec.label() + " must be true or false.";
             case USER -> spec.label() + " must be a user id.";
+            case ID -> select(spec);
+            case LIMIT -> spec.label() + " must be ALL or a positive whole number.";
         };
+    }
+
+    private static String missing(ReportParamSpec spec) {
+        return spec.type() == ParamType.ID ? select(spec) : spec.label() + " is required.";
+    }
+
+    /** "Select an account", "Select a meal period". */
+    private static String select(ReportParamSpec spec) {
+        var noun = spec.label().toLowerCase(Locale.ROOT);
+        return "Select " + ("aeiou".indexOf(noun.charAt(0)) >= 0 ? "an " : "a ") + noun;
     }
 }

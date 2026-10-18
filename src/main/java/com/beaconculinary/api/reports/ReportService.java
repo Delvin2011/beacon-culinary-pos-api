@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -39,17 +40,31 @@ public class ReportService {
     @Transactional(readOnly = true)
     public ReportEnvelope run(String key, Map<String, String> rawParams) {
         var definition = allowedDefinition(key);
-        var params = paramParser.parse(definition.params(), rawParams);
+        var specs = definition.params();
+        var params = paramParser.parse(specs, rawParams);
         var result = definition.run(params);
 
         var notes = new ArrayList<>(definition.notes());
         if (!notes.contains(VAT_NOTE)) {
             notes.add(VAT_NOTE);
         }
+        var echo = params.asMap();
         var meta = new ReportEnvelope.Meta(definition.key(), definition.title(), definition.category(),
                 definition.definitionVersion(), clock.instant(), ClockConfig.BUSINESS_ZONE.getId(), "ZAR", true,
-                params.asMap(), notes);
-        return new ReportEnvelope(meta, result.columns(), result.rows(), result.totals(), result.checks(), null);
+                echo, paramLabels(specs, echo), notes);
+        return new ReportEnvelope(meta, result.columns(), result.rows(), result.totals(), result.checks(), result.page());
+    }
+
+    /** The option label of every ID parameter that is set, keyed by parameter name. */
+    private static Map<String, String> paramLabels(List<ReportParamSpec> specs, Map<String, Object> values) {
+        var labels = new LinkedHashMap<String, String>();
+        for (var spec : specs) {
+            var label = spec.optionLabel(values.get(spec.name()));
+            if (label != null) {
+                labels.put(spec.name(), label);
+            }
+        }
+        return labels;
     }
 
     /** Same parameters as a run; the file is built from the same envelope the screen shows. */

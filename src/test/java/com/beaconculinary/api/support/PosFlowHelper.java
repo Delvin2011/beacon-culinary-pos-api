@@ -107,7 +107,16 @@ public class PosFlowHelper {
     }
 
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-    private record OrderReq(List<PaymentReq> payments, List<LineReq> lines, DiscountReq discount) {
+    private record OrderReq(List<PaymentReq> payments, List<LineReq> lines, DiscountReq discount,
+                            ComplimentaryReq complimentary) {
+    }
+
+    /** The complimentary object on POST /orders. Values are text so tests can send invalid ones. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record ComplimentaryReq(String reasonCode, String note, DiscountAuth authorization) {
+        public static ComplimentaryReq staffMeal(String authorizationToken) {
+            return new ComplimentaryReq("STAFF_MEAL", null, DiscountAuth.token(authorizationToken));
+        }
     }
 
     /** A discount at sale on POST /orders. Values are text so tests can send invalid ones. */
@@ -138,9 +147,22 @@ public class PosFlowHelper {
     }
 
     public ResultActions submitOrder(String token, List<PaymentReq> payments, DiscountReq discount, LineReq... lines) throws Exception {
-        var body = MAPPER.writeValueAsString(new OrderReq(payments, List.of(lines), discount));
+        var body = MAPPER.writeValueAsString(new OrderReq(payments, List.of(lines), discount, null));
         return mockMvc.perform(post("/orders").header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    /** A complimentary order: no payments (null leaves the field out), optionally with a discount
+     * or payments to test that they're refused. */
+    public ResultActions submitComplimentary(String token, ComplimentaryReq complimentary, List<PaymentReq> payments,
+                                             DiscountReq discount, LineReq... lines) throws Exception {
+        var body = MAPPER.writeValueAsString(new OrderReq(payments, List.of(lines), discount, complimentary));
+        return mockMvc.perform(post("/orders").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    public ResultActions submitComplimentary(String token, ComplimentaryReq complimentary, LineReq... lines) throws Exception {
+        return submitComplimentary(token, complimentary, null, null, lines);
     }
 
     /** A management session (manager PIN 654321), reusable until it expires. */

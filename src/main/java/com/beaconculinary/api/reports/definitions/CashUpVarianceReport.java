@@ -76,9 +76,10 @@ public class CashUpVarianceReport implements ReportDefinition {
                 new ReportParamSpec("status", "Status", ParamType.ENUM, null, List.of("OPEN", "CLOSED")));
     }
 
+    /** 2: complimentary meals and their list value per shift. Cash figures are unchanged. */
     @Override
     public int definitionVersion() {
-        return 1;
+        return 2;
     }
 
     @Override
@@ -91,7 +92,9 @@ public class CashUpVarianceReport implements ReportDefinition {
                 "A closed shift shows the figures stored when it was closed. An open shift's expected cash is live and "
                         + "changes as it trades. Overdue means a shift is still open from an earlier day.",
                 "Variance is counted cash minus expected cash: negative means the drawer was short, positive means over.",
-                "Counted cash and variance totals cover closed shifts only.");
+                "Counted cash and variance totals cover closed shifts only.",
+                "Complimentary meals are counted in the shift they were rung in.",
+                SalesSummaryReport.COMPLIMENTARY_NOTE);
     }
 
     @Override
@@ -99,6 +102,7 @@ public class CashUpVarianceReport implements ReportDefinition {
         var range = params.range();
         var shifts = facts.shifts(range, params.userId("ownerId"), params.string("status"), params.bool("varianceOnly"));
         var figures = shiftCashFigures.figures(shifts);
+        var complimentaryByShift = facts.complimentaryByShift(range);
         var today = LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
 
         var columns = List.of(
@@ -116,6 +120,8 @@ public class CashUpVarianceReport implements ReportDefinition {
                 ReportColumn.of("reason", "Reason", ColumnType.TEXT, ColumnTotal.LABEL),
                 ReportColumn.of("authorisedBy", "Authorised by", ColumnType.TEXT, ColumnTotal.NONE),
                 ReportColumn.of("closedBy", "Closed by", ColumnType.TEXT, ColumnTotal.NONE),
+                ReportColumn.of("complimentaryMeals", "Complimentary meals", ColumnType.INT, ColumnTotal.SUM),
+                ReportColumn.of("complimentaryValue", "Complimentary value", ColumnType.MONEY, ColumnTotal.SUM),
                 new ReportColumn("status", "Status", ColumnType.STATUS, ColumnTotal.NONE, STATUS_TONES));
 
         var rows = new ArrayList<Map<String, Object>>();
@@ -129,6 +135,8 @@ public class CashUpVarianceReport implements ReportDefinition {
         long arithmeticFailures = 0;
         long varianceFailures = 0;
         long legacyNotChecked = 0;
+        long complimentaryMeals = 0;
+        var complimentaryValue = BigDecimal.ZERO;
 
         for (var shift : shifts) {
             var cash = figures.get(shift.shiftId());
@@ -149,8 +157,13 @@ public class CashUpVarianceReport implements ReportDefinition {
             row.put("reason", humanize(shift.varianceReasonCode()));
             row.put("authorisedBy", shift.varianceAuthorizedByName());
             row.put("closedBy", open ? null : shift.closedByName());
+            var complimentary = complimentaryByShift.getOrDefault(shift.shiftId(), ReportFacts.ComplimentaryFacts.none(null));
+            row.put("complimentaryMeals", complimentary.orders());
+            row.put("complimentaryValue", ReportValues.money(complimentary.value()));
             row.put("status", !open ? "CLOSED" : shift.tradingDay().isBefore(today) ? "OVERDUE" : "OPEN");
             rows.add(row);
+            complimentaryMeals += complimentary.orders();
+            complimentaryValue = complimentaryValue.add(complimentary.value());
 
             floatTotal = floatTotal.add(shift.openingFloat());
             cashSalesTotal = cashSalesTotal.add(cash.cashSales());
@@ -186,6 +199,8 @@ public class CashUpVarianceReport implements ReportDefinition {
         totals.put("countedCash", countedTotal == null ? null : ReportValues.money(countedTotal));
         totals.put("variance", varianceTotal == null ? null : ReportValues.money(varianceTotal));
         totals.put("reason", withVariance + " with a variance");
+        totals.put("complimentaryMeals", complimentaryMeals);
+        totals.put("complimentaryValue", ReportValues.money(complimentaryValue));
 
         var expectedCheck = ReportCheck.failures("expected-arithmetic",
                 "Opening float + cash sales − cash refunds equals expected cash, for every shift", arithmeticFailures,

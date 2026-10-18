@@ -122,9 +122,15 @@ public class OrderService {
         // figure. Any authorization token is consumed inside this transaction, so if the order
         // fails below it stays valid for the retry.
         var preDiscountTotal = total;
-        var discount = request.getDiscount() == null ? null : buildDiscount(request.getDiscount(), preDiscountTotal, currentUser);
+        // A complimentary order is given away whole: no discount, no payment, and its list value
+        // stays in preDiscountTotal while everything that would have been paid is 0. Its token is
+        // consumed in this transaction exactly like a discount's.
+        var complimentary = request.getComplimentary() == null ? null : buildComplimentary(request, currentUser);
+        var discount = complimentary != null || request.getDiscount() == null
+                ? null
+                : buildDiscount(request.getDiscount(), preDiscountTotal, currentUser);
         var saleDiscount = discount == null ? BigDecimal.ZERO : discount.getAmount();
-        var originalTotal = preDiscountTotal.subtract(saleDiscount);
+        var originalTotal = complimentary != null ? BigDecimal.ZERO : preDiscountTotal.subtract(saleDiscount);
 
         // Phase 2: atomic, conditional decrement per line/extra. A failed decrement throws,
         // which rolls back the whole transaction — including any decrements already applied
@@ -146,10 +152,13 @@ public class OrderService {
             }
         }
 
-        attachPayments(order, request.getPayments(), originalTotal);
+        if (complimentary == null) {
+            attachPayments(order, request.getPayments(), originalTotal);
+        }
 
         var orderNumber = orderRepository.findMaxOrderNumberForDate(today) + 1;
         order.setOrderNumber(orderNumber);
+        order.setOrderKind(complimentary == null ? OrderKind.SALE : OrderKind.COMPLIMENTARY);
         order.setSubtotal(subtotal);
         order.setPreDiscountTotal(preDiscountTotal);
         order.setSaleDiscount(saleDiscount);
@@ -158,6 +167,10 @@ public class OrderService {
         if (discount != null) {
             discount.setOrder(order);
             order.setDiscount(discount);
+        }
+        if (complimentary != null) {
+            complimentary.setOrder(order);
+            order.setComplimentary(complimentary);
         }
 
         orderRepository.save(order);
@@ -245,6 +258,51 @@ public class OrderService {
         discount.setRequestedBy(requestedBy);
         discount.setAuthorizedBy(admin);
         return discount;
+    }
+
+    /**
+     * Validates a complimentary order's request: no discount, no payments, a known reason (OTHER
+     * needs a note) and exactly one token, all as 400 COMPLIMENTARY_INVALID; only then the
+     * manager's authorization (401 AUTHORIZATION_INVALID), so a rejected request never uses up a
+     * PIN token. Same token rules as a discount: a single-use token is consumed in this
+     * transaction, a session token never is, and the approver must be an active ADMIN.
+     */
+    private OrderComplimentary buildComplimentary(CreateOrderRequest request, User requestedBy) {
+        var complimentaryRequest = request.getComplimentary();
+        if (request.getDiscount() != null) {
+            throw OrderRuleException.complimentaryInvalid("A complimentary order can't also have a discount.");
+        }
+        if (request.getPayments() != null && !request.getPayments().isEmpty()) {
+            throw OrderRuleException.complimentaryInvalid("A complimentary order takes no payments.");
+        }
+        ComplimentaryReasonCode reasonCode;
+        try {
+            reasonCode = ComplimentaryReasonCode.valueOf(
+                    complimentaryRequest.getReasonCode() == null ? "" : complimentaryRequest.getReasonCode().trim());
+        } catch (IllegalArgumentException e) {
+            throw OrderRuleException.complimentaryInvalid(
+                    "reasonCode must be one of STAFF_MEAL, MANAGEMENT, GUEST, TASTING, OTHER.");
+        }
+        if (reasonCode == ComplimentaryReasonCode.OTHER && blankToNull(complimentaryRequest.getNote()) == null) {
+            throw OrderRuleException.complimentaryInvalid("note is required when reasonCode is OTHER.");
+        }
+
+        var authorization = complimentaryRequest.getAuthorization();
+        var authorizationToken = authorization == null ? null : blankToNull(authorization.getAuthorizationToken());
+        var sessionToken = authorization == null ? null : blankToNull(authorization.getSessionToken());
+        if ((authorizationToken == null) == (sessionToken == null)) {
+            throw OrderRuleException.complimentaryInvalid("authorization needs exactly one of authorizationToken or sessionToken.");
+        }
+        var admin = authorizationToken != null
+                ? adminAuthorizationService.consumeTokenInCurrentTransaction(authorizationToken)
+                : adminAuthorizationService.validateSessionTokenForDiscount(sessionToken);
+
+        var complimentary = new OrderComplimentary();
+        complimentary.setReasonCode(reasonCode);
+        complimentary.setNote(blankToNull(complimentaryRequest.getNote()));
+        complimentary.setRequestedBy(requestedBy);
+        complimentary.setAuthorizedBy(admin);
+        return complimentary;
     }
 
     private static <E extends Enum<E>> E parseEnum(Class<E> type, String value, String message) {

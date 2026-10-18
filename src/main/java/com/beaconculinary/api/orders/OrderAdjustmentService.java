@@ -53,6 +53,7 @@ public class OrderAdjustmentService {
                     "Discounts after payment are no longer available. Give the discount at checkout instead.");
         }
         rejectRefundOfDiscountedOrder(orderId, request);
+        rejectRefundOfComplimentaryOrder(orderId, request);
 
         // Step 1: validate the authorization first, so any failure below still leaves a
         // single-use token unusable — see AdminAuthorizationService#consumeToken. A sessionToken
@@ -202,6 +203,24 @@ public class OrderAdjustmentService {
         }
 
         return amount;
+    }
+
+    /**
+     * A complimentary order took no payment, so the only adjustment allowed is a whole-order void
+     * while it's still PENDING (stock goes back; the adjustment is recorded with amount 0 and
+     * nothing is paid out). A refund or remove-extras is refused here, before any token is
+     * consumed. Orders already voided/refunded fall through to the existing 409.
+     */
+    private void rejectRefundOfComplimentaryOrder(Long orderId, CreateOrderAdjustmentRequest request) {
+        var order = orderRepository.findById(orderId).orElse(null);
+        if (order == null || !order.complimentary() || request.getScope() == null
+                || order.getStatus() == OrderStatus.VOIDED || order.getStatus() == OrderStatus.REFUNDED) {
+            return;
+        }
+        var isVoid = request.getScope() == OrderAdjustmentScope.WHOLE_ORDER && order.getStatus() == OrderStatus.PENDING;
+        if (!isVoid) {
+            throw OrderRuleException.complimentaryNotRefundable();
+        }
     }
 
     /**

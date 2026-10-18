@@ -15,6 +15,7 @@ public class OrderDto {
     private Long shiftId;
     private Long cashierId;
     private OrderStatus status;
+    private OrderKind orderKind;
     private BigDecimal subtotal;
     private BigDecimal total;
     private BigDecimal originalTotal;
@@ -22,6 +23,8 @@ public class OrderDto {
     private BigDecimal saleDiscount;
     // null when no discount was given at sale.
     private OrderDiscountDto discount;
+    // null for a sale.
+    private OrderComplimentaryDto complimentary;
     private LocalDateTime createdAt;
     private boolean printFailed;
     private List<OrderLineDto> lines;

@@ -6,6 +6,7 @@ import com.beaconculinary.api.orders.Order;
 import com.beaconculinary.api.orders.OrderAdjustment;
 import com.beaconculinary.api.orders.OrderAdjustmentRepository;
 import com.beaconculinary.api.orders.OrderRepository;
+import com.beaconculinary.api.orders.OrderStatus;
 import com.beaconculinary.api.orders.PaymentMethod;
 import com.beaconculinary.api.oversight.ShiftActivityDto.CountAmount;
 import com.beaconculinary.api.oversight.ShiftActivityDto.ExpectedCashBreakdown;
@@ -120,7 +121,7 @@ public class ShiftActivityService {
             }
         }
 
-        var row = toListRow(shift, orders.size(), today);
+        var row = toListRow(shift, orders.stream().filter(order -> !order.complimentary()).count(), today);
         var detail = new ShiftDetail(row.shiftId(), row.owner(), row.displayStatus(), row.openedAt(), row.closedAt(),
                 row.openingFloat(), row.closingCash(), row.expectedCash(), row.variance(), row.orderCount(),
                 UserRefDto.of(shift.getClosedBy()), shift.getVarianceReasonCode(), shift.getVarianceNote(),
@@ -192,7 +193,20 @@ public class ShiftActivityService {
         return stored == null || stored.subtract(recomputed).abs().compareTo(MISMATCH_TOLERANCE) >= 0;
     }
 
-    private Totals totals(List<Order> orders, List<OrderAdjustment> adjustments) {
+    private Totals totals(List<Order> soldOrders, List<OrderAdjustment> processedAdjustments) {
+        // Complimentary orders sit outside every sales total: their own count and list value,
+        // excluding voided ones. Their zero-value voids stay out of the void totals.
+        long complimentaryCount = 0;
+        var complimentaryValue = BigDecimal.ZERO;
+        for (var order : soldOrders) {
+            if (order.complimentary() && order.getStatus() != OrderStatus.VOIDED) {
+                complimentaryCount++;
+                complimentaryValue = complimentaryValue.add(order.getPreDiscountTotal());
+            }
+        }
+        var orders = soldOrders.stream().filter(order -> !order.complimentary()).toList();
+        var adjustments = processedAdjustments.stream().filter(adjustment -> !adjustment.getOrder().complimentary()).toList();
+
         // Original collected amounts (order_payments rows are never reduced by adjustments).
         var salesByMethod = new EnumMap<PaymentMethod, BigDecimal>(PaymentMethod.class);
         for (var method : PaymentMethod.values()) {
@@ -231,7 +245,8 @@ public class ShiftActivityService {
                 countAmount(AdjustmentType.REFUND, counts, amounts),
                 new CountAmount(saleDiscountCount, saleDiscountAmount),
                 countAmount(AdjustmentType.EXTRAS_REMOVED, counts, amounts),
-                legacyDiscounts);
+                legacyDiscounts,
+                new CountAmount(complimentaryCount, complimentaryValue));
     }
 
     private static CountAmount countAmount(AdjustmentType type, Map<AdjustmentType, Long> counts,
@@ -247,7 +262,7 @@ public class ShiftActivityService {
         // Discounted = a discount at sale, or an old after-payment DISCOUNT adjustment.
         var discounted = order.discountedAtSale() || discountedOrderIds.contains(order.getId());
         return new SoldOrder(order.getId(), order.getOrderNumber(), UtcTimestamps.toInstant(order.getCreatedAt()),
-                UserRefDto.withRole(order.getCashier()), order.getStatus(), order.getOriginalTotal(), order.getTotal(),
+                UserRefDto.withRole(order.getCashier()), order.getStatus(), order.getOrderKind(), order.getOriginalTotal(), order.getTotal(),
                 order.getSaleDiscount(), payments, discounted, extrasRemovedOrderIds.contains(order.getId()));
     }
 
@@ -255,7 +270,7 @@ public class ShiftActivityService {
         var order = adjustment.getOrder();
         var soldInShiftId = order.getShift().getId();
         return new ProcessedAdjustment(adjustment.getId(), UtcTimestamps.toInstant(adjustment.getCreatedAt()),
-                order.getId(), order.getOrderNumber(), AdjustmentType.of(adjustment), adjustment.getAmount(),
+                order.getId(), order.getOrderNumber(), order.getOrderKind(), AdjustmentType.of(adjustment), adjustment.getAmount(),
                 adjustment.getRefundMethod(), adjustment.getReasonCode(), adjustment.getNote(),
                 UserRefDto.of(adjustment.getRequestedBy()), UserRefDto.of(adjustment.getAuthorizedBy()),
                 soldInShiftId, !soldInShiftId.equals(shiftId));

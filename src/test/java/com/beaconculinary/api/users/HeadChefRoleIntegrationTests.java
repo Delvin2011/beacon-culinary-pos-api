@@ -191,11 +191,13 @@ class HeadChefRoleIntegrationTests {
     }
 
     @Test
-    void salesSummaryOnly_amongTheReports() throws Exception {
+    void salesReportsOnly_amongTheReports() throws Exception {
         as(headChef, get("/admin/reports"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].key", contains("sales-summary")));
+                .andExpect(jsonPath("$[*].key", contains("meal-extras-sales", "sales-summary")));
         as(headChef, get("/admin/reports/sales-summary")).andExpect(status().isOk());
+        as(headChef, get("/admin/reports/meal-extras-sales")).andExpect(status().isOk());
+        as(headChef, get("/admin/reports/account-balances")).andExpect(status().isForbidden());
         as(headChef, get("/admin/reports/tender-summary")).andExpect(status().isForbidden());
         as(headChef, get("/admin/reports/cash-up-variance")).andExpect(status().isForbidden());
         as(headChef, get("/admin/reports/tender-summary/export?format=csv")).andExpect(status().isForbidden());

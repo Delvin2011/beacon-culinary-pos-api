@@ -77,15 +77,18 @@ class ReportsIntegrationTests {
 
     @Test
     void catalogue_listsTheThreeReportsForAdmin() throws Exception {
+        // R2's three reports sit between them (category, then title); see ReportsR2IntegrationTests.
         mockMvc.perform(get("/admin/reports").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].key", contains("cash-up-variance", "sales-summary", "tender-summary")))
-                .andExpect(jsonPath("$[1].category").value("SALES"))
-                .andExpect(jsonPath("$[1].template").value("TABLE"))
-                .andExpect(jsonPath("$[1].params[0].name").value("from"))
-                .andExpect(jsonPath("$[1].params[0].default").value("today-6"))
-                .andExpect(jsonPath("$[1].params[2].options", contains("DAY", "WEEK", "MONTH", "HOUR")))
-                .andExpect(jsonPath("$[2].params[2].options", contains("DAY", "WEEK", "MONTH")));
+                .andExpect(jsonPath("$[*].key", contains("cash-up-variance", "meal-extras-sales", "sales-summary",
+                        "account-balances", "account-statement", "tender-summary")))
+                .andExpect(jsonPath("$[2].category").value("SALES"))
+                .andExpect(jsonPath("$[2].template").value("TABLE"))
+                .andExpect(jsonPath("$[2].params[0].name").value("from"))
+                .andExpect(jsonPath("$[2].params[0].default").value("today-6"))
+                .andExpect(jsonPath("$[2].params[0].required").doesNotExist())
+                .andExpect(jsonPath("$[2].params[2].options", contains("DAY", "WEEK", "MONTH", "HOUR")))
+                .andExpect(jsonPath("$[5].params[2].options", contains("DAY", "WEEK", "MONTH")));
     }
 
     @Test
@@ -111,8 +114,15 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.page").value(nullValue()))
                 .andExpect(jsonPath("$.columns[0].type").value("DATE"))
                 .andExpect(jsonPath("$.columns[*].key", contains("period", "orders", "voidedOrRefundedOrders", "netOrders",
-                        "grossSales", "discountsAtSale", "voids", "refunds", "extrasRemoved", "netSales", "averageOrderValue")))
+                        "grossSales", "discountsAtSale", "voids", "refunds", "extrasRemoved", "netSales", "averageOrderValue",
+                        "complimentaryOrders", "complimentaryValue")))
                 .andExpect(jsonPath("$.rows.length()").value(2))
+                // Complimentary: O10 on Monday; Tuesday's O11 was voided, so it counts nowhere.
+                .andExpect(jsonPath("$.rows[*].complimentaryOrders", contains(1, 0)))
+                .andExpect(jsonPath("$.rows[*].complimentaryValue", contains(45.00, 0.00)))
+                .andExpect(jsonPath("$.totals.complimentaryOrders").value(1))
+                .andExpect(jsonPath("$.totals.complimentaryValue").value(45.00))
+                .andExpect(jsonPath("$.meta.notes", hasItem(org.hamcrest.Matchers.startsWith("Complimentary meals are given away"))))
                 .andExpect(jsonPath("$.rows[0].period").value("2026-10-05"))
                 .andExpect(jsonPath("$.rows[0].orders").value(7))
                 .andExpect(jsonPath("$.rows[0].voidedOrRefundedOrders").value(2))
@@ -147,7 +157,7 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.checks[0].expected").value(495.00))
                 .andExpect(jsonPath("$.checks[0].actual").value(495.00))
                 .andExpect(jsonPath("$.checks[0].difference").value(0.00))
-                .andExpect(jsonPath("$.meta.definitionVersion").value(2))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(3))
                 .andExpect(jsonPath("$.rows[0].legacyDiscountsAfterPayment").doesNotExist());
     }
 
@@ -161,6 +171,9 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.rows[*].netSales", contains(160.0, 120.0, 0.0, 0.0, 120.0, 95.0)))
                 // O7's R10 discount at sale sits in the 12:00 row.
                 .andExpect(jsonPath("$.rows[5].discountsAtSale").value(10.00))
+                // O10 (12:30) is the only complimentary order counted.
+                .andExpect(jsonPath("$.rows[*].complimentaryOrders", contains(0, 0, 0, 0, 0, 1)))
+                .andExpect(jsonPath("$.rows[5].complimentaryValue").value(45.00))
                 .andExpect(jsonPath("$.totals.orders").value(9))
                 .andExpect(jsonPath("$.totals.grossSales").value(660.00))
                 .andExpect(jsonPath("$.totals.netSales").value(495.00))
@@ -216,8 +229,16 @@ class ReportsIntegrationTests {
         run("cash-up-variance", RANGE).andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.category").value("DAILY_STATEMENTS"))
                 .andExpect(jsonPath("$.columns[10].type").value("VARIANCE"))
-                .andExpect(jsonPath("$.columns[14].type").value("STATUS"))
-                .andExpect(jsonPath("$.columns[14].statusTones.OVERDUE").value("negative"))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(2))
+                .andExpect(jsonPath("$.columns[14].key").value("complimentaryMeals"))
+                .andExpect(jsonPath("$.columns[15].key").value("complimentaryValue"))
+                .andExpect(jsonPath("$.columns[16].type").value("STATUS"))
+                .andExpect(jsonPath("$.columns[16].statusTones.OVERDUE").value("negative"))
+                // O10 was rung in S2; cash figures are unchanged.
+                .andExpect(jsonPath("$.rows[*].complimentaryMeals", contains(0, 1, 0)))
+                .andExpect(jsonPath("$.rows[*].complimentaryValue", contains(0.0, 45.0, 0.0)))
+                .andExpect(jsonPath("$.totals.complimentaryMeals").value(1))
+                .andExpect(jsonPath("$.totals.complimentaryValue").value(45.00))
                 .andExpect(jsonPath("$.rows[*].shiftId", contains((int) fixture.s1, (int) fixture.s2, (int) fixture.s3)))
                 .andExpect(jsonPath("$.rows[*].tradingDay", contains("2026-10-05", "2026-10-05", "2026-10-06")))
                 .andExpect(jsonPath("$.rows[*].openingFloat", contains(200.0, 300.0, 100.0)))
@@ -307,7 +328,7 @@ class ReportsIntegrationTests {
         run("sales-summary", RANGE + "&groupBy=DAY")
                 .andExpect(jsonPath("$.columns[*].key", contains("period", "orders", "voidedOrRefundedOrders", "netOrders",
                         "grossSales", "discountsAtSale", "voids", "refunds", "extrasRemoved", "legacyDiscountsAfterPayment",
-                        "netSales", "averageOrderValue")))
+                        "netSales", "averageOrderValue", "complimentaryOrders", "complimentaryValue")))
                 .andExpect(jsonPath("$.columns[9].label").value("Discounts after payment (legacy)"))
                 .andExpect(jsonPath("$.rows[0].legacyDiscountsAfterPayment").value(5.00))
                 .andExpect(jsonPath("$.rows[1].legacyDiscountsAfterPayment").value(0.00))
@@ -401,6 +422,67 @@ class ReportsIntegrationTests {
     }
 
     @Test
+    void complimentaryOnlyDay_salesZero_complimentaryColumnsFilled() throws Exception {
+        var wednesday = TUESDAY.plusDays(1);
+        var adminId = AuthTestHelper.adminId(mockMvc);
+        var shift = fixture.closedShift(adminId, "100.00", ReportFixture.utc(wednesday, 8, 0), ReportFixture.utc(wednesday, 15, 0),
+                "100.00", "100.00", "0.00", null, null, adminId, "0.00", "0.00");
+        fixture.complimentaryOrder(shift, AuthTestHelper.adminId(mockMvc), wednesday, 1, 12, 10, "60.00", "COLLECTED",
+                "GUEST", AuthTestHelper.adminId(mockMvc));
+
+        run("sales-summary", "from=2026-10-07&to=2026-10-07").andExpect(status().isOk())
+                .andExpect(jsonPath("$.rows[*].period", contains("2026-10-07")))
+                .andExpect(jsonPath("$.rows[0].orders").value(0))
+                .andExpect(jsonPath("$.rows[0].grossSales").value(0.00))
+                .andExpect(jsonPath("$.rows[0].netSales").value(0.00))
+                .andExpect(jsonPath("$.rows[0].complimentaryOrders").value(1))
+                .andExpect(jsonPath("$.rows[0].complimentaryValue").value(60.00))
+                .andExpect(jsonPath("$.checks[0].status").value("PASS"));
+        run("tender-summary", "from=2026-10-07&to=2026-10-07")
+                .andExpect(jsonPath("$.rows").isEmpty())
+                .andExpect(jsonPath("$.checks[0].status").value("PASS"));
+    }
+
+    @Test
+    void posActivity_complimentaryTotalsApart_salesCountsUnchanged() throws Exception {
+        // S2: O6, O7 sold plus O10 given away. orderCount and sales count sale orders only.
+        mockMvc.perform(get("/admin/shifts/" + fixture.s2 + "/activity").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.shift.orderCount").value(2))
+                .andExpect(jsonPath("$.totals.orderCount").value(2))
+                .andExpect(jsonPath("$.totals.complimentary.count").value(1))
+                .andExpect(jsonPath("$.totals.complimentary.amount").value(45.00))
+                .andExpect(jsonPath("$.totals.salesByMethod.CASH").value(60.00))
+                .andExpect(jsonPath("$.orders[*].orderKind", contains("SALE", "SALE", "COMPLIMENTARY")))
+                .andExpect(jsonPath("$.expectedCashBreakdown.expectedCash").value(270.00));
+        // S3: O11 was voided, so it isn't counted, and its zero-value void stays out of the void totals.
+        mockMvc.perform(get("/admin/shifts/" + fixture.s3 + "/activity").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.shift.orderCount").value(2))
+                .andExpect(jsonPath("$.totals.complimentary.count").value(0))
+                .andExpect(jsonPath("$.totals.complimentary.amount").value(0))
+                .andExpect(jsonPath("$.totals.voids.count").value(0))
+                .andExpect(jsonPath("$.adjustments[?(@.orderKind == 'COMPLIMENTARY')].amount", contains(0.0)));
+        // The shift list counts sale orders too.
+        mockMvc.perform(get("/admin/shifts?from=2026-10-05&to=2026-10-06").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.content[?(@.shiftId == " + fixture.s2 + ")].orderCount", contains(2)));
+    }
+
+    @Test
+    void complimentaryInTwoShiftsOfOneDay_countedInTheShiftItWasRungIn() throws Exception {
+        fixture.complimentaryOrder(fixture.s1, AuthTestHelper.cashierAId(mockMvc), MONDAY, 9, 8, 40, "40.00", "COLLECTED",
+                "TASTING", AuthTestHelper.adminId(mockMvc));
+
+        run("cash-up-variance", RANGE)
+                .andExpect(jsonPath("$.rows[*].complimentaryMeals", contains(1, 1, 0)))
+                .andExpect(jsonPath("$.rows[*].complimentaryValue", contains(40.0, 45.0, 0.0)))
+                .andExpect(jsonPath("$.rows[*].expectedCash", contains(440.0, 270.0, 140.0)));
+        run("sales-summary", RANGE)
+                .andExpect(jsonPath("$.rows[0].complimentaryOrders").value(2))
+                .andExpect(jsonPath("$.rows[0].complimentaryValue").value(85.00))
+                .andExpect(jsonPath("$.rows[0].orders").value(7));
+    }
+
+    @Test
     void csvExport_matchesTheEnvelope() throws Exception {
         var response = export("sales-summary", RANGE + "&groupBy=DAY&format=csv").andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"sales-summary_2026-10-05_2026-10-06.csv\""))
@@ -411,9 +493,10 @@ class ReportsIntegrationTests {
         assertThat(bytes).startsWith(0xEF, 0xBB, 0xBF);
         var lines = new String(bytes, StandardCharsets.UTF_8).substring(1).split("\r\n");
         assertThat(lines).containsExactly(
-                "Date,Orders,Voided/refunded orders,Net orders,Gross sales,Discounts at sale,Voids,Refunds,Extras removed,Net sales,Average order value",
-                "2026-10-05,7,2,5,570.00,10.00,50.00,90.00,0.00,420.00,84.00",
-                "2026-10-06,2,0,2,90.00,0.00,0.00,0.00,15.00,75.00,37.50");
+                "Date,Orders,Voided/refunded orders,Net orders,Gross sales,Discounts at sale,Voids,Refunds,Extras removed,Net sales,"
+                        + "Average order value,Complimentary orders,Complimentary value (at list price)",
+                "2026-10-05,7,2,5,570.00,10.00,50.00,90.00,0.00,420.00,84.00,1,45.00",
+                "2026-10-06,2,0,2,90.00,0.00,0.00,0.00,15.00,75.00,37.50,0,0.00");
     }
 
     @Test
