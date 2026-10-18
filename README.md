@@ -380,10 +380,15 @@ retroacting onto already-created daily options, and cross-dish extras visibility
 (including the disallowed skip/backward/`COLLECTED` cases), cross-day queue scoping, role
 enforcement, and an SSE assertion that a `PATCH` broadcasts a `STATUS_CHANGED` event to a
 connected stream. A `Clock` bean (overridden with a `MutableClock` in tests where needed)
-makes shift-close-timestamp and meal-period-window assertions deterministic. Since Flyway
-isn't wired into the app's own startup (`spring.flyway.enabled: false` in
-`application-dev.yaml` — see [Database](#3-database)), running the tests requires the
-migrations to already be applied via `./mvnw flyway:migrate` first.
+makes shift-close-timestamp and meal-period-window assertions deterministic.
+
+**The tests have their own database.** They delete orders, shifts and accounts, so they never
+use the app's database: `TestDatabaseEnvironmentPostProcessor` (test classpath only) points
+them at `TEST_DATASOURCE_URL` when set, otherwise `BeaconculinaryTest` on the local server, and
+refuses any database whose name doesn't contain "test". It overrides `SPRING_DATASOURCE_URL`
+from `.env`, so `.env` can safely point at real data. Username, password and `JWT_SECRET` still
+come from the usual environment variables. Create the empty database once
+(`CREATE DATABASE [BeaconculinaryTest]`); Flyway builds and migrates it when the tests start.
 
 ---
 

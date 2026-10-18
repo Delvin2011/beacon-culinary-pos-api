@@ -262,7 +262,7 @@ public class ShiftActivityService {
         // Discounted = a discount at sale, or an old after-payment DISCOUNT adjustment.
         var discounted = order.discountedAtSale() || discountedOrderIds.contains(order.getId());
         return new SoldOrder(order.getId(), order.getOrderNumber(), UtcTimestamps.toInstant(order.getCreatedAt()),
-                UserRefDto.withRole(order.getCashier()), order.getStatus(), order.getOrderKind(), order.getOriginalTotal(), order.getTotal(),
+                UserRefDto.withRole(order.getCashier()), order.getStatus(), order.getOrderKind(), order.getPreDiscountTotal(), order.getOriginalTotal(), order.getTotal(),
                 order.getSaleDiscount(), payments, discounted, extrasRemovedOrderIds.contains(order.getId()));
     }
 

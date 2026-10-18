@@ -46,7 +46,8 @@ The receipt shows "COMPLIMENTARY" and no payment.
 
 ## POS Oversight
 `GET /admin/shifts/{id}/activity`:
-- `orders[]` and `adjustments[]` rows carry `orderKind`.
+- `orders[]` and `adjustments[]` rows carry `orderKind`. `orders[]` rows also carry
+  `preDiscountTotal`, the list value (for a complimentary order, the value given away).
 - `totals.complimentary = { count, amount }`: complimentary orders sold in the shift, not voided,
   at list value. Always present (zeros when none).
 - `shift.orderCount`, `totals.orderCount`, sales by method, discounts, voids, refunds and extras

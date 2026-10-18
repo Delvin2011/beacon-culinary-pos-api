@@ -205,6 +205,52 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
     }
 
     @Test
+    void getRequirements_listsPlannedItemsWithNoComponentsOrNoRecipe_asUncovered() throws Exception {
+        // A mixed day: Rice Meal is covered; the stew has no components; the bread meal's
+        // component has no recipe; the salad extra has no recipe either.
+        var riceId = createIngredient("Rice", "KG");
+        var riceComponentId = createComponent("Rice");
+        putRecipe(riceComponentId, 10, "[{\"ingredientId\":" + riceId + ",\"quantity\":1.5}]");
+        createDailyOption(createMealCatalog("Rice Meal", riceComponentId), 20);
+
+        var stewBody = "{\"name\":\"Lamb & Vegetable Stew\",\"description\":\"desc\",\"price\":50.00}";
+        var stewId = MAPPER.readTree(mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(stewBody))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asLong();
+        createDailyOption(stewId, 20);
+
+        createDailyOption(createMealCatalog("Bread Meal", createComponent("Bread Roll")), 10);
+        createDailyComponentStock(createComponent("Side Salad"), 5);
+
+        mockMvc.perform(get("/admin/daily-planning/" + PLANNING_DATE + "/ingredient-requirements")
+                        .param("period", "Lunch").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requirements.length()").value(1))
+                .andExpect(jsonPath("$.requirements[0].calculatedQuantity").value(3.0))
+                .andExpect(jsonPath("$.uncovered.length()").value(3))
+                .andExpect(jsonPath("$.uncovered[0].type").value("MEAL"))
+                .andExpect(jsonPath("$.uncovered[0].name").value("Lamb & Vegetable Stew"))
+                .andExpect(jsonPath("$.uncovered[0].reason").value("NO_COMPONENTS"))
+                .andExpect(jsonPath("$.uncovered[0].components").isEmpty())
+                .andExpect(jsonPath("$.uncovered[0].planItemId").isNumber())
+                .andExpect(jsonPath("$.uncovered[1].name").value("Bread Meal"))
+                .andExpect(jsonPath("$.uncovered[1].reason").value("NO_RECIPE"))
+                .andExpect(jsonPath("$.uncovered[1].components[0]").value("Bread Roll"))
+                .andExpect(jsonPath("$.uncovered[2].type").value("EXTRA"))
+                .andExpect(jsonPath("$.uncovered[2].name").value("Side Salad"))
+                .andExpect(jsonPath("$.uncovered[2].reason").value("NO_RECIPE"));
+    }
+
+    @Test
+    void getRequirements_everythingCovered_uncoveredIsEmpty() throws Exception {
+        setUpRiceAndChickenPlan();
+        mockMvc.perform(get("/admin/daily-planning/" + PLANNING_DATE + "/ingredient-requirements")
+                        .param("period", "Lunch").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.uncovered").isArray())
+                .andExpect(jsonPath("$.uncovered").isEmpty());
+    }
+
+    @Test
     void confirm_usesEditedQuantity_createsStockRequestWithoutDeducting_andExcludesReviewedRowsFromNextFetch() throws Exception {
         var riceId = createIngredient("Rice", "KG");
         var oilId = createIngredient("Cooking Oil", "LITRE");

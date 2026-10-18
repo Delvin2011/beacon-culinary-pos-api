@@ -454,6 +454,9 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.totals.complimentary.amount").value(45.00))
                 .andExpect(jsonPath("$.totals.salesByMethod.CASH").value(60.00))
                 .andExpect(jsonPath("$.orders[*].orderKind", contains("SALE", "SALE", "COMPLIMENTARY")))
+                // List value on every row: O7 was R70 before its discount; O10 gave R45 away.
+                .andExpect(jsonPath("$.orders[*].preDiscountTotal", contains(120.0, 70.0, 45.0)))
+                .andExpect(jsonPath("$.orders[2].total").value(0))
                 .andExpect(jsonPath("$.expectedCashBreakdown.expectedCash").value(270.00));
         // S3: O11 was voided, so it isn't counted, and its zero-value void stays out of the void totals.
         mockMvc.perform(get("/admin/shifts/" + fixture.s3 + "/activity").header("Authorization", "Bearer " + adminToken))

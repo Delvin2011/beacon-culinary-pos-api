@@ -77,6 +77,8 @@ public record ShiftActivityDto(
     public record CountAmount(long count, BigDecimal amount) {
     }
 
+    /** preDiscountTotal is the list value (what the order would have cost undiscounted); for a
+     * complimentary order it's the value given away, while originalTotal and total are 0. */
     public record SoldOrder(
             Long orderId,
             Integer orderNumber,
@@ -84,6 +86,7 @@ public record ShiftActivityDto(
             UserRefDto rungBy,
             OrderStatus status,
             OrderKind orderKind,
+            BigDecimal preDiscountTotal,
             BigDecimal originalTotal,
             BigDecimal total,
             BigDecimal saleDiscount,
