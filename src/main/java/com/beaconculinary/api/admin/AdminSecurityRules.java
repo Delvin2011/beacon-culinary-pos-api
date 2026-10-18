@@ -19,7 +19,7 @@ public class AdminSecurityRules implements SecurityRules {
                 .hasAnyRole(Role.CASHIER.name(), Role.ADMIN.name())
             // Head Chef: read-only on ingredients (stock and movements) and the menu catalog; full
             // daily planning (create/edit/confirm); reports, where each report's own allowedRoles
-            // decides what may run (only Sales Summary for the Head Chef). These come before the
+            // decides what may run (Sales Summary and Meal & Extras Sales for the Head Chef). These come before the
             // STOCK_ADMIN and ADMIN rules below because the first matching rule wins.
             // Read-only for the Head Chef: ingredients, GRVs (deliveries) and waste history. Capturing
             // or editing GRVs, direct waste posting and uploads stay STOCK_ADMIN/ADMIN (rule below).

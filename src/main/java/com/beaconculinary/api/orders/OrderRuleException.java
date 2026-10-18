@@ -2,7 +2,7 @@ package com.beaconculinary.api.orders;
 
 /** A 400 the client must branch on, carrying a stable machine-readable code (e.g.
  * DISCOUNT_INVALID, DISCOUNT_TOO_LARGE, DISCOUNT_AFTER_PAYMENT_RETIRED,
- * DISCOUNTED_ORDER_NOT_REFUNDABLE). */
+ * DISCOUNTED_ORDER_NOT_REFUNDABLE, COMPLIMENTARY_INVALID, COMPLIMENTARY_ORDER_NOT_REFUNDABLE). */
 public class OrderRuleException extends RuntimeException {
     private final String code;
 
@@ -21,5 +21,14 @@ public class OrderRuleException extends RuntimeException {
 
     static OrderRuleException discountTooLarge(String message) {
         return new OrderRuleException("DISCOUNT_TOO_LARGE", message);
+    }
+
+    static OrderRuleException complimentaryInvalid(String message) {
+        return new OrderRuleException("COMPLIMENTARY_INVALID", message);
+    }
+
+    static OrderRuleException complimentaryNotRefundable() {
+        return new OrderRuleException("COMPLIMENTARY_ORDER_NOT_REFUNDABLE",
+                "Complimentary orders can't be refunded or have extras removed: nothing was paid. Void it while it's still pending.");
     }
 }

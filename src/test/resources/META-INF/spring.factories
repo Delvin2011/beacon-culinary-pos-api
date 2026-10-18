@@ -1,0 +1,2 @@
+# Test classpath only: every test runs against its own database (see the class's Javadoc).
+org.springframework.boot.env.EnvironmentPostProcessor=com.beaconculinary.api.support.TestDatabaseEnvironmentPostProcessor

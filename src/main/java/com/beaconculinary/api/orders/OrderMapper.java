@@ -33,4 +33,12 @@ public interface OrderMapper {
         return new OrderDiscountDto(discount.getDiscountType(), discount.getDiscountValue(), discount.getAmount(),
                 discount.getReasonCode(), discount.getNote(), UserRefDto.of(discount.getAuthorizedBy()));
     }
+
+    default OrderComplimentaryDto toDto(OrderComplimentary complimentary) {
+        if (complimentary == null) {
+            return null;
+        }
+        return new OrderComplimentaryDto(complimentary.getReasonCode(), complimentary.getNote(),
+                UserRefDto.of(complimentary.getAuthorizedBy()));
+    }
 }

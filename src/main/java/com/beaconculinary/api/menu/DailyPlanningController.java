@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 
-/** All ADMIN-only via AdminSecurityRules' /admin/** fallback. */
+/** ADMIN and HEAD_CHEF (AdminSecurityRules: /admin/daily-options/**, /admin/daily-component-stock/**, /admin/daily-planning/**). */
 @AllArgsConstructor
 @RestController
 public class DailyPlanningController {
@@ -23,6 +23,30 @@ public class DailyPlanningController {
     @PostMapping("/admin/daily-component-stock")
     public ResponseEntity<DailyComponentStockDto> createDailyComponentStock(@Valid @RequestBody CreateDailyComponentStockRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(dailyPlanningService.createDailyComponentStock(request));
+    }
+
+    /** Planned items only: 400 once the ingredients have been reviewed. */
+    @PutMapping("/admin/daily-options/{id}")
+    public DailyMealOptionDto updateDailyOption(@PathVariable Long id, @Valid @RequestBody CreateDailyOptionRequest request) {
+        return dailyPlanningService.updateDailyOption(id, request);
+    }
+
+    @DeleteMapping("/admin/daily-options/{id}")
+    public ResponseEntity<Void> deleteDailyOption(@PathVariable Long id) {
+        dailyPlanningService.deleteDailyOption(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/admin/daily-component-stock/{id}")
+    public DailyComponentStockDto updateDailyComponentStock(
+            @PathVariable Long id, @Valid @RequestBody CreateDailyComponentStockRequest request) {
+        return dailyPlanningService.updateDailyComponentStock(id, request);
+    }
+
+    @DeleteMapping("/admin/daily-component-stock/{id}")
+    public ResponseEntity<Void> deleteDailyComponentStock(@PathVariable Long id) {
+        dailyPlanningService.deleteDailyComponentStock(id);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/admin/daily-options/{id}/actual")

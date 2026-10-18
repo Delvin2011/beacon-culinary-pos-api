@@ -102,7 +102,7 @@ public class ReportExporter {
 
             var r = 0;
             textCell(sheet.createRow(r++), 0, meta.title(), styles.title);
-            textCell(sheet.createRow(r++), 0, "Parameters: " + describe(meta.params()), null);
+            textCell(sheet.createRow(r++), 0, "Parameters: " + describe(meta.params(), meta.paramLabels()), null);
             textCell(sheet.createRow(r++), 0, "Generated: "
                     + LOCAL_DATE_TIME.format(LocalDateTime.ofInstant(meta.generatedAt(), ClockConfig.BUSINESS_ZONE))
                     + " (" + meta.timezone() + ")", null);
@@ -143,7 +143,8 @@ public class ReportExporter {
             if (value instanceof BigDecimal decimal) {
                 var percent = column.type() == ColumnType.PERCENT;
                 cell.setCellValue(percent ? decimal.movePointLeft(2).doubleValue() : decimal.doubleValue());
-                cell.setCellStyle(percent ? styles.percent(totals) : styles.money(totals));
+                cell.setCellStyle(percent ? styles.percent(totals)
+                        : column.type() == ColumnType.DECIMAL ? styles.decimal(totals) : styles.money(totals));
             } else if (value instanceof Number number) {
                 cell.setCellValue(number.doubleValue());
                 cell.setCellStyle(styles.integer(totals));
@@ -187,10 +188,11 @@ public class ReportExporter {
         sheet.setColumnWidth(5, 50 * 256);
     }
 
-    private static String describe(Map<String, Object> params) {
+    /** ID parameters show their option label (accountId=Acme Logistics), not the raw id. */
+    private static String describe(Map<String, Object> params, Map<String, String> labels) {
         return params.entrySet().stream()
                 .filter(entry -> entry.getValue() != null)
-                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .map(entry -> entry.getKey() + "=" + labels.getOrDefault(entry.getKey(), entry.getValue().toString()))
                 .collect(Collectors.joining(", "));
     }
 
@@ -220,6 +222,7 @@ public class ReportExporter {
         private final CellStyle[] integer = new CellStyle[2];
         private final CellStyle[] date = new CellStyle[2];
         private final CellStyle[] dateTime = new CellStyle[2];
+        private final CellStyle[] decimal = new CellStyle[2];
 
         Styles(Workbook workbook) {
             var format = workbook.createDataFormat();
@@ -238,8 +241,8 @@ public class ReportExporter {
             totalText.setFont(bold);
             totalText.setBorderTop(BorderStyle.THIN);
 
-            var formats = new String[]{"\"R\" #,##0.00;-\"R\" #,##0.00", "0.00%", "0", "yyyy-mm-dd", "yyyy-mm-dd hh:mm"};
-            var targets = new CellStyle[][]{money, percent, integer, date, dateTime};
+            var formats = new String[]{"\"R\" #,##0.00;-\"R\" #,##0.00", "0.00%", "0", "yyyy-mm-dd", "yyyy-mm-dd hh:mm", "0.00"};
+            var targets = new CellStyle[][]{money, percent, integer, date, dateTime, decimal};
             for (var i = 0; i < formats.length; i++) {
                 for (var t = 0; t < 2; t++) {
                     var style = workbook.createCellStyle();
@@ -271,6 +274,10 @@ public class ReportExporter {
 
         CellStyle dateTime(boolean totals) {
             return dateTime[totals ? 1 : 0];
+        }
+
+        CellStyle decimal(boolean totals) {
+            return decimal[totals ? 1 : 0];
         }
     }
 }

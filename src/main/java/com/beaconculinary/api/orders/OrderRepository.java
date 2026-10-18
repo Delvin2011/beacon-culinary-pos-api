@@ -19,9 +19,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     long countByShiftId(Long shiftId);
 
-    /** POS Oversight A4: order counts for a page of shifts in one grouped query (no N+1).
+    /** POS Oversight A4: sale-order counts for a page of shifts in one grouped query (no N+1);
+     * complimentary orders are not counted.
      * Each row is [shiftId (Long), count (Long)]; shifts with no orders are absent. */
-    @Query("SELECT o.shift.id, COUNT(o) FROM Order o WHERE o.shift.id IN :shiftIds GROUP BY o.shift.id")
+    @Query("SELECT o.shift.id, COUNT(o) FROM Order o WHERE o.shift.id IN :shiftIds"
+            + " AND o.orderKind = com.beaconculinary.api.orders.OrderKind.SALE GROUP BY o.shift.id")
     List<Object[]> countByShiftIds(@Param("shiftIds") Collection<Long> shiftIds);
 
     /** POS Oversight A4: orders sold in a shift with who rang them up and their payments. */

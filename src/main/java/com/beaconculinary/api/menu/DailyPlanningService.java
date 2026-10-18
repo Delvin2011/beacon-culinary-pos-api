@@ -64,6 +64,82 @@ public class DailyPlanningService {
         return mealMapper.toDto(stock);
     }
 
+    /**
+     * Corrects a planned meal: its meal, period, date or planned portions. Only while PLANNED —
+     * once its ingredients are reviewed it feeds an Issuing Sheet, and only READY items can be
+     * sold, so a PLANNED option has no orders or issues against it. Choosing a different meal
+     * snapshots that meal's name, description and price; keeping the same meal keeps the
+     * snapshot, so a later catalog price change still never rewrites a planned day.
+     */
+    @Transactional
+    public DailyMealOptionDto updateDailyOption(Long id, CreateDailyOptionRequest request) {
+        var option = dailyMealOptionRepository.findById(id).orElseThrow(DailyPlanItemNotFoundException::new);
+        requirePlanned(option.getStatus(), option.getName());
+        var mealPeriod = mealPeriodRepository.findById(request.getMealPeriodId())
+                .orElseThrow(() -> new InvalidMenuRequestException("mealPeriodId does not exist."));
+
+        if (!option.getMealCatalog().getId().equals(request.getMealCatalogId())) {
+            var mealCatalog = mealCatalogRepository.findById(request.getMealCatalogId())
+                    .orElseThrow(() -> new InvalidMenuRequestException("mealCatalogId does not exist."));
+            option.setMealCatalog(mealCatalog);
+            option.setName(mealCatalog.getName());
+            option.setDescription(mealCatalog.getDescription());
+            option.setPrice(mealCatalog.getPrice());
+        }
+        option.setMealPeriod(mealPeriod);
+        option.setOptionDate(request.getOptionDate());
+        option.setPlannedPortions(request.getPlannedPortions());
+
+        dailyMealOptionRepository.save(option);
+        return mealMapper.toDto(option);
+    }
+
+    /** Removes a planned meal from the day. Only while PLANNED (see {@link #updateDailyOption}). */
+    @Transactional
+    public void deleteDailyOption(Long id) {
+        var option = dailyMealOptionRepository.findById(id).orElseThrow(DailyPlanItemNotFoundException::new);
+        requirePlanned(option.getStatus(), option.getName());
+        dailyMealOptionRepository.delete(option);
+    }
+
+    /** Same rules as {@link #updateDailyOption}, for a planned extra. A different component
+     * snapshots its extra price; the same component keeps the planned one. */
+    @Transactional
+    public DailyComponentStockDto updateDailyComponentStock(Long id, CreateDailyComponentStockRequest request) {
+        var stock = dailyComponentStockRepository.findById(id).orElseThrow(DailyPlanItemNotFoundException::new);
+        requirePlanned(stock.getStatus(), stock.getComponentCatalog().getName());
+        var mealPeriod = mealPeriodRepository.findById(request.getMealPeriodId())
+                .orElseThrow(() -> new InvalidMenuRequestException("mealPeriodId does not exist."));
+
+        if (!stock.getComponentCatalog().getId().equals(request.getComponentCatalogId())) {
+            var componentCatalog = componentCatalogRepository.findById(request.getComponentCatalogId())
+                    .orElseThrow(() -> new InvalidMenuRequestException("componentCatalogId does not exist."));
+            stock.setComponentCatalog(componentCatalog);
+            stock.setExtraPrice(componentCatalog.getExtraPrice());
+        }
+        stock.setMealPeriod(mealPeriod);
+        stock.setOptionDate(request.getOptionDate());
+        stock.setBufferQuantity(request.getBufferQuantity());
+
+        dailyComponentStockRepository.save(stock);
+        return mealMapper.toDto(stock);
+    }
+
+    /** Removes a planned extra from the day. Only while PLANNED. */
+    @Transactional
+    public void deleteDailyComponentStock(Long id) {
+        var stock = dailyComponentStockRepository.findById(id).orElseThrow(DailyPlanItemNotFoundException::new);
+        requirePlanned(stock.getStatus(), stock.getComponentCatalog().getName());
+        dailyComponentStockRepository.delete(stock);
+    }
+
+    private static void requirePlanned(DailyPlanItemStatus status, String name) {
+        if (status != DailyPlanItemStatus.PLANNED) {
+            throw new InvalidMenuRequestException("'" + name + "' can't be changed or removed: its ingredients have "
+                    + "already been reviewed" + (status == DailyPlanItemStatus.READY ? " and it is on sale." : "."));
+        }
+    }
+
     /** Records or corrects the actual portions prepared, moving the option to READY. Allowed any
      * time after the ingredient review, including after sales start, but never below what's
      * already been sold. An actual above planned is allowed (the frontend warns). */

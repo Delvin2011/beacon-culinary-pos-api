@@ -57,7 +57,7 @@ public class DailyPlanningIngredientService {
         var requirements = calculation.byIngredientId().entrySet().stream()
                 .map(entry -> toRequirementDto(entry.getKey(), entry.getValue(), mainStoreId, kitchenId))
                 .toList();
-        return new IngredientRequirementsResponseDto(requirements);
+        return new IngredientRequirementsResponseDto(requirements, calculation.uncovered());
     }
 
     @Transactional
@@ -149,33 +149,58 @@ public class DailyPlanningIngredientService {
                 date, mealPeriodId, DailyPlanItemStatus.PLANNED);
 
         Map<Long, BigDecimal> byIngredientId = new LinkedHashMap<>();
+        var uncovered = new ArrayList<UncoveredPlanItemDto>();
 
         for (var option : options) {
-            for (var link : option.getMealCatalog().getComponents()) {
-                accumulate(byIngredientId, link.getComponentCatalog(), option.getPlannedPortions());
+            var links = option.getMealCatalog().getComponents();
+            if (links.isEmpty()) {
+                uncovered.add(new UncoveredPlanItemDto(UncoveredPlanItemDto.Type.MEAL, option.getId(), option.getName(),
+                        UncoveredPlanItemDto.Reason.NO_COMPONENTS, List.of()));
+                continue;
+            }
+            var withoutRecipe = new ArrayList<String>();
+            for (var link : links) {
+                if (!accumulate(byIngredientId, link.getComponentCatalog(), option.getPlannedPortions())) {
+                    withoutRecipe.add(link.getComponentCatalog().getName());
+                }
+            }
+            if (!withoutRecipe.isEmpty()) {
+                uncovered.add(new UncoveredPlanItemDto(UncoveredPlanItemDto.Type.MEAL, option.getId(), option.getName(),
+                        UncoveredPlanItemDto.Reason.NO_RECIPE, withoutRecipe));
             }
         }
         for (var stock : stocks) {
-            accumulate(byIngredientId, stock.getComponentCatalog(), stock.getBufferQuantity());
+            if (!accumulate(byIngredientId, stock.getComponentCatalog(), stock.getBufferQuantity())) {
+                var name = stock.getComponentCatalog().getName();
+                uncovered.add(new UncoveredPlanItemDto(UncoveredPlanItemDto.Type.EXTRA, stock.getId(), name,
+                        UncoveredPlanItemDto.Reason.NO_RECIPE, List.of(name)));
+            }
         }
 
-        return new RequirementsCalculation(byIngredientId, options, stocks);
+        return new RequirementsCalculation(byIngredientId, options, stocks, uncovered);
     }
 
-    private void accumulate(Map<Long, BigDecimal> byIngredientId, ComponentCatalog componentCatalog, Integer portions) {
-        // A component without a recipe is simply excluded — not every extra/dish has raw
-        // ingredients worth tracking (e.g. a bought-in, pre-packaged item).
-        recipeRepository.findWithLinesByComponentCatalogId(componentCatalog.getId()).ifPresent(recipe -> {
-            var batchSize = BigDecimal.valueOf(recipe.getBatchSize());
-            for (var line : recipe.getLines()) {
-                var perPortion = line.getQuantity().divide(batchSize, 6, RoundingMode.HALF_UP);
-                var required = perPortion.multiply(BigDecimal.valueOf(portions));
-                byIngredientId.merge(line.getIngredient().getId(), required, BigDecimal::add);
-            }
-        });
+    /**
+     * Adds a component's recipe, scaled to the portions, into the running totals. Returns false
+     * when it contributes nothing (no recipe, or a recipe with no lines), so the caller can
+     * report it as uncovered. Such a component is still allowed — not every extra/dish has raw
+     * ingredients worth tracking (e.g. a bought-in, pre-packaged item).
+     */
+    private boolean accumulate(Map<Long, BigDecimal> byIngredientId, ComponentCatalog componentCatalog, Integer portions) {
+        var recipe = recipeRepository.findWithLinesByComponentCatalogId(componentCatalog.getId()).orElse(null);
+        if (recipe == null || recipe.getLines().isEmpty()) {
+            return false;
+        }
+        var batchSize = BigDecimal.valueOf(recipe.getBatchSize());
+        for (var line : recipe.getLines()) {
+            var perPortion = line.getQuantity().divide(batchSize, 6, RoundingMode.HALF_UP);
+            var required = perPortion.multiply(BigDecimal.valueOf(portions));
+            byIngredientId.merge(line.getIngredient().getId(), required, BigDecimal::add);
+        }
+        return true;
     }
 
-    private record RequirementsCalculation(
-            Map<Long, BigDecimal> byIngredientId, List<DailyMealOption> options, List<DailyComponentStock> stocks) {
+    private record RequirementsCalculation(Map<Long, BigDecimal> byIngredientId, List<DailyMealOption> options,
+                                           List<DailyComponentStock> stocks, List<UncoveredPlanItemDto> uncovered) {
     }
 }

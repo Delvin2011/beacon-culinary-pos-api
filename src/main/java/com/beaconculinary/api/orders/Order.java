@@ -40,6 +40,12 @@ public class Order {
     @Enumerated(EnumType.STRING)
     private OrderStatus status = OrderStatus.PENDING;
 
+    // SALE, or COMPLIMENTARY: no payment, preDiscountTotal holds the list value and
+    // saleDiscount/originalTotal/total are 0.
+    @Column(name = "order_kind")
+    @Enumerated(EnumType.STRING)
+    private OrderKind orderKind = OrderKind.SALE;
+
     @Column(name = "subtotal")
     private BigDecimal subtotal;
 
@@ -87,8 +93,17 @@ public class Order {
     @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private OrderDiscount discount;
 
+    // The complimentary reason and approval, or null for a sale.
+    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private OrderComplimentary complimentary;
+
     /** True when a discount was given at checkout — such an order can't be refunded. */
     public boolean discountedAtSale() {
         return saleDiscount != null && saleDiscount.signum() > 0;
+    }
+
+    /** True for a complimentary order — nothing was paid, so it can only be voided. */
+    public boolean complimentary() {
+        return orderKind == OrderKind.COMPLIMENTARY;
     }
 }

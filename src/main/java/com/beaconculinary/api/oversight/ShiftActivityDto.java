@@ -1,6 +1,7 @@
 package com.beaconculinary.api.oversight;
 
 import com.beaconculinary.api.orders.OrderAdjustmentReasonCode;
+import com.beaconculinary.api.orders.OrderKind;
 import com.beaconculinary.api.orders.OrderStatus;
 import com.beaconculinary.api.orders.PaymentMethod;
 import com.beaconculinary.api.orders.RefundMethod;
@@ -56,10 +57,12 @@ public record ShiftActivityDto(
     public record RecomputedParts(BigDecimal cashSales, BigDecimal cashRefundsProcessed, BigDecimal expectedCash) {
     }
 
-    /** orderCount, salesByMethod and discounts (discounts at sale) cover orders sold in the
+    /** orderCount, salesByMethod and discounts (discounts at sale) cover sale orders sold in the
      * shift; voids, refunds, extrasRemoved and legacyDiscountsAfterPayment cover adjustments
-     * processed in it (the adjustments list). legacyDiscountsAfterPayment is the retired
-     * after-payment discount, present only when non-zero. */
+     * processed in it on sale orders (the adjustments list also shows a complimentary order's
+     * zero-value void). legacyDiscountsAfterPayment is the retired after-payment discount,
+     * present only when non-zero. complimentary is the complimentary orders sold in the shift
+     * that weren't voided, at list value; always present. */
     public record Totals(
             long orderCount,
             Map<PaymentMethod, BigDecimal> salesByMethod,
@@ -67,18 +70,23 @@ public record ShiftActivityDto(
             CountAmount refunds,
             CountAmount discounts,
             CountAmount extrasRemoved,
-            @JsonInclude(JsonInclude.Include.NON_NULL) CountAmount legacyDiscountsAfterPayment) {
+            @JsonInclude(JsonInclude.Include.NON_NULL) CountAmount legacyDiscountsAfterPayment,
+            CountAmount complimentary) {
     }
 
     public record CountAmount(long count, BigDecimal amount) {
     }
 
+    /** preDiscountTotal is the list value (what the order would have cost undiscounted); for a
+     * complimentary order it's the value given away, while originalTotal and total are 0. */
     public record SoldOrder(
             Long orderId,
             Integer orderNumber,
             Instant createdAt,
             UserRefDto rungBy,
             OrderStatus status,
+            OrderKind orderKind,
+            BigDecimal preDiscountTotal,
             BigDecimal originalTotal,
             BigDecimal total,
             BigDecimal saleDiscount,
@@ -96,6 +104,7 @@ public record ShiftActivityDto(
             Instant createdAt,
             Long orderId,
             Integer orderNumber,
+            OrderKind orderKind,
             AdjustmentType type,
             BigDecimal amount,
             RefundMethod refundMethod,

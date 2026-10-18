@@ -8,6 +8,7 @@ import com.beaconculinary.api.reports.ReportCheck;
 import com.beaconculinary.api.reports.ReportColumn;
 import com.beaconculinary.api.reports.ReportDefinition;
 import com.beaconculinary.api.reports.ReportFacts;
+import com.beaconculinary.api.reports.ReportFacts.ComplimentaryFacts;
 import com.beaconculinary.api.reports.ReportFacts.SalesFacts;
 import com.beaconculinary.api.reports.ReportParamSpec;
 import com.beaconculinary.api.reports.ReportParams;
@@ -22,6 +23,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 /** Reports R1 §2.1. */
 @Component
@@ -63,10 +66,12 @@ public class SalesSummaryReport implements ReportDefinition {
     }
 
     /** 2: discounts moved to checkout — gross is the pre-discount total, "Discounts at sale"
-     * replaces the adjustment-based Discounts column, plus a conditional legacy column. */
+     * replaces the adjustment-based Discounts column, plus a conditional legacy column.
+     * 3: sales figures count sale orders only; complimentary orders and their list value get
+     * two columns at the end, outside the net-sales identity. */
     @Override
     public int definitionVersion() {
-        return 2;
+        return 3;
     }
 
     @Override
@@ -81,8 +86,13 @@ public class SalesSummaryReport implements ReportDefinition {
                 "Discounts after payment (legacy) appears only when the range includes orders discounted after payment, "
                         + "a feature that has since been retired.",
                 "Days are trading days: an order counts on the day its shift opened, so an overnight shift stays on one day. "
-                        + "Hour rows use the time each order was rung up, added together across the whole range.");
+                        + "Hour rows use the time each order was rung up, added together across the whole range.",
+                COMPLIMENTARY_NOTE);
     }
+
+    /** Shared with Cash-up & Variance. */
+    public static final String COMPLIMENTARY_NOTE = "Complimentary meals are given away with manager approval and no "
+            + "payment. They are shown separately and are not part of sales or net sales. Value is at list price.";
 
     @Override
     public ReportResult run(ReportParams params) {
@@ -111,11 +121,23 @@ public class SalesSummaryReport implements ReportDefinition {
         }
         columns.add(ReportColumn.of("netSales", "Net sales", ColumnType.MONEY, ColumnTotal.SUM));
         columns.add(ReportColumn.of("averageOrderValue", "Average order value", ColumnType.MONEY, ColumnTotal.DERIVED));
+        columns.add(ReportColumn.of("complimentaryOrders", "Complimentary orders", ColumnType.INT, ColumnTotal.SUM));
+        columns.add(ReportColumn.of("complimentaryValue", "Complimentary value (at list price)", ColumnType.MONEY, ColumnTotal.SUM));
 
-        var rows = facts.sales(range, groupBy).stream()
-                .map(row -> toRow(groupBy.label(row.bucket()), row, showLegacy))
+        // A period can have complimentary orders and no sales, so rows come from both. Bucket
+        // keys sort chronologically as text.
+        var sales = new TreeMap<String, SalesFacts>();
+        facts.sales(range, groupBy).forEach(row -> sales.put(row.bucket(), row));
+        var complimentary = new TreeMap<String, ComplimentaryFacts>();
+        facts.complimentary(range, groupBy).forEach(row -> complimentary.put(row.bucket(), row));
+        var buckets = new TreeSet<>(sales.keySet());
+        buckets.addAll(complimentary.keySet());
+
+        var rows = buckets.stream()
+                .map(bucket -> toRow(groupBy.label(bucket), sales.getOrDefault(bucket, SalesFacts.none(bucket)),
+                        complimentary.getOrDefault(bucket, ComplimentaryFacts.none(bucket)), showLegacy))
                 .toList();
-        var totals = toRow("Total", totalsFacts, showLegacy);
+        var totals = toRow("Total", totalsFacts, facts.complimentaryTotals(range), showLegacy);
 
         var actualNet = totalsFacts.grossSales().subtract(totalsFacts.discountsAtSale()).subtract(totalsFacts.reductionsAfterPayment());
         var check = ReportCheck.compare("net-agrees-with-orders",
@@ -125,7 +147,7 @@ public class SalesSummaryReport implements ReportDefinition {
         return new ReportResult(columns, rows, totals, List.of(check));
     }
 
-    private static Map<String, Object> toRow(Object period, SalesFacts facts, boolean showLegacy) {
+    private static Map<String, Object> toRow(Object period, SalesFacts facts, ComplimentaryFacts complimentary, boolean showLegacy) {
         var row = new LinkedHashMap<String, Object>();
         row.put("period", period);
         row.put("orders", facts.orders());
@@ -141,6 +163,8 @@ public class SalesSummaryReport implements ReportDefinition {
         }
         row.put("netSales", ReportValues.money(facts.netSales()));
         row.put("averageOrderValue", ReportValues.divide(facts.netSales(), facts.netOrders()));
+        row.put("complimentaryOrders", complimentary.orders());
+        row.put("complimentaryValue", ReportValues.money(complimentary.value()));
         return row;
     }
 }
