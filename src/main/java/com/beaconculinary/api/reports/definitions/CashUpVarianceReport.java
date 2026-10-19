@@ -2,6 +2,8 @@ package com.beaconculinary.api.reports.definitions;
 
 import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.endofday.CloseDaySettings;
+import com.beaconculinary.api.endofday.ShiftSignoffs;
 import com.beaconculinary.api.reports.CheckStatus;
 import com.beaconculinary.api.reports.ColumnTotal;
 import com.beaconculinary.api.reports.ColumnType;
@@ -15,6 +17,7 @@ import com.beaconculinary.api.reports.ReportParamSpec;
 import com.beaconculinary.api.reports.ReportParams;
 import com.beaconculinary.api.reports.ReportResult;
 import com.beaconculinary.api.reports.ReportValues;
+import com.beaconculinary.api.reports.RowAction;
 import com.beaconculinary.api.reports.ShiftCashFigures;
 import com.beaconculinary.api.users.Role;
 import lombok.AllArgsConstructor;
@@ -42,6 +45,8 @@ public class CashUpVarianceReport implements ReportDefinition {
     private final ReportFacts facts;
     private final ShiftCashFigures shiftCashFigures;
     private final Clock clock;
+    private final ShiftSignoffs signoffs;
+    private final CloseDaySettings closeDaySettings;
 
     @Override
     public String key() {
@@ -73,13 +78,16 @@ public class CashUpVarianceReport implements ReportDefinition {
         return List.of(ReportParamSpec.from(), ReportParamSpec.to(),
                 new ReportParamSpec("ownerId", "Owner", ParamType.USER, null, null),
                 new ReportParamSpec("varianceOnly", "Variance only", ParamType.BOOLEAN, "false", null),
-                new ReportParamSpec("status", "Status", ParamType.ENUM, null, List.of("OPEN", "CLOSED")));
+                new ReportParamSpec("status", "Status", ParamType.ENUM, null, List.of("OPEN", "CLOSED")),
+                ReportParamSpec.choice("signoff", "Sign-off", "ALL", "UNSIGNED"));
     }
 
-    /** 2: complimentary meals and their list value per shift. Cash figures are unchanged. */
+    /** 2: complimentary meals and their list value per shift. Cash figures are unchanged.
+     * 3: who signed each shift off and when, the UNSIGNED filter, and row actions (sign off,
+     * open the shift's Cashier Reading). */
     @Override
     public int definitionVersion() {
-        return 2;
+        return 3;
     }
 
     @Override
@@ -100,7 +108,14 @@ public class CashUpVarianceReport implements ReportDefinition {
     @Override
     public ReportResult run(ReportParams params) {
         var range = params.range();
-        var shifts = facts.shifts(range, params.userId("ownerId"), params.string("status"), params.bool("varianceOnly"));
+        var allShifts = facts.shifts(range, params.userId("ownerId"), params.string("status"), params.bool("varianceOnly"));
+        var states = signoffs.latest(allShifts.stream().map(ReportFacts.ShiftFacts::shiftId).toList());
+        // UNSIGNED: closed shifts without a current sign-off (an open shift can't be signed off yet),
+        // from the first trading day on (earlier shifts are outside sign-off).
+        var shifts = "UNSIGNED".equals(params.string("signoff"))
+                ? allShifts.stream().filter(shift -> !shift.open() && !signedOff(states, shift.shiftId())
+                        && closeDaySettings.covers(shift.tradingDay())).toList()
+                : allShifts;
         var figures = shiftCashFigures.figures(shifts);
         var complimentaryByShift = facts.complimentaryByShift(range);
         var today = LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
@@ -122,6 +137,8 @@ public class CashUpVarianceReport implements ReportDefinition {
                 ReportColumn.of("closedBy", "Closed by", ColumnType.TEXT, ColumnTotal.NONE),
                 ReportColumn.of("complimentaryMeals", "Complimentary meals", ColumnType.INT, ColumnTotal.SUM),
                 ReportColumn.of("complimentaryValue", "Complimentary value", ColumnType.MONEY, ColumnTotal.SUM),
+                ReportColumn.of("signedOffBy", "Signed off by", ColumnType.TEXT, ColumnTotal.NONE),
+                ReportColumn.of("signedOffAt", "Signed off at", ColumnType.DATETIME, ColumnTotal.NONE),
                 new ReportColumn("status", "Status", ColumnType.STATUS, ColumnTotal.NONE, STATUS_TONES));
 
         var rows = new ArrayList<Map<String, Object>>();
@@ -160,7 +177,19 @@ public class CashUpVarianceReport implements ReportDefinition {
             var complimentary = complimentaryByShift.getOrDefault(shift.shiftId(), ReportFacts.ComplimentaryFacts.none(null));
             row.put("complimentaryMeals", complimentary.orders());
             row.put("complimentaryValue", ReportValues.money(complimentary.value()));
+            var state = states.get(shift.shiftId());
+            var signed = state != null && state.signedOff();
+            row.put("signedOffBy", signed ? state.byName() : null);
+            row.put("signedOffAt", signed ? state.at() : null);
             row.put("status", !open ? "CLOSED" : shift.tradingDay().isBefore(today) ? "OVERDUE" : "OPEN");
+            var actions = new ArrayList<RowAction>();
+            if (!open && !signed && closeDaySettings.covers(shift.tradingDay())) {
+                actions.add(RowAction.post("SIGN_OFF", "Sign off", "/admin/shifts/" + shift.shiftId() + "/signoff",
+                        "Sign off shift #" + shift.shiftId() + " (" + shift.ownerName() + ")?", RowAction.OnSuccess.RELOAD));
+            }
+            actions.add(RowAction.openReport("OPEN_READING", "Cashier reading", "cashier-reading",
+                    Map.of("shiftId", shift.shiftId())));
+            row.put(RowAction.ROW_KEY, actions);
             rows.add(row);
             complimentaryMeals += complimentary.orders();
             complimentaryValue = complimentaryValue.add(complimentary.value());
@@ -227,6 +256,11 @@ public class CashUpVarianceReport implements ReportDefinition {
                 openCheck);
 
         return new ReportResult(columns, rows, totals, checks);
+    }
+
+    private static boolean signedOff(Map<Long, ShiftSignoffs.State> states, long shiftId) {
+        var state = states.get(shiftId);
+        return state != null && state.signedOff();
     }
 
     /** CASH_COUNTING_ERROR → "Cash counting error". */

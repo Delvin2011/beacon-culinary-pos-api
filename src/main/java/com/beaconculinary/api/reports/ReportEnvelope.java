@@ -6,17 +6,25 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-/** Reports R1 §1.2: the one response contract every report returns. */
+/**
+ * Reports R1 §1.2: the one response contract every report returns. A TABLE report fills
+ * columns/rows/totals; a STATEMENT report (R3) fills sections instead (see {@link Sections})
+ * and leaves those three null. actions (R3) are report-level buttons such as Close Day; rows
+ * may carry their own under "_actions" (see {@link RowAction}).
+ */
 public record ReportEnvelope(
         Meta meta,
         List<ReportColumn> columns,
         List<Map<String, Object>> rows,
         Map<String, Object> totals,
         List<ReportCheck> checks,
-        Page page) {
+        Page page,
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<Map<String, Object>> sections,
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) List<ReportAction> actions) {
 
     /** paramLabels (R2) gives the display label of each ID parameter that is set, e.g.
-     * { "accountId": "Acme Logistics" }, for headings and export title blocks; omitted when empty. */
+     * { "accountId": "Acme Logistics" }; omitted when empty. R3: statementTitle, reference
+     * ("Z-0001"), interim and business are set on statements; exportFormats on every report. */
     public record Meta(
             String key,
             String title,
@@ -28,11 +36,23 @@ public record ReportEnvelope(
             boolean amountsInclVat,
             Map<String, Object> params,
             @JsonInclude(JsonInclude.Include.NON_EMPTY) Map<String, String> paramLabels,
-            List<String> notes) {
+            List<String> notes,
+            List<String> exportFormats,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String statementTitle,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String reference,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Boolean interim,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Business business) {
     }
 
-    /** Set only when the rows are a limited slice (R2): number is the zero-based page, size the
-     * row limit, totalRows every matching row. null for unlimited reports (all of R1). */
-    public record Page(int number, int size, long totalRows) {
+    public record Business(String name) {
+    }
+
+    /** Set only when the rows are a slice. paged = false: a limited list ("Showing N of M",
+     * R2's limit); paged = true (R3): the client may request other pages with the page and size
+     * query parameters. number is zero-based; totalRows counts every matching row. */
+    public record Page(int number, int size, long totalRows, boolean paged) {
+        public Page(int number, int size, long totalRows) {
+            this(number, size, totalRows, false);
+        }
     }
 }

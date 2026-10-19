@@ -77,18 +77,19 @@ class ReportsIntegrationTests {
 
     @Test
     void catalogue_listsTheThreeReportsForAdmin() throws Exception {
-        // R2's three reports sit between them (category, then title); see ReportsR2IntegrationTests.
+        // R2 and R3 reports sit among them (category, then title); see ReportsR2IntegrationTests.
         mockMvc.perform(get("/admin/reports").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].key", contains("cash-up-variance", "meal-extras-sales", "sales-summary",
+                .andExpect(jsonPath("$[*].key", contains("cash-up-variance", "cashier-reading", "x-reading", "z-reading",
+                        "meal-extras-sales", "sales-summary",
                         "account-balances", "account-statement", "tender-summary")))
-                .andExpect(jsonPath("$[2].category").value("SALES"))
-                .andExpect(jsonPath("$[2].template").value("TABLE"))
-                .andExpect(jsonPath("$[2].params[0].name").value("from"))
-                .andExpect(jsonPath("$[2].params[0].default").value("today-6"))
-                .andExpect(jsonPath("$[2].params[0].required").doesNotExist())
-                .andExpect(jsonPath("$[2].params[2].options", contains("DAY", "WEEK", "MONTH", "HOUR")))
-                .andExpect(jsonPath("$[5].params[2].options", contains("DAY", "WEEK", "MONTH")));
+                .andExpect(jsonPath("$[5].category").value("SALES"))
+                .andExpect(jsonPath("$[5].template").value("TABLE"))
+                .andExpect(jsonPath("$[5].params[0].name").value("from"))
+                .andExpect(jsonPath("$[5].params[0].default").value("today-6"))
+                .andExpect(jsonPath("$[5].params[0].required").doesNotExist())
+                .andExpect(jsonPath("$[5].params[2].options", contains("DAY", "WEEK", "MONTH", "HOUR")))
+                .andExpect(jsonPath("$[8].params[2].options", contains("DAY", "WEEK", "MONTH", "CHECK")));
     }
 
     @Test
@@ -218,7 +219,7 @@ class ReportsIntegrationTests {
                 .andExpect(jsonPath("$.checks[*].key", contains("collected-equals-gross-less-sale-discounts", "cash-matches-cashups")))
                 .andExpect(jsonPath("$.checks[0].expected").value(650.00))
                 .andExpect(jsonPath("$.checks[0].actual").value(650.00))
-                .andExpect(jsonPath("$.meta.definitionVersion").value(2))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(3))
                 .andExpect(jsonPath("$.checks[*].status", contains("PASS", "PASS")))
                 .andExpect(jsonPath("$.checks[1].expected").value(250.00))
                 .andExpect(jsonPath("$.checks[1].actual").value(250.00));
@@ -229,11 +230,13 @@ class ReportsIntegrationTests {
         run("cash-up-variance", RANGE).andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.category").value("DAILY_STATEMENTS"))
                 .andExpect(jsonPath("$.columns[10].type").value("VARIANCE"))
-                .andExpect(jsonPath("$.meta.definitionVersion").value(2))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(3))
                 .andExpect(jsonPath("$.columns[14].key").value("complimentaryMeals"))
                 .andExpect(jsonPath("$.columns[15].key").value("complimentaryValue"))
-                .andExpect(jsonPath("$.columns[16].type").value("STATUS"))
-                .andExpect(jsonPath("$.columns[16].statusTones.OVERDUE").value("negative"))
+                .andExpect(jsonPath("$.columns[16].key").value("signedOffBy"))
+                .andExpect(jsonPath("$.columns[17].key").value("signedOffAt"))
+                .andExpect(jsonPath("$.columns[18].type").value("STATUS"))
+                .andExpect(jsonPath("$.columns[18].statusTones.OVERDUE").value("negative"))
                 // O10 was rung in S2; cash figures are unchanged.
                 .andExpect(jsonPath("$.rows[*].complimentaryMeals", contains(0, 1, 0)))
                 .andExpect(jsonPath("$.rows[*].complimentaryValue", contains(0.0, 45.0, 0.0)))

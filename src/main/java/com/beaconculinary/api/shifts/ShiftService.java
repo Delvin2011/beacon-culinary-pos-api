@@ -2,7 +2,11 @@ package com.beaconculinary.api.shifts;
 
 import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.endofday.EndOfDayConflictException;
+import com.beaconculinary.api.endofday.TradingDayLock;
+import com.beaconculinary.api.endofday.ZReadings;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.UserRefDto;
 import lombok.AllArgsConstructor;
@@ -13,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.LocalDate;
 
 @Service
 @AllArgsConstructor
@@ -23,10 +28,23 @@ public class ShiftService {
     private final AuthService authService;
     private final ShiftMapper shiftMapper;
     private final Clock clock;
+    private final TradingDayLock tradingDayLock;
+    private final ZReadings zReadings;
 
     @Transactional
     public ShiftDto openShift(OpenShiftRequest request) {
         var currentUser = authService.getCurrentUser();
+
+        // Reports R3: a shift opens on today's trading day, which may already be closed by a Z.
+        // The trading-day lock serialises this with Close Day, so a shift can't slip in while the
+        // Z is being built.
+        var tradingDay = LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        tradingDayLock.lock(tradingDay);
+        var closed = zReadings.forDay(tradingDay);
+        if (closed.isPresent()) {
+            throw new EndOfDayConflictException("DAY_CLOSED", "Today's trading day is already closed ("
+                    + closed.get().reference() + "). No more shifts can open today.", null, closed.get().zNumber());
+        }
 
         var shift = new Shift();
         shift.setCashier(currentUser);

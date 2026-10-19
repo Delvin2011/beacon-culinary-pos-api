@@ -180,27 +180,30 @@ class OrderCardPaymentIntegrationTests {
     }
 
     @Test
-    void cardOrder_withoutCardReference_returns400_andCreatesNoOrder() throws Exception {
+    void cardOrder_withoutCardReference_succeeds_referenceIsOptional() throws Exception {
         var beefId = createComponent("Beef", "15.00");
         var mealId = createMealCatalog("Potatoes & Beef", "50.00", beefId);
         var optionId = createDailyOption(lunchId, mealId, 10);
         openShift(cashierToken);
 
         placeOrder(cardPayment(null), optionId)
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.payments[0].method").value("CARD"))
+                .andExpect(jsonPath("$.payments[0].cardReference").doesNotExist());
 
-        assertPortionsRemaining(optionId, 10);
+        assertPortionsRemaining(optionId, 9);
     }
 
     @Test
-    void cardOrder_withBlankCardReference_returns400() throws Exception {
+    void cardOrder_withBlankCardReference_succeeds_andStoresNoReference() throws Exception {
         var beefId = createComponent("Beef", "15.00");
         var mealId = createMealCatalog("Potatoes & Beef", "50.00", beefId);
         var optionId = createDailyOption(lunchId, mealId, 10);
         openShift(cashierToken);
 
         placeOrder(cardPayment("   "), optionId)
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.payments[0].cardReference").doesNotExist());
     }
 
     @Test

@@ -37,3 +37,9 @@ cors:
 # GRV VAT handling: the standard VAT rate, snapshotted onto every GRV line.
 vat:
   standard-rate: 0.15
+
+# Reports R3: where Z numbering starts. Close Day ignores earlier days (they can't be closed and
+# don't block later ones). Set to the go-live day; empty = every earlier day must be closed first.
+reports:
+  close-day:
+    first-trading-day: ${CLOSE_DAY_FIRST_TRADING_DAY:2026-10-12}
