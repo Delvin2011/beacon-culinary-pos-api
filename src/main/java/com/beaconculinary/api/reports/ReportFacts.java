@@ -180,20 +180,27 @@ public class ReportFacts {
     }
 
     /** Shifts opened in the range (by trading day), oldest first, with optional filters. */
+    private static final String SHIFT_SELECT = """
+            SELECT sf.shift_id, sf.trading_day, s.status, s.opening_float, s.opened_at, s.closed_at,
+                   ou.name AS owner_name, s.closing_cash, s.expected_cash, s.variance, s.variance_reason_code,
+                   au.name AS authorized_by_name, cu.name AS closed_by_name,
+                   s.cash_sales_at_close, s.cash_refunds_at_close
+            FROM v_shift_facts sf
+            JOIN shifts s ON s.id = sf.shift_id
+            JOIN users ou ON ou.id = s.cashier_id
+            LEFT JOIN users au ON au.id = s.variance_authorized_by
+            LEFT JOIN users cu ON cu.id = s.closed_by
+            """;
+
+    /** One shift, whatever its day (R3's Cashier Reading). */
+    public java.util.Optional<ShiftFacts> shift(long shiftId) {
+        return jdbc.query(SHIFT_SELECT + " WHERE sf.shift_id = :id", new MapSqlParameterSource("id", shiftId),
+                (rs, i) -> shiftFacts(rs)).stream().findFirst();
+    }
+
     public List<ShiftFacts> shifts(ReportRange range, Long ownerId, String status, boolean varianceOnly) {
         var params = rangeParams(range);
-        var sql = new StringBuilder("""
-                SELECT sf.shift_id, sf.trading_day, s.status, s.opening_float, s.opened_at, s.closed_at,
-                       ou.name AS owner_name, s.closing_cash, s.expected_cash, s.variance, s.variance_reason_code,
-                       au.name AS authorized_by_name, cu.name AS closed_by_name,
-                       s.cash_sales_at_close, s.cash_refunds_at_close
-                FROM v_shift_facts sf
-                JOIN shifts s ON s.id = sf.shift_id
-                JOIN users ou ON ou.id = s.cashier_id
-                LEFT JOIN users au ON au.id = s.variance_authorized_by
-                LEFT JOIN users cu ON cu.id = s.closed_by
-                WHERE sf.opened_at_utc >= :from AND sf.opened_at_utc < :to
-                """);
+        var sql = new StringBuilder(SHIFT_SELECT + " WHERE sf.opened_at_utc >= :from AND sf.opened_at_utc < :to\n");
         if (ownerId != null) {
             sql.append(" AND s.cashier_id = :ownerId");
             params.addValue("ownerId", ownerId);
@@ -207,7 +214,11 @@ public class ReportFacts {
         }
         sql.append(" ORDER BY sf.opened_at_utc, sf.shift_id");
 
-        return jdbc.query(sql.toString(), params, (rs, i) -> new ShiftFacts(
+        return jdbc.query(sql.toString(), params, (rs, i) -> shiftFacts(rs));
+    }
+
+    private static ShiftFacts shiftFacts(ResultSet rs) throws SQLException {
+        return new ShiftFacts(
                 rs.getLong("shift_id"),
                 rs.getObject("trading_day", LocalDate.class),
                 rs.getString("status"),
@@ -222,7 +233,7 @@ public class ReportFacts {
                 rs.getString("authorized_by_name"),
                 rs.getString("closed_by_name"),
                 rs.getBigDecimal("cash_sales_at_close"),
-                rs.getBigDecimal("cash_refunds_at_close")));
+                rs.getBigDecimal("cash_refunds_at_close"));
     }
 
     private static MapSqlParameterSource rangeParams(ReportRange range) {

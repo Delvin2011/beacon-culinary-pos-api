@@ -78,26 +78,27 @@ class ReportsR2IntegrationTests {
     @Test
     void catalogue_listsAllSixForAdmin_withOptionObjectsAndRequired() throws Exception {
         as(adminToken, "/admin/reports").andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].key", contains("cash-up-variance", "meal-extras-sales", "sales-summary",
+                .andExpect(jsonPath("$[*].key", contains("cash-up-variance", "cashier-reading", "x-reading", "z-reading",
+                        "meal-extras-sales", "sales-summary",
                         "account-balances", "account-statement", "tender-summary")))
                 // Meal & Extras: plain-string options, {value,label} meal periods, and a LIMIT.
-                .andExpect(jsonPath("$[1].params[2].options", contains("ITEM", "MEAL_PERIOD")))
-                .andExpect(jsonPath("$[1].params[4].name").value("mealPeriodId"))
-                .andExpect(jsonPath("$[1].params[4].type").value("ID"))
-                .andExpect(jsonPath("$[1].params[4].options[?(@.label == 'Lunch')].value", contains(Long.toString(fixture.lunchId))))
-                .andExpect(jsonPath("$[1].params[4].required").doesNotExist())
-                .andExpect(jsonPath("$[1].params[7].type").value("LIMIT"))
-                .andExpect(jsonPath("$[1].params[7].options", contains("ALL", "10", "20", "50")))
+                .andExpect(jsonPath("$[4].params[2].options", contains("ITEM", "MEAL_PERIOD")))
+                .andExpect(jsonPath("$[4].params[4].name").value("mealPeriodId"))
+                .andExpect(jsonPath("$[4].params[4].type").value("ID"))
+                .andExpect(jsonPath("$[4].params[4].options[?(@.label == 'Lunch')].value", contains(Long.toString(fixture.lunchId))))
+                .andExpect(jsonPath("$[4].params[4].required").doesNotExist())
+                .andExpect(jsonPath("$[4].params[7].type").value("LIMIT"))
+                .andExpect(jsonPath("$[4].params[7].options", contains("ALL", "10", "20", "50")))
                 // Statement: a required account, A–Z.
-                .andExpect(jsonPath("$[4].params[0].name").value("accountId"))
-                .andExpect(jsonPath("$[4].params[0].required").value(true))
-                .andExpect(jsonPath("$[4].params[0].options[*].label", contains("Acme Logistics", "Dormant Co", "Zulu Catering")));
+                .andExpect(jsonPath("$[7].params[0].name").value("accountId"))
+                .andExpect(jsonPath("$[7].params[0].required").value(true))
+                .andExpect(jsonPath("$[7].params[0].options[*].label", contains("Acme Logistics", "Dormant Co", "Zulu Catering")));
     }
 
     @Test
     void inactiveAccount_isLabelledInTheOptions() throws Exception {
         jdbc.update("UPDATE accounts SET active = 0 WHERE id = ?", fixture.a3);
-        as(adminToken, "/admin/reports").andExpect(jsonPath("$[4].params[0].options[1].label").value("Dormant Co (inactive)"));
+        as(adminToken, "/admin/reports").andExpect(jsonPath("$[7].params[0].options[1].label").value("Dormant Co (inactive)"));
     }
 
     @Test

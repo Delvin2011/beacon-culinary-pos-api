@@ -30,8 +30,18 @@ public class ReportParamParser {
     private final Clock clock;
 
     public ReportParams parse(List<ReportParamSpec> specs, Map<String, String> raw) {
+        return parse(specs, raw, false);
+    }
+
+    /**
+     * R3: page and size are generic query parameters for paged reports (page 0-based, size 1 to
+     * 200, default 50). They're always validated but only paged reports use them. An export
+     * (allRows) ignores them and gets every row.
+     */
+    public ReportParams parse(List<ReportParamSpec> specs, Map<String, String> raw, boolean allRows) {
         var values = new LinkedHashMap<String, Object>();
         var errors = new LinkedHashMap<String, String>();
+        var paging = allRows ? ReportParams.Paging.ALL : paging(raw, errors);
 
         for (var spec : specs) {
             var input = raw.get(spec.name());
@@ -50,6 +60,15 @@ public class ReportParamParser {
             }
         }
 
+        // A parameter that only applies to other values of another one is ignored (null) there.
+        for (var spec : specs) {
+            var condition = spec.appliesWhen();
+            if (condition != null && !condition.values().contains(String.valueOf(values.get(condition.param())))) {
+                values.put(spec.name(), null);
+                errors.remove(spec.name());
+            }
+        }
+
         if (errors.isEmpty() && values.get("from") instanceof LocalDate from && values.get("to") instanceof LocalDate to) {
             if (from.isAfter(to)) {
                 errors.put("from", "From must be on or before To.");
@@ -61,7 +80,35 @@ public class ReportParamParser {
         if (!errors.isEmpty()) {
             throw new ReportParamException(errors);
         }
-        return new ReportParams(values);
+        return new ReportParams(values, paging);
+    }
+
+    private static ReportParams.Paging paging(Map<String, String> raw, Map<String, String> errors) {
+        var number = 0;
+        var size = ReportParams.Paging.DEFAULT_SIZE;
+        try {
+            var page = raw.get("page");
+            if (page != null && !page.isBlank()) {
+                number = Integer.parseInt(page.trim());
+                if (number < 0) {
+                    throw new NumberFormatException();
+                }
+            }
+        } catch (NumberFormatException e) {
+            errors.put("page", "Page must be 0 or more.");
+        }
+        try {
+            var text = raw.get("size");
+            if (text != null && !text.isBlank()) {
+                size = Integer.parseInt(text.trim());
+                if (size < 1 || size > ReportParams.Paging.MAX_SIZE) {
+                    throw new NumberFormatException();
+                }
+            }
+        } catch (NumberFormatException e) {
+            errors.put("size", "Size must be between 1 and " + ReportParams.Paging.MAX_SIZE + ".");
+        }
+        return new ReportParams.Paging(number, size, false);
     }
 
     private Object convert(ReportParamSpec spec, String text) {
@@ -81,6 +128,7 @@ public class ReportParamParser {
                 yield Boolean.parseBoolean(text);
             }
             case USER -> Long.valueOf(text);
+            case INT -> Integer.valueOf(text);
             case ID -> {
                 var id = Long.valueOf(text);
                 if (spec.options() != null && spec.optionLabel(id) == null) {
@@ -124,6 +172,7 @@ public class ReportParamParser {
             case USER -> spec.label() + " must be a user id.";
             case ID -> select(spec);
             case LIMIT -> spec.label() + " must be ALL or a positive whole number.";
+            case INT -> spec.label() + " must be a whole number.";
         };
     }
 

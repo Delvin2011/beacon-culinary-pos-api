@@ -52,6 +52,12 @@ public final class ReportFixture {
     /** Removes everything the fixture (or any other test) left in the order, shift and account
      * tables, plus the fixture's own plan and catalog items (and any plan entries on its dates). */
     public static void clear(JdbcTemplate jdbc) {
+        // R3: Z readings are insert-only (a trigger refuses deletes); only the test database's
+        // cleanup lifts that, for its own delete.
+        jdbc.execute("DISABLE TRIGGER trg_z_readings_insert_only ON z_readings; DELETE FROM z_readings; "
+                + "ENABLE TRIGGER trg_z_readings_insert_only ON z_readings;");
+        jdbc.update("DELETE FROM receipt_reprints");
+        jdbc.update("DELETE FROM shift_signoffs");
         for (var table : new String[]{"order_status_events", "order_line_extras", "order_lines", "order_adjustments", "order_discounts",
                 "order_complimentaries",
                 "order_payments", "orders", "shifts", "account_payments", "accounts"}) {

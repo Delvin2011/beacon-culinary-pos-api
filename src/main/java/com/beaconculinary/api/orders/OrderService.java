@@ -362,12 +362,9 @@ public class OrderService {
                     payment.setAmountTendered(paymentRequest.getAmountTendered());
                     payment.setChangeDue(paymentRequest.getAmountTendered().subtract(paymentRequest.getAmount()));
                 }
-                case CARD -> {
-                    if (paymentRequest.getCardReference() == null || paymentRequest.getCardReference().isBlank()) {
-                        throw new InvalidOrderRequestException("cardReference is required for a CARD payment.");
-                    }
-                    payment.setCardReference(paymentRequest.getCardReference());
-                }
+                // The card reference is optional (not every card machine gives one); a blank one
+                // is stored as none.
+                case CARD -> payment.setCardReference(blankToNull(paymentRequest.getCardReference()));
                 case ACCOUNT -> {
                     if (paymentRequest.getAccountId() == null) {
                         throw new InvalidOrderRequestException("accountId is required for an ACCOUNT payment.");

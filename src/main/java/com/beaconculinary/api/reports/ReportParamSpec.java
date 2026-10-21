@@ -10,7 +10,9 @@ import java.util.List;
  * defaultValue (JSON "default") for a DATE may be "today" or "today-N" (Johannesburg); options
  * lists an ENUM's or LIMIT's allowed values as plain strings, or an ID's choices as
  * {@link ParamOption}s; label is the filter bar's field label. required (R2) is true when a run
- * without the parameter is refused, and absent otherwise.
+ * without the parameter is refused, and absent otherwise. appliesWhen (R3, absent when always
+ * relevant) limits the parameter to some values of another one, e.g. checkNumber only when
+ * groupBy is CHECK: the viewer can hide it otherwise, and the server ignores it then.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ReportParamSpec(
@@ -19,10 +21,23 @@ public record ReportParamSpec(
         ParamType type,
         @JsonProperty("default") String defaultValue,
         List<?> options,
-        Boolean required) {
+        Boolean required,
+        AppliesWhen appliesWhen) {
+
+    public record AppliesWhen(String param, List<String> values) {
+    }
 
     public ReportParamSpec(String name, String label, ParamType type, String defaultValue, List<?> options) {
-        this(name, label, type, defaultValue, options, null);
+        this(name, label, type, defaultValue, options, null, null);
+    }
+
+    public ReportParamSpec(String name, String label, ParamType type, String defaultValue, List<?> options, Boolean required) {
+        this(name, label, type, defaultValue, options, required, null);
+    }
+
+    /** This parameter, relevant only when another parameter has one of the given values. */
+    public ReportParamSpec when(String param, String... values) {
+        return new ReportParamSpec(name, label, type, defaultValue, options, required, new AppliesWhen(param, List.of(values)));
     }
 
     public static ReportParamSpec from() {

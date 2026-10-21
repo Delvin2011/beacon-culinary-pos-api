@@ -2,7 +2,7 @@ package com.beaconculinary.api.reports;
 
 import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.common.ClockConfig;
-import lombok.AllArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,15 +17,28 @@ import java.util.Map;
 /** Reports R1: the catalogue, running a report into the envelope, and exporting it. Nothing
  * here is report-specific — a new ReportDefinition bean is all a new report needs. */
 @Service
-@AllArgsConstructor
 public class ReportService {
     static final String VAT_NOTE = "Amounts include VAT.";
+    static final List<String> TABLE_FORMATS = List.of("csv", "xlsx");
+    static final List<String> STATEMENT_FORMATS = List.of("xlsx");
 
     private final ReportRegistry registry;
     private final ReportParamParser paramParser;
     private final ReportExporter exporter;
     private final AuthService authService;
     private final Clock clock;
+    private final String businessName;
+
+    public ReportService(ReportRegistry registry, ReportParamParser paramParser, ReportExporter exporter,
+                         AuthService authService, Clock clock,
+                         @Value("${app.business.name:Beacon Culinary}") String businessName) {
+        this.registry = registry;
+        this.paramParser = paramParser;
+        this.exporter = exporter;
+        this.authService = authService;
+        this.clock = clock;
+        this.businessName = businessName;
+    }
 
     /** Only the reports the caller may run. */
     public List<ReportCatalogueEntry> catalogue() {
@@ -39,20 +52,43 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public ReportEnvelope run(String key, Map<String, String> rawParams) {
-        var definition = allowedDefinition(key);
-        var specs = definition.params();
-        var params = paramParser.parse(specs, rawParams);
-        var result = definition.run(params);
+        return run(allowedDefinition(key), rawParams, false);
+    }
 
+    private ReportEnvelope run(ReportDefinition definition, Map<String, String> rawParams, boolean allRows) {
+        var specs = definition.params();
+        var params = paramParser.parse(specs, rawParams, allRows);
+        return wrap(definition, specs, params, definition.run(params));
+    }
+
+    /**
+     * Wraps a result in the envelope with the shared meta. Public for callers that run a
+     * definition themselves: Close Day (the Z snapshot) and GET /shifts/{id}/reading (the till,
+     * which checks the shift's owner instead of the report's roles).
+     */
+    public ReportEnvelope wrap(ReportDefinition definition, ReportParams params, ReportResult result) {
+        return wrap(definition, definition.params(), params, result);
+    }
+
+    private ReportEnvelope wrap(ReportDefinition definition, List<ReportParamSpec> specs, ReportParams params,
+                                ReportResult result) {
         var notes = new ArrayList<>(definition.notes());
         if (!notes.contains(VAT_NOTE)) {
             notes.add(VAT_NOTE);
         }
         var echo = params.asMap();
+        var statement = result.statement();
+        var isStatement = definition.template() == ReportTemplate.STATEMENT;
         var meta = new ReportEnvelope.Meta(definition.key(), definition.title(), definition.category(),
                 definition.definitionVersion(), clock.instant(), ClockConfig.BUSINESS_ZONE.getId(), "ZAR", true,
-                echo, paramLabels(specs, echo), notes);
-        return new ReportEnvelope(meta, result.columns(), result.rows(), result.totals(), result.checks(), result.page());
+                echo, paramLabels(specs, echo), notes,
+                isStatement ? STATEMENT_FORMATS : TABLE_FORMATS,
+                statement == null ? null : statement.title(),
+                statement == null ? null : statement.reference(),
+                statement == null ? null : statement.interim(),
+                isStatement ? new ReportEnvelope.Business(businessName) : null);
+        return new ReportEnvelope(meta, result.columns(), result.rows(), result.totals(), result.checks(), result.page(),
+                result.sections(), result.actions());
     }
 
     /** The option label of every ID parameter that is set, keyed by parameter name. */
@@ -67,12 +103,16 @@ public class ReportService {
         return labels;
     }
 
-    /** Same parameters as a run; the file is built from the same envelope the screen shows. */
+    /** Same parameters as a run, but every row (paging is ignored); the file is built from the
+     * same envelope the screen shows. Statements export as XLSX only. */
     @Transactional(readOnly = true)
     public ReportExporter.ExportFile export(String key, Map<String, String> rawParams) {
-        allowedDefinition(key);
+        var definition = allowedDefinition(key);
         var format = format(rawParams.get("format"));
-        return exporter.export(run(key, rawParams), format);
+        if (definition.template() == ReportTemplate.STATEMENT && format != ReportExporter.Format.XLSX) {
+            throw ReportParamException.of("format", "Statements export as xlsx only.");
+        }
+        return exporter.export(run(definition, rawParams, true), format);
     }
 
     private ReportDefinition allowedDefinition(String key) {

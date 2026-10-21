@@ -19,7 +19,8 @@ public class OrderPaymentRequest {
     // annotation can't express cleanly.
     private BigDecimal amountTendered;
 
-    // CARD only — enforced in OrderService.
+    // CARD only, and optional (approval code or last 4 digits, when the card machine gives one);
+    // blank is stored as none.
     private String cardReference;
 
     // ACCOUNT only — enforced in OrderService.

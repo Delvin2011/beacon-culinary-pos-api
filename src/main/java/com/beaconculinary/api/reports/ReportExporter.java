@@ -55,14 +55,125 @@ public class ReportExporter {
     }
 
     public ExportFile export(ReportEnvelope envelope, Format format) {
-        if (envelope.rows().size() > maxRows) {
+        if (envelope.rows() != null && envelope.rows().size() > maxRows) {
             throw ReportParamException.of("export", "This export has " + envelope.rows().size()
                     + " rows; the limit is " + maxRows + ". Narrow the date range.");
         }
-        var params = envelope.meta().params();
-        var filename = envelope.meta().key() + "_" + params.get("from") + "_" + params.get("to") + "." + format.extension;
-        var content = format == Format.CSV ? csv(envelope) : xlsx(envelope);
-        return new ExportFile(filename, format.contentType, content);
+        var content = envelope.sections() != null ? statementXlsx(envelope)
+                : format == Format.CSV ? csv(envelope) : xlsx(envelope);
+        return new ExportFile(filename(envelope.meta()) + "." + format.extension, format.contentType, content);
+    }
+
+    /** key_from_to for ranged reports; otherwise key plus the set parameter values, e.g.
+     * x-reading_2026-10-05 or z-reading_1. */
+    private static String filename(ReportEnvelope.Meta meta) {
+        var params = meta.params();
+        if (params.containsKey("from") && params.containsKey("to")) {
+            return meta.key() + "_" + params.get("from") + "_" + params.get("to");
+        }
+        var name = new StringBuilder(meta.key());
+        params.values().stream().filter(java.util.Objects::nonNull).forEach(value -> name.append('_').append(value));
+        return name.toString();
+    }
+
+    // Statement XLSX (R3): the title block, then every section stacked in order (key-value
+    // sections as label/value pairs, tables with their header and totals, signature lines),
+    // then the Checks sheet.
+    private byte[] statementXlsx(ReportEnvelope envelope) {
+        try (var workbook = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var styles = new Styles(workbook);
+            var meta = envelope.meta();
+            var sheet = workbook.createSheet("Report");
+
+            var r = 0;
+            var title = meta.statementTitle() != null ? meta.statementTitle() : meta.title();
+            textCell(sheet.createRow(r++), 0, title + (meta.reference() == null ? "" : " " + meta.reference())
+                    + (Boolean.TRUE.equals(meta.interim()) ? " (INTERIM)" : ""), styles.title);
+            if (meta.business() != null) {
+                textCell(sheet.createRow(r++), 0, meta.business().name(), null);
+            }
+            textCell(sheet.createRow(r++), 0, "Parameters: " + describe(meta.params(), meta.paramLabels()), null);
+            textCell(sheet.createRow(r++), 0, "Generated: "
+                    + LOCAL_DATE_TIME.format(LocalDateTime.ofInstant(meta.generatedAt(), ClockConfig.BUSINESS_ZONE))
+                    + " (" + meta.timezone() + ")", null);
+            textCell(sheet.createRow(r++), 0, "Amounts include VAT", null);
+
+            var width = 2;
+            for (var section : envelope.sections()) {
+                r++;
+                var sectionTitle = (String) section.get("title");
+                if (sectionTitle != null) {
+                    textCell(sheet.createRow(r++), 0, sectionTitle, styles.header);
+                }
+                switch (String.valueOf(section.get("type"))) {
+                    case "KEY_VALUE" -> {
+                        for (var item : list(section.get("items"))) {
+                            var map = map(item);
+                            var row = sheet.createRow(r++);
+                            var total = "TOTAL".equals(map.get("emphasis"));
+                            textCell(row, 0, String.valueOf(map.get("label")), total ? styles.totalText : null);
+                            var column = new ReportColumn("value", "", ColumnType.valueOf(String.valueOf(map.get("type"))), null, null);
+                            writeRow(row, 1, List.of(column), Map.of("value", map.get("value") == null ? "" : map.get("value")),
+                                    styles, total);
+                        }
+                    }
+                    case "TABLE" -> {
+                        var columns = list(section.get("columns")).stream().map(ReportExporter::column).toList();
+                        width = Math.max(width, columns.size());
+                        var header = sheet.createRow(r++);
+                        for (var c = 0; c < columns.size(); c++) {
+                            textCell(header, c, columns.get(c).label(), styles.header);
+                        }
+                        for (var row : list(section.get("rows"))) {
+                            writeRow(sheet.createRow(r++), 0, columns, map(row), styles, false);
+                        }
+                        var totals = section.get("totals");
+                        if (totals != null && !map(totals).isEmpty()) {
+                            writeRow(sheet.createRow(r++), 0, columns, map(totals), styles, true);
+                        }
+                    }
+                    case "SIGNATURE_LINES" -> {
+                        for (var label : list(section.get("labels"))) {
+                            var row = sheet.createRow(r++);
+                            textCell(row, 0, label + ":", null);
+                            textCell(row, 1, "______________________________", null);
+                            r++;
+                        }
+                    }
+                    default -> {
+                    }
+                }
+            }
+            for (var c = 0; c < width; c++) {
+                sheet.setColumnWidth(c, (c == 0 ? 32 : 18) * 256);
+            }
+
+            writeChecks(workbook.createSheet("Checks"), envelope.checks(), styles);
+            workbook.write(out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> list(Object value) {
+        return value == null ? List.of() : (List<Object>) value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> map(Object value) {
+        return (Map<String, Object>) value;
+    }
+
+    /** A section column: a ReportColumn when built live, a plain map when read from a Z snapshot. */
+    private static ReportColumn column(Object value) {
+        if (value instanceof ReportColumn column) {
+            return column;
+        }
+        var map = map(value);
+        return new ReportColumn((String) map.get("key"), (String) map.get("label"), ColumnType.valueOf((String) map.get("type")),
+                null, null);
     }
 
     // CSV: UTF-8 with BOM, comma separator, decimal point, ISO dates; header and data rows only.
@@ -133,13 +244,18 @@ public class ReportExporter {
     }
 
     private void writeRow(Row target, List<ReportColumn> columns, Map<String, Object> values, Styles styles, boolean totals) {
+        writeRow(target, 0, columns, values, styles, totals);
+    }
+
+    private void writeRow(Row target, int firstColumn, List<ReportColumn> columns, Map<String, Object> values, Styles styles,
+                          boolean totals) {
         for (var c = 0; c < columns.size(); c++) {
             var column = columns.get(c);
-            var value = values.get(column.key());
+            var value = typed(column, values.get(column.key()));
             if (value == null) {
                 continue;
             }
-            var cell = target.createCell(c);
+            var cell = target.createCell(firstColumn + c);
             if (value instanceof BigDecimal decimal) {
                 var percent = column.type() == ColumnType.PERCENT;
                 cell.setCellValue(percent ? decimal.movePointLeft(2).doubleValue() : decimal.doubleValue());
@@ -161,6 +277,23 @@ public class ReportExporter {
                 }
             }
         }
+    }
+
+    /** Values read back from a Z snapshot are JSON text: dates and times arrive as strings. */
+    private static Object typed(ReportColumn column, Object value) {
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                if (column.type() == ColumnType.DATE) {
+                    return LocalDate.parse(text);
+                }
+                if (column.type() == ColumnType.DATETIME) {
+                    return Instant.parse(text);
+                }
+            } catch (java.time.format.DateTimeParseException e) {
+                return value; // a label such as "Total" in a dated column
+            }
+        }
+        return value;
     }
 
     private void writeChecks(Sheet sheet, List<ReportCheck> checks, Styles styles) {

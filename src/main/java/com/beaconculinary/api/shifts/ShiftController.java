@@ -47,6 +47,13 @@ public class ShiftController {
         return shiftService.getOpenShift();
     }
 
+    /** Reports R3: 409 DAY_CLOSED (with zNumber) when today's trading day already has a Z. */
+    @ExceptionHandler(com.beaconculinary.api.endofday.EndOfDayConflictException.class)
+    public ResponseEntity<com.beaconculinary.api.endofday.EndOfDayErrorDto> handleDayClosed(
+            com.beaconculinary.api.endofday.EndOfDayConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(com.beaconculinary.api.endofday.EndOfDayErrorDto.of(ex));
+    }
+
     @ExceptionHandler(ShiftAlreadyOpenException.class)
     public ResponseEntity<ErrorDto> handleShiftAlreadyOpen(ShiftAlreadyOpenException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage()));
