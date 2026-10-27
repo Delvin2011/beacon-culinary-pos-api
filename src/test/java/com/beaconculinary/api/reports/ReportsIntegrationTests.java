@@ -230,7 +230,7 @@ class ReportsIntegrationTests {
         run("cash-up-variance", RANGE).andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.category").value("DAILY_STATEMENTS"))
                 .andExpect(jsonPath("$.columns[10].type").value("VARIANCE"))
-                .andExpect(jsonPath("$.meta.definitionVersion").value(3))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(4))
                 .andExpect(jsonPath("$.columns[14].key").value("complimentaryMeals"))
                 .andExpect(jsonPath("$.columns[15].key").value("complimentaryValue"))
                 .andExpect(jsonPath("$.columns[16].key").value("signedOffBy"))

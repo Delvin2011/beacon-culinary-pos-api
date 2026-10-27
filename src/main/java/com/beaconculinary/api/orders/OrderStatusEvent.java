@@ -34,6 +34,8 @@ public class OrderStatusEvent {
     @JoinColumn(name = "changed_by")
     private User changedBy;
 
-    @Column(name = "changed_at", insertable = false, updatable = false)
+    // UTC, set from the application clock by OrderStatusEventPublisher (the column's
+    // SYSUTCDATETIME() default only covers rows written elsewhere).
+    @Column(name = "changed_at", updatable = false)
     private LocalDateTime changedAt;
 }

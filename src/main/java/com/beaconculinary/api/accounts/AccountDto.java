@@ -2,9 +2,13 @@ package com.beaconculinary.api.accounts;
 
 import lombok.Data;
 
-/** Lightweight shape for the till picker (GET /accounts) — just enough to select an account. */
+/** The till picker's shape (GET /accounts): enough to select an account and contact its holder. */
 @Data
 public class AccountDto {
     private Long id;
+    private String accountNumber;
     private String name;
+    private String department;
+    private String contactNumber;
+    private String contactEmail;
 }

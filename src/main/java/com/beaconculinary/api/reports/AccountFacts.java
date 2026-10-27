@@ -29,8 +29,10 @@ public class AccountFacts {
         }
     }
 
-    /** One movement on an account statement. */
-    public record Movement(String type, LocalDateTime occurredAtUtc, String reference, String description, BigDecimal amount) {
+    /** One movement on an account statement. authorizedBy is the admin who approved a charge or
+     * credit, or who recorded a payment; null on account charges made before approval was required. */
+    public record Movement(String type, LocalDateTime occurredAtUtc, String reference, String description, BigDecimal amount,
+                           String authorizedBy) {
     }
 
     private static final String SIGNED_MOVEMENTS = """
@@ -82,19 +84,24 @@ public class AccountFacts {
     /** The account's movements in the range, in the order they happened. */
     public List<Movement> movements(long accountId, ReportRange range) {
         var sql = """
-                SELECT movement_type, occurred_at, reference, description, amount
-                FROM v_account_movements
-                WHERE account_id = :accountId AND entry_at_utc >= :from AND entry_at_utc < :to
-                ORDER BY occurred_at,
-                         CASE movement_type WHEN 'CHARGE' THEN 0 WHEN 'CREDIT' THEN 1 ELSE 2 END,
-                         source_id
+                SELECT m.movement_type, m.occurred_at, m.reference, m.description, m.amount, u.name AS authorized_by
+                FROM v_account_movements m
+                LEFT JOIN order_payments op    ON m.movement_type = 'CHARGE'  AND op.id = m.source_id
+                LEFT JOIN order_adjustments oa ON m.movement_type = 'CREDIT'  AND oa.id = m.source_id
+                LEFT JOIN account_payments ap  ON m.movement_type = 'PAYMENT' AND ap.id = m.source_id
+                LEFT JOIN users u              ON u.id = COALESCE(op.authorized_by, oa.authorized_by, ap.recorded_by)
+                WHERE m.account_id = :accountId AND m.entry_at_utc >= :from AND m.entry_at_utc < :to
+                ORDER BY m.occurred_at,
+                         CASE m.movement_type WHEN 'CHARGE' THEN 0 WHEN 'CREDIT' THEN 1 ELSE 2 END,
+                         m.source_id
                 """;
         return jdbc.query(sql, rangeParams(range).addValue("accountId", accountId), (rs, i) -> new Movement(
                 rs.getString("movement_type"),
                 rs.getObject("occurred_at", LocalDateTime.class),
                 rs.getString("reference"),
                 rs.getString("description"),
-                rs.getBigDecimal("amount")));
+                rs.getBigDecimal("amount"),
+                rs.getString("authorized_by")));
     }
 
     /** Accounts for a filter's options, A–Z; closed accounts are labelled "(inactive)". */

@@ -67,7 +67,7 @@ public class AccountStatementReport implements ReportDefinition {
 
     @Override
     public int definitionVersion() {
-        return 1;
+        return 2;
     }
 
     @Override
@@ -76,7 +76,9 @@ public class AccountStatementReport implements ReportDefinition {
                 "Every charge, credit and payment on one account in date order, with a running balance.",
                 "Charges increase what is owed; credits and payments reduce it.",
                 "A movement is in the period by the same day as on Account Balances: charges by the trading day the "
-                        + "order was sold, credits by the trading day they were processed, payments by the day recorded.");
+                        + "order was sold, credits by the trading day they were processed, payments by the day recorded.",
+                "Authorised by is the admin who approved a charge or credit, or who recorded a payment. Charges made "
+                        + "before admin approval was required show no name.");
     }
 
     @Override
@@ -92,12 +94,13 @@ public class AccountStatementReport implements ReportDefinition {
                 ReportColumn.of("charge", "Charge", ColumnType.MONEY, ColumnTotal.SUM),
                 ReportColumn.of("credit", "Credit", ColumnType.MONEY, ColumnTotal.SUM),
                 ReportColumn.of("payment", "Payment", ColumnType.MONEY, ColumnTotal.SUM),
-                ReportColumn.of("balance", "Balance", ColumnType.MONEY, ColumnTotal.DERIVED));
+                ReportColumn.of("balance", "Balance", ColumnType.MONEY, ColumnTotal.DERIVED),
+                ReportColumn.of("authorizedBy", "Authorised by", ColumnType.TEXT, ColumnTotal.NONE));
 
         var balance = ReportValues.money(accountFacts.openingBalance(accountId, range));
         var rows = new ArrayList<Map<String, Object>>();
         rows.add(row(range.from().atStartOfDay(ClockConfig.BUSINESS_ZONE).toInstant(), "OPENING", null,
-                "Opening balance", null, null, null, balance));
+                "Opening balance", null, null, null, balance, null));
 
         var charges = BigDecimal.ZERO;
         var credits = BigDecimal.ZERO;
@@ -109,17 +112,20 @@ public class AccountStatementReport implements ReportDefinition {
                 case "CHARGE" -> {
                     balance = balance.add(amount);
                     charges = charges.add(amount);
-                    rows.add(row(occurredAt, "CHARGE", movement.reference(), movement.description(), amount, null, null, balance));
+                    rows.add(row(occurredAt, "CHARGE", movement.reference(), movement.description(), amount, null, null, balance,
+                            movement.authorizedBy()));
                 }
                 case "CREDIT" -> {
                     balance = balance.subtract(amount);
                     credits = credits.add(amount);
-                    rows.add(row(occurredAt, "CREDIT", movement.reference(), movement.description(), null, amount, null, balance));
+                    rows.add(row(occurredAt, "CREDIT", movement.reference(), movement.description(), null, amount, null, balance,
+                            movement.authorizedBy()));
                 }
                 default -> {
                     balance = balance.subtract(amount);
                     payments = payments.add(amount);
-                    rows.add(row(occurredAt, "PAYMENT", movement.reference(), movement.description(), null, null, amount, balance));
+                    rows.add(row(occurredAt, "PAYMENT", movement.reference(), movement.description(), null, null, amount, balance,
+                            movement.authorizedBy()));
                 }
             }
         }
@@ -143,7 +149,8 @@ public class AccountStatementReport implements ReportDefinition {
     }
 
     private static Map<String, Object> row(Object occurredAt, String type, String reference, String description,
-                                           BigDecimal charge, BigDecimal credit, BigDecimal payment, BigDecimal balance) {
+                                           BigDecimal charge, BigDecimal credit, BigDecimal payment, BigDecimal balance,
+                                           String authorizedBy) {
         var row = new LinkedHashMap<String, Object>();
         row.put("occurredAt", occurredAt);
         row.put("type", type);
@@ -153,6 +160,7 @@ public class AccountStatementReport implements ReportDefinition {
         row.put("credit", credit);
         row.put("payment", payment);
         row.put("balance", balance);
+        row.put("authorizedBy", authorizedBy);
         return row;
     }
 }

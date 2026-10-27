@@ -82,7 +82,7 @@ public class CashierReadingReport implements ReportDefinition {
 
     @Override
     public int definitionVersion() {
-        return 1;
+        return 2;
     }
 
     @Override

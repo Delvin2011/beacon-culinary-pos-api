@@ -187,7 +187,8 @@ public final class ReportFixture {
         settlement(a1, "50.00", "Cash", utc(PRE_RANGE_SUNDAY, 10, 0));
 
         // In the range: O6 on A1, O9 (and its extras credit) on A2, and A1's R100 EFT on Tuesday.
-        jdbc.update("UPDATE order_payments SET account_id = ? WHERE order_id = ? AND method = 'ACCOUNT'", a1, o6);
+        // O6 was approved by the admin; O9 predates admin approval of account payments, so it has none.
+        jdbc.update("UPDATE order_payments SET account_id = ?, authorized_by = ? WHERE order_id = ? AND method = 'ACCOUNT'", a1, admin, o6);
         jdbc.update("UPDATE order_payments SET account_id = ? WHERE order_id = ? AND method = 'ACCOUNT'", a2, o9);
         jdbc.update("UPDATE order_adjustments SET account_id = ? WHERE order_id = ?", a2, o9);
         settlement(a1, "100.00", "EFT", utc(TUESDAY, 14, 0));

@@ -305,6 +305,24 @@ public class OrderService {
         return complimentary;
     }
 
+    /**
+     * Charging an order to an account needs an admin's approval, with the same token rules as a
+     * discount. It runs last for an ACCOUNT payment, after the split, the total and the account
+     * itself are checked, so a rejected payment never uses up a PIN token (400
+     * ACCOUNT_PAYMENT_INVALID if the token is missing; 401 AUTHORIZATION_INVALID if it's bad).
+     */
+    private User authorizeAccountPayment(SaleDiscountRequest.Authorization authorization) {
+        var authorizationToken = authorization == null ? null : blankToNull(authorization.getAuthorizationToken());
+        var sessionToken = authorization == null ? null : blankToNull(authorization.getSessionToken());
+        if ((authorizationToken == null) == (sessionToken == null)) {
+            throw OrderRuleException.accountPaymentInvalid(
+                    "An ACCOUNT payment needs an admin's approval: send exactly one of authorizationToken or sessionToken.");
+        }
+        return authorizationToken != null
+                ? adminAuthorizationService.consumeTokenInCurrentTransaction(authorizationToken)
+                : adminAuthorizationService.validateSessionTokenForDiscount(sessionToken);
+    }
+
     private static <E extends Enum<E>> E parseEnum(Class<E> type, String value, String message) {
         try {
             return Enum.valueOf(type, value == null ? "" : value.trim());
@@ -375,6 +393,7 @@ public class OrderService {
                         throw new InvalidOrderRequestException("Account is not active.");
                     }
                     payment.setAccount(account);
+                    payment.setAuthorizedBy(authorizeAccountPayment(paymentRequest.getAuthorization()));
                 }
             }
 

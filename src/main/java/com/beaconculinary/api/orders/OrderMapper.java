@@ -4,7 +4,7 @@ import com.beaconculinary.api.users.UserRefDto;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring", imports = UserRefDto.class)
 public interface OrderMapper {
     @Mapping(target = "dailyComponentStockId", source = "dailyComponentStock.id")
     @Mapping(target = "componentName", source = "dailyComponentStock.componentCatalog.name")
@@ -20,6 +20,7 @@ public interface OrderMapper {
     OrderAdjustmentDto toDto(OrderAdjustment adjustment);
 
     @Mapping(target = "accountId", source = "account.id")
+    @Mapping(target = "authorizedBy", expression = "java(UserRefDto.of(payment.getAuthorizedBy()))")
     OrderPaymentDto toDto(OrderPayment payment);
 
     @Mapping(target = "shiftId", source = "shift.id")

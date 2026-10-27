@@ -143,11 +143,11 @@ class OrderPaymentSplitIntegrationTests {
                 .andExpect(status().isCreated());
     }
 
-    private record CreateAccountReq(String name, String contactEmail) {
+    private record CreateAccountReq(String name, String department, String contactNumber, String contactEmail) {
     }
 
     private long createAccount() throws Exception {
-        var body = MAPPER.writeValueAsString(new CreateAccountReq("Acme", "billing@acme.test"));
+        var body = MAPPER.writeValueAsString(new CreateAccountReq("Acme", "Finance", "021 555 0100", "billing@acme.test"));
         var response = mockMvc.perform(post("/admin/accounts").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())

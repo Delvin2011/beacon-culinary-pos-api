@@ -1,10 +1,13 @@
 package com.beaconculinary.api.orders;
 
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.common.UtcTimestamps;
 import lombok.AllArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Clock;
 
 /**
  * Single choke point for "an order's status changed": writes the audit row and publishes a
@@ -21,17 +24,20 @@ public class OrderStatusEventPublisher {
     private final OrderSummaryMapper orderSummaryMapper;
     private final AuthService authService;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final Clock clock;
 
     @Transactional
     public void publish(Order order, OrderStatus fromStatus) {
+        var changedAt = clock.instant();
         var event = new OrderStatusEvent();
         event.setOrder(order);
         event.setFromStatus(fromStatus);
         event.setToStatus(order.getStatus());
         event.setChangedBy(authService.getCurrentUser());
+        event.setChangedAt(UtcTimestamps.toUtc(changedAt));
         orderStatusEventRepository.save(event);
 
         var eventType = fromStatus == null ? OrderEventType.ORDER_CREATED : OrderEventType.STATUS_CHANGED;
-        applicationEventPublisher.publishEvent(new OrderStatusStreamEvent(eventType, orderSummaryMapper.toDto(order)));
+        applicationEventPublisher.publishEvent(new OrderStatusStreamEvent(eventType, orderSummaryMapper.toDto(order), changedAt));
     }
 }

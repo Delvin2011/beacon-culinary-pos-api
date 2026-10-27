@@ -405,7 +405,11 @@ class ReportsR2IntegrationTests {
         run("account-statement", RANGE + "&accountId=" + fixture.a1).andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.paramLabels.accountId").value("Acme Logistics"))
                 .andExpect(jsonPath("$.columns[*].key", contains("occurredAt", "type", "reference", "description", "charge",
-                        "credit", "payment", "balance")))
+                        "credit", "payment", "balance", "authorizedBy")))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(2))
+                .andExpect(jsonPath("$.rows[0].authorizedBy").doesNotExist())
+                .andExpect(jsonPath("$.rows[1].authorizedBy").value("Canteen Admin"))
+                .andExpect(jsonPath("$.rows[2].authorizedBy").isNotEmpty())
                 .andExpect(jsonPath("$.columns[1].statusTones.CHARGE").value("warning"))
                 .andExpect(jsonPath("$.rows[*].type", contains("OPENING", "CHARGE", "PAYMENT")))
                 .andExpect(jsonPath("$.rows[*].occurredAt", contains("2026-10-04T22:00:00Z", "2026-10-05T09:30:00Z",
@@ -429,6 +433,9 @@ class ReportsR2IntegrationTests {
                 .andExpect(jsonPath("$.rows[*].type", contains("OPENING", "CHARGE", "CREDIT")))
                 .andExpect(jsonPath("$.rows[*].reference", contains(null, "Order #2", "Order #2")))
                 .andExpect(jsonPath("$.rows[2].description").value("Extras removed"))
+                // O9's charge predates admin approval of account payments; its credit has the voiding admin.
+                .andExpect(jsonPath("$.rows[1].authorizedBy").isEmpty())
+                .andExpect(jsonPath("$.rows[2].authorizedBy").value("Canteen Admin"))
                 .andExpect(jsonPath("$.rows[2].occurredAt").value("2026-10-06T10:45:00Z"))
                 .andExpect(jsonPath("$.rows[*].balance", contains(0.00, 50.00, 35.00)))
                 .andExpect(jsonPath("$.totals.credit").value(15.00))

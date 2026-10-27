@@ -251,6 +251,18 @@ class EndOfDayIntegrationTests {
     }
 
     @Test
+    void theftSuspectedVariance_isLabelledShortage() throws Exception {
+        // The code stays THEFT_SUSPECTED in the database and API; only the display label changes.
+        jdbc.update("UPDATE shifts SET variance_reason_code = 'THEFT_SUSPECTED' WHERE id = ?", fixture.s2);
+
+        run("cashier-reading", "shiftId=" + fixture.s2).andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.definitionVersion").value(2))
+                .andExpect(jsonPath(item("cashUp", "Variance reason"), contains("Shortage")));
+        run("cash-up-variance", "from=" + MON + "&to=" + TUE).andExpect(status().isOk())
+                .andExpect(jsonPath("$.rows[?(@.shiftId == " + fixture.s2 + ")].reason", contains("Shortage")));
+    }
+
+    @Test
     void tillReading_ownerOrAdmin_interimForAnOpenShift_andSalesRungBySomeoneElse() throws Exception {
         // A cashier rings a sale on the admin's open shift S3.
         var orderId = fixture.order(fixture.s3, AuthTestHelper.cashierAId(mockMvc), TUESDAY, 4, 12, 50, "40.00", "40.00", "COLLECTED");
@@ -465,7 +477,7 @@ class EndOfDayIntegrationTests {
         signOff(fixture.s2);
         run("cash-up-variance", "from=" + MON + "&to=" + TUE + "&signoff=UNSIGNED").andExpect(jsonPath("$.rows").isEmpty());
         run("cash-up-variance", "from=" + MON + "&to=" + TUE)
-                .andExpect(jsonPath("$.meta.definitionVersion").value(3))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(4))
                 .andExpect(jsonPath("$.rows[*].signedOffBy", contains("Canteen Admin", "Canteen Admin", null)))
                 .andExpect(jsonPath("$.rows[0].signedOffAt").isString())
                 .andExpect(jsonPath("$.rows[0]._actions[*].key", contains("OPEN_READING")))

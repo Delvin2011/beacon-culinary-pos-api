@@ -1,6 +1,7 @@
 package com.beaconculinary.api.orders;
 
 import com.beaconculinary.api.accounts.Account;
+import com.beaconculinary.api.users.User;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -48,4 +49,10 @@ public class OrderPayment {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id")
     private Account account;
+
+    // ACCOUNT only — the admin who approved charging the order to the account (V95). NULL on
+    // account orders placed before approval was required.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "authorized_by")
+    private User authorizedBy;
 }

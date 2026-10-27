@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
@@ -241,14 +242,74 @@ class PublicBoardIntegrationTests {
     }
 
     @Test
-    void doneOrder_remainsOnBoard_untilStage2_3Collects() throws Exception {
+    void doneOrder_staysForTheDisplayWindow_thenDropsOff() throws Exception {
         var orderId = setUpOrder();
         patchStatus(orderId, "IN_PROGRESS");
+        clock.setTime(LocalTime.of(12, 35));
         patchStatus(orderId, "DONE");
+        var doneAt = clock.instant();
 
+        clock.setTime(LocalTime.of(12, 44, 59));
         mockMvc.perform(get("/public/board/today"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.doneDisplayMinutes").value(10))
+                .andExpect(jsonPath("$.serverTime").value(clock.instant().toString()))
                 .andExpect(jsonPath("$.orders.length()").value(1))
-                .andExpect(jsonPath("$.orders[0].status").value("DONE"));
+                .andExpect(jsonPath("$.orders[0].status").value("DONE"))
+                .andExpect(jsonPath("$.orders[0].doneAt").value(doneAt.toString()))
+                .andExpect(jsonPath("$.orders[0].removeAt").value(doneAt.plus(Duration.ofMinutes(10)).toString()));
+
+        clock.setTime(LocalTime.of(12, 45));
+        mockMvc.perform(get("/public/board/today"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orders.length()").value(0));
+    }
+
+    @Test
+    void activeOrders_haveNoRemoveAt_andNeverExpire() throws Exception {
+        var pendingId = setUpOrder();
+        var inProgressId = placeOrder(dailyMealOptionRepository.findAll().get(0).getId());
+        patchStatus(inProgressId, "IN_PROGRESS");
+
+        clock.setTime(LocalTime.of(14, 0));
+        var response = mockMvc.perform(get("/public/board/today"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orders.length()").value(2))
+                .andReturn().getResponse().getContentAsString();
+        for (var node : MAPPER.readTree(response).get("orders")) {
+            assertThat(node.has("doneAt")).isFalse();
+            assertThat(node.has("removeAt")).isFalse();
+        }
+        assertThat(pendingId).isPositive();
+    }
+
+    @Test
+    void doneEventOnTheStream_carriesDoneAtAndRemoveAt() throws Exception {
+        var orderId = setUpOrder();
+        patchStatus(orderId, "IN_PROGRESS");
+
+        var streamResult = mockMvc.perform(get("/public/board/stream"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        patchStatus(orderId, "DONE");
+        var doneAt = clock.instant();
+
+        var streamed = streamResult.getResponse().getContentAsString();
+        assertThat(streamed).contains("\"status\":\"DONE\"");
+        assertThat(streamed).contains("\"doneAt\":\"" + doneAt + "\"");
+        assertThat(streamed).contains("\"removeAt\":\"" + doneAt.plus(Duration.ofMinutes(10)) + "\"");
+        assertThat(streamed).doesNotContain("orderId");
+    }
+
+    @Test
+    void kitchenStream_doesNotExposeTheStatusChangeTime() throws Exception {
+        var orderId = setUpOrder();
+
+        var streamResult = mockMvc.perform(get("/kitchen/orders/stream").header("Authorization", "Bearer " + kitchenToken))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        patchStatus(orderId, "IN_PROGRESS");
+
+        assertThat(streamResult.getResponse().getContentAsString()).contains("STATUS_CHANGED").doesNotContain("changedAt");
     }
 }

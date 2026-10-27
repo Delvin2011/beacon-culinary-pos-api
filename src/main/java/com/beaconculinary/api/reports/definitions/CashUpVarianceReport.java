@@ -19,6 +19,7 @@ import com.beaconculinary.api.reports.ReportResult;
 import com.beaconculinary.api.reports.ReportValues;
 import com.beaconculinary.api.reports.RowAction;
 import com.beaconculinary.api.reports.ShiftCashFigures;
+import com.beaconculinary.api.shifts.ShiftVarianceReasonCode;
 import com.beaconculinary.api.users.Role;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -29,7 +30,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -87,7 +87,7 @@ public class CashUpVarianceReport implements ReportDefinition {
      * open the shift's Cashier Reading). */
     @Override
     public int definitionVersion() {
-        return 3;
+        return 4;
     }
 
     @Override
@@ -171,7 +171,7 @@ public class CashUpVarianceReport implements ReportDefinition {
             row.put("expectedCash", ReportValues.money(cash.expectedCash()));
             row.put("countedCash", open ? null : ReportValues.money(shift.closingCash()));
             row.put("variance", open ? null : ReportValues.money(shift.variance()));
-            row.put("reason", humanize(shift.varianceReasonCode()));
+            row.put("reason", ShiftVarianceReasonCode.labelOf(shift.varianceReasonCode()));
             row.put("authorisedBy", shift.varianceAuthorizedByName());
             row.put("closedBy", open ? null : shift.closedByName());
             var complimentary = complimentaryByShift.getOrDefault(shift.shiftId(), ReportFacts.ComplimentaryFacts.none(null));
@@ -261,14 +261,5 @@ public class CashUpVarianceReport implements ReportDefinition {
     private static boolean signedOff(Map<Long, ShiftSignoffs.State> states, long shiftId) {
         var state = states.get(shiftId);
         return state != null && state.signedOff();
-    }
-
-    /** CASH_COUNTING_ERROR → "Cash counting error". */
-    private static String humanize(String code) {
-        if (code == null) {
-            return null;
-        }
-        var text = code.replace('_', ' ').toLowerCase(Locale.ROOT);
-        return Character.toUpperCase(text.charAt(0)) + text.substring(1);
     }
 }

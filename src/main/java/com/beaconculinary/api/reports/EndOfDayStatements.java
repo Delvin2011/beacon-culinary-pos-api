@@ -8,6 +8,7 @@ import com.beaconculinary.api.reports.ReportFacts.ShiftFacts;
 import com.beaconculinary.api.reports.definitions.CashUpVarianceReport;
 import com.beaconculinary.api.reports.definitions.SalesSummaryReport;
 import com.beaconculinary.api.reports.definitions.TenderSummaryReport;
+import com.beaconculinary.api.shifts.ShiftVarianceReasonCode;
 import com.beaconculinary.api.common.UtcTimestamps;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -446,7 +447,7 @@ public class EndOfDayStatements {
         cashUpItems.add(Sections.total("Expected cash", ColumnType.MONEY, money(cash.expectedCash())));
         cashUpItems.add(Sections.item("Counted cash", ColumnType.MONEY, open ? null : money(shift.closingCash())));
         cashUpItems.add(Sections.total("Variance", ColumnType.VARIANCE, open ? null : money(shift.variance())));
-        cashUpItems.add(Sections.item("Variance reason", ColumnType.TEXT, humanize(shift.varianceReasonCode())));
+        cashUpItems.add(Sections.item("Variance reason", ColumnType.TEXT, ShiftVarianceReasonCode.labelOf(shift.varianceReasonCode())));
         cashUpItems.add(Sections.item("Authorised by", ColumnType.TEXT, shift.varianceAuthorizedByName()));
         sections.add(Sections.keyValue("cashUp", "Cash-up", cashUpItems));
 

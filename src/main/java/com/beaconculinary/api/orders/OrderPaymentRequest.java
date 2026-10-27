@@ -25,4 +25,8 @@ public class OrderPaymentRequest {
 
     // ACCOUNT only — enforced in OrderService.
     private Long accountId;
+
+    // ACCOUNT only, and required: exactly one of a single-use manager-PIN token or a management
+    // session token, as for a discount. Enforced in OrderService.
+    private SaleDiscountRequest.Authorization authorization;
 }

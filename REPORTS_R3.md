@@ -105,10 +105,14 @@ Conflicts are 409 `{ error, code, blockers?, zNumber? }`:
 | Key | Template | Params | Version |
 |---|---|---|---|
 | `x-reading` | STATEMENT | `tradingDay` (DATE, default today) | 1 |
-| `cashier-reading` | STATEMENT | `shiftId` (ID, **required**; last 14 days, newest first, "Mon 5 Oct · Canteen Cashier · 07:00–11:00") | 1 |
+| `cashier-reading` | STATEMENT | `shiftId` (ID, **required**; last 14 days, newest first, "Mon 5 Oct · Canteen Cashier · 07:00–11:00") | **2** |
 | `z-reading` | STATEMENT | `zNumber` (ID; "Z-0001 · Mon 5 Oct 2026"; default the latest) | 1 |
-| `cash-up-variance` | TABLE | + `signoff` `ALL`\|`UNSIGNED` | **3** |
+| `cash-up-variance` | TABLE | + `signoff` `ALL`\|`UNSIGNED` | **4** |
 | `tender-summary` | TABLE | `groupBy` + `CHECK`; + `checkNumber` (INT) | **3** |
+
+Variance reasons are sent as labels in `cashier-reading` ("Variance reason") and
+`cash-up-variance` (`reason`): the code `THEFT_SUSPECTED` reads **"Shortage"**, matching the till
+(`cashier-reading` 1 → 2, `cash-up-variance` 3 → 4). The code itself is unchanged.
 
 All ADMIN only, under `DAILY_STATEMENTS` (the readings) or their existing categories.
 

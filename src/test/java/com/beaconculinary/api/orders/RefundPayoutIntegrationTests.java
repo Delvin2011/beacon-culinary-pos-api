@@ -158,11 +158,11 @@ class RefundPayoutIntegrationTests {
         shiftOpened = true;
     }
 
-    private record CreateAccountReq(String name, String contactEmail) {
+    private record CreateAccountReq(String name, String department, String contactNumber, String contactEmail) {
     }
 
     private long createAccount() throws Exception {
-        var body = MAPPER.writeValueAsString(new CreateAccountReq("Acme", "billing@acme.test"));
+        var body = MAPPER.writeValueAsString(new CreateAccountReq("Acme", "Finance", "021 555 0100", "billing@acme.test"));
         var response = mockMvc.perform(post("/admin/accounts").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -173,17 +173,18 @@ class RefundPayoutIntegrationTests {
     private record LineReq(long dailyMealOptionId, int quantity, List<Object> extras) {
     }
 
-    private record PaymentReq(String method, BigDecimal amount, BigDecimal amountTendered, String cardReference, Long accountId) {
+    private record PaymentReq(String method, BigDecimal amount, BigDecimal amountTendered, String cardReference, Long accountId,
+                              DiscountAuthReq authorization) {
         static PaymentReq cash(String amount) {
-            return new PaymentReq("CASH", new BigDecimal(amount), new BigDecimal(amount), null, null);
+            return new PaymentReq("CASH", new BigDecimal(amount), new BigDecimal(amount), null, null, null);
         }
 
         static PaymentReq card(String amount) {
-            return new PaymentReq("CARD", new BigDecimal(amount), null, "AUTH-1", null);
+            return new PaymentReq("CARD", new BigDecimal(amount), null, "AUTH-1", null, null);
         }
 
-        static PaymentReq account(String amount, Long accountId) {
-            return new PaymentReq("ACCOUNT", new BigDecimal(amount), null, null, accountId);
+        static PaymentReq account(String amount, Long accountId, String authorizationToken) {
+            return new PaymentReq("ACCOUNT", new BigDecimal(amount), null, null, accountId, new DiscountAuthReq(authorizationToken));
         }
     }
 
@@ -279,7 +280,7 @@ class RefundPayoutIntegrationTests {
     @Test
     void refundOnAccountOrder_creditsAccountBalance_withZeroCashDrawerImpact() throws Exception {
         var accountId = createAccount();
-        var orderId = placeOrder(PaymentReq.account("100.00", accountId));
+        var orderId = placeOrder(PaymentReq.account("100.00", accountId, authorize()));
         patchStatus(orderId, "IN_PROGRESS");
         patchStatus(orderId, "DONE");
 
@@ -314,7 +315,7 @@ class RefundPayoutIntegrationTests {
     @Test
     void discountedAccountOrder_chargesTheAccountTheDiscountedTotal_withNoCashImpact() throws Exception {
         var accountId = createAccount();
-        placeDiscountedOrder("15.00", PaymentReq.account("85.00", accountId));
+        placeDiscountedOrder("15.00", PaymentReq.account("85.00", accountId, authorize()));
 
         mockMvc.perform(get("/admin/accounts/" + accountId + "/balance").header("Authorization", "Bearer " + adminToken))
                 .andExpect(jsonPath("$.totalCharged").value(85.00))
@@ -342,7 +343,7 @@ class RefundPayoutIntegrationTests {
         placeOrder(PaymentReq.cash("60.00"), PaymentReq.card("40.00"));
         // Account-only sale, later refunded — zero cash-drawer impact both ways.
         var accountId = createAccount();
-        var accountOrderId = placeOrder(PaymentReq.account("100.00", accountId));
+        var accountOrderId = placeOrder(PaymentReq.account("100.00", accountId, authorize()));
         voidOrRefund(accountOrderId, authorize()).andExpect(status().isCreated());
 
         var shiftId = shiftRepository.findFirstByStatus(ShiftStatus.OPEN).orElseThrow().getId();

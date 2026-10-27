@@ -2,7 +2,8 @@ package com.beaconculinary.api.orders;
 
 /** A 400 the client must branch on, carrying a stable machine-readable code (e.g.
  * DISCOUNT_INVALID, DISCOUNT_TOO_LARGE, DISCOUNT_AFTER_PAYMENT_RETIRED,
- * DISCOUNTED_ORDER_NOT_REFUNDABLE, COMPLIMENTARY_INVALID, COMPLIMENTARY_ORDER_NOT_REFUNDABLE). */
+ * DISCOUNTED_ORDER_NOT_REFUNDABLE, COMPLIMENTARY_INVALID, COMPLIMENTARY_ORDER_NOT_REFUNDABLE,
+ * ACCOUNT_PAYMENT_INVALID). */
 public class OrderRuleException extends RuntimeException {
     private final String code;
 
@@ -25,6 +26,10 @@ public class OrderRuleException extends RuntimeException {
 
     static OrderRuleException complimentaryInvalid(String message) {
         return new OrderRuleException("COMPLIMENTARY_INVALID", message);
+    }
+
+    static OrderRuleException accountPaymentInvalid(String message) {
+        return new OrderRuleException("ACCOUNT_PAYMENT_INVALID", message);
     }
 
     static OrderRuleException complimentaryNotRefundable() {

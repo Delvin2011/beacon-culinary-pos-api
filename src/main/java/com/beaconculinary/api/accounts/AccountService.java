@@ -39,6 +39,8 @@ public class AccountService {
     public AccountAdminDto create(CreateAccountRequest request) {
         var account = new Account();
         account.setName(request.getName());
+        account.setDepartment(request.getDepartment());
+        account.setContactNumber(request.getContactNumber());
         account.setContactEmail(request.getContactEmail());
         accountRepository.save(account);
         return accountMapper.toAdminDto(account);
@@ -48,6 +50,8 @@ public class AccountService {
     public AccountAdminDto update(Long id, UpdateAccountRequest request) {
         var account = accountRepository.findById(id).orElseThrow(AccountNotFoundException::new);
         account.setName(request.getName());
+        account.setDepartment(request.getDepartment());
+        account.setContactNumber(request.getContactNumber());
         account.setContactEmail(request.getContactEmail());
         account.setActive(request.isActive());
         accountRepository.save(account);
