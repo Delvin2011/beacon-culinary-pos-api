@@ -9,6 +9,7 @@ import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.MealCatalogRepository;
 import com.beaconculinary.api.inventory.RecipeRepository;
+import com.beaconculinary.api.support.CatalogTestHelper;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -152,7 +153,7 @@ class HeadChefRoleIntegrationTests {
     void menuCatalogIsViewOnly_andDailyPlanningIsFull() throws Exception {
         var componentId = id(as(admin, post("/admin/component-catalog"), "{\"name\":\"HC Beef\",\"extraPrice\":15.00}"));
         var mealId = id(as(admin, post("/admin/meal-catalog"),
-                "{\"name\":\"HC Pap & Beef\",\"description\":\"desc\",\"price\":50.00,\"componentIds\":[" + componentId + "]}"));
+                "{\"name\":\"HC Pap & Beef\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":50.00,\"componentIds\":[" + componentId + "]}"));
         long lunchId = 0;
         for (var node : MAPPER.readTree(mockMvc.perform(get("/meal-periods")).andReturn().getResponse().getContentAsString())) {
             if (node.get("name").asText().equalsIgnoreCase("lunch")) {

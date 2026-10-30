@@ -101,7 +101,7 @@ class StaffManagementIntegrationTests {
     void rolesEndpoint_describesTheCredentialsEachRoleUses() throws Exception {
         mockMvc.perform(get("/admin/staff/roles").header("Authorization", "Bearer " + admin))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].role", contains("ADMIN", "CASHIER", "KITCHEN", "HEAD_CHEF", "STOCK_ADMIN", "STOCK_CLERK")))
+                .andExpect(jsonPath("$[*].role", contains("ADMIN", "CASHIER", "KITCHEN", "BARISTA", "HEAD_CHEF", "STOCK_ADMIN", "STOCK_CLERK")))
                 .andExpect(jsonPath("$[?(@.role == 'CASHIER')].password").value("NONE"))
                 .andExpect(jsonPath("$[?(@.role == 'CASHIER')].pin").value("REQUIRED"))
                 .andExpect(jsonPath("$[?(@.role == 'HEAD_CHEF')].password").value("REQUIRED"))

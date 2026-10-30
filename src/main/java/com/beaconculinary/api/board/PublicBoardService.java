@@ -1,6 +1,7 @@
 package com.beaconculinary.api.board;
 
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.orders.OrderEventType;
 import com.beaconculinary.api.orders.OrderRepository;
 import com.beaconculinary.api.orders.OrderStatus;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
@@ -63,6 +64,10 @@ public class PublicBoardService {
     @EventListener
     public void onOrderStatusChanged(OrderStatusStreamEvent event) {
         var summary = event.getOrder();
+        // A cold-only order is created COLLECTED (handed over at payment): it never appears.
+        if (event.getEventType() == OrderEventType.ORDER_CREATED && !BOARD_STATUSES.contains(summary.getStatus())) {
+            return;
+        }
         var doneAt = summary.getStatus() == OrderStatus.DONE ? event.getChangedAt() : null;
         var minimal = toPublic(summary.getOrderNumber(), summary.getStatus(), doneAt);
         broadcaster.broadcast(new PublicBoardStreamEvent(event.getEventType(), minimal));

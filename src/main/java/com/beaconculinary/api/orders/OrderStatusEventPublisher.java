@@ -2,6 +2,7 @@ package com.beaconculinary.api.orders;
 
 import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.menu.Station;
 import lombok.AllArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
@@ -39,5 +40,21 @@ public class OrderStatusEventPublisher {
 
         var eventType = fromStatus == null ? OrderEventType.ORDER_CREATED : OrderEventType.STATUS_CHANGED;
         applicationEventPublisher.publishEvent(new OrderStatusStreamEvent(eventType, orderSummaryMapper.toDto(order), changedAt));
+        applicationEventPublisher.publishEvent(new StationViewChangedEvent(order, eventType));
+    }
+
+    /** A station's own status change (KITCHEN or BAR): the audit row, with its station. The
+     * displays are told by the caller — through {@link #publish} when the order's own status
+     * changed too, or a StationViewChangedEvent when it didn't. */
+    @Transactional
+    public void logStationChange(Order order, Station station, OrderStatus fromStatus, OrderStatus toStatus) {
+        var event = new OrderStatusEvent();
+        event.setOrder(order);
+        event.setStation(station);
+        event.setFromStatus(fromStatus);
+        event.setToStatus(toStatus);
+        event.setChangedBy(authService.getCurrentUser());
+        event.setChangedAt(UtcTimestamps.nowUtc(clock));
+        orderStatusEventRepository.save(event);
     }
 }

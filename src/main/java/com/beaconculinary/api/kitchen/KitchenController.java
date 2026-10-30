@@ -3,6 +3,7 @@ package com.beaconculinary.api.kitchen;
 import com.beaconculinary.api.common.ErrorDto;
 import com.beaconculinary.api.orders.OrderNotFoundException;
 import com.beaconculinary.api.orders.OrderSummaryDto;
+import com.beaconculinary.api.orders.StationTransitionException;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import org.springframework.http.MediaType;
@@ -38,8 +39,8 @@ public class KitchenController {
         return ResponseEntity.notFound().build();
     }
 
-    @ExceptionHandler(InvalidStatusTransitionException.class)
-    public ResponseEntity<ErrorDto> handleInvalidTransition(InvalidStatusTransitionException ex) {
+    @ExceptionHandler(StationTransitionException.class)
+    public ResponseEntity<ErrorDto> handleInvalidTransition(StationTransitionException ex) {
         return ResponseEntity.badRequest().body(new ErrorDto(ex.getMessage()));
     }
 }

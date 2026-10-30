@@ -28,6 +28,14 @@ public class OrderRuleException extends RuntimeException {
         return new OrderRuleException("COMPLIMENTARY_INVALID", message);
     }
 
+    static OrderRuleException itemUnavailable(String itemName) {
+        return new OrderRuleException("ITEM_UNAVAILABLE", "'" + itemName + "' is not available right now.");
+    }
+
+    static OrderRuleException extrasNotAllowed(String itemName) {
+        return new OrderRuleException("EXTRAS_NOT_ALLOWED", "'" + itemName + "' can't have extras.");
+    }
+
     static OrderRuleException accountPaymentInvalid(String message) {
         return new OrderRuleException("ACCOUNT_PAYMENT_INVALID", message);
     }

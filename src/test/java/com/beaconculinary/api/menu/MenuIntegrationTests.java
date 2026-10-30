@@ -1,6 +1,7 @@
 package com.beaconculinary.api.menu;
 
 import com.beaconculinary.api.inventory.RecipeRepository;
+import com.beaconculinary.api.support.CatalogTestHelper;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.DailyPlanTestHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -76,7 +77,7 @@ class MenuIntegrationTests {
             idsJson.append(componentIds[i]);
         }
         idsJson.append("]");
-        var body = "{\"name\":\"" + name + "\",\"description\":\"desc\",\"price\":" + price + ",\"componentIds\":" + idsJson + "}";
+        var body = "{\"name\":\"" + name + "\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":" + price + ",\"componentIds\":" + idsJson + "}";
         var response = mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -99,7 +100,7 @@ class MenuIntegrationTests {
         var chickenId = createComponent("Chicken", "12.00");
         var riceId = createComponent("Rice", "8.00");
 
-        var body = "{\"name\":\"Rice & Chicken\",\"description\":\"desc\",\"price\":45.00,\"componentIds\":[" + chickenId + "," + riceId + "]}";
+        var body = "{\"name\":\"Rice & Chicken\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":45.00,\"componentIds\":[" + chickenId + "," + riceId + "]}";
 
         mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -140,7 +141,7 @@ class MenuIntegrationTests {
                 .andReturn().getResponse().getContentAsString();
         var optionId = MAPPER.readTree(response).get("id").asLong();
 
-        var updateBody = "{\"name\":\"Veg Thali\",\"description\":\"desc\",\"price\":999.00,\"active\":true,\"componentIds\":[]}";
+        var updateBody = "{\"name\":\"Veg Thali\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":999.00,\"active\":true,\"componentIds\":[]}";
         mockMvc.perform(put("/admin/meal-catalog/" + mealCatalogId).header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(updateBody))
                 .andExpect(status().isOk());

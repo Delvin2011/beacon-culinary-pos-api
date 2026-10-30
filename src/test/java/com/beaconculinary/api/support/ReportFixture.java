@@ -225,7 +225,8 @@ public final class ReportFixture {
     }
 
     public long mealCatalog(String name, String price) {
-        var id = jdbc.queryForObject("INSERT INTO meal_catalog (name, price) OUTPUT INSERTED.id VALUES (?, ?)", Long.class,
+        var id = jdbc.queryForObject("INSERT INTO meal_catalog (name, price, category_id) OUTPUT INSERTED.id VALUES (?, ?, "
+                + "(SELECT id FROM catalog_categories WHERE name = 'Set meals' AND parent_id IS NULL))", Long.class,
                 name, new BigDecimal(price));
         catalog.put(name, id);
         return id;

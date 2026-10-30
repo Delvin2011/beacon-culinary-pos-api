@@ -7,7 +7,9 @@ public enum LoginScreen {
     /** The till: cashiers and admins. */
     POS(List.of(Role.CASHIER, Role.ADMIN), false),
     /** The kitchen display: kitchen staff and the Head Chef — only those with a PIN set. */
-    KITCHEN(List.of(Role.KITCHEN, Role.HEAD_CHEF), true);
+    KITCHEN(List.of(Role.KITCHEN, Role.HEAD_CHEF), true),
+    /** The bar display: baristas and admins — only those with a PIN set. */
+    BAR(List.of(Role.BARISTA, Role.ADMIN), true);
 
     private final List<Role> roles;
     private final boolean requiresPin;

@@ -3,8 +3,11 @@ package com.beaconculinary.api.orders;
 import com.beaconculinary.api.accounts.AccountRepository;
 import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.inventory.LightMealStockService;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
+import com.beaconculinary.api.menu.AlwaysOnMenuService;
+import com.beaconculinary.api.menu.Availability;
 import com.beaconculinary.api.menu.DailyPlanItemStatus;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.users.Role;
@@ -33,6 +36,8 @@ public class OrderService {
     private final OrderMapper orderMapper;
     private final OrderStatusEventPublisher orderStatusEventPublisher;
     private final AdminAuthorizationService adminAuthorizationService;
+    private final OrderStationService orderStationService;
+    private final LightMealStockService lightMealStockService;
     private final Clock clock;
 
     @Transactional
@@ -67,7 +72,8 @@ public class OrderService {
             if (!option.getOptionDate().equals(today)) {
                 throw new InvalidOrderRequestException("Meal option is not available today.");
             }
-            if (!option.getMealPeriod().isActiveAt(now)) {
+            // Beverages have no meal period: always open.
+            if (option.getMealPeriod() != null && !option.getMealPeriod().isActiveAt(now)) {
                 throw new InvalidOrderRequestException("Meal option's meal period is not currently active.");
             }
             // /menu/today already hides these, but a stale POS screen or a direct API call can
@@ -75,10 +81,21 @@ public class OrderService {
             if (option.getStatus() != DailyPlanItemStatus.READY) {
                 throw new InvalidOrderRequestException("Meal option '" + option.getName() + "' is not ready for sale yet.");
             }
+            // Light meals and beverages: unlimited, but switched off when the meal is inactive,
+            // out today, or no longer always-on; and they take no extras. Planned options are
+            // unaffected.
+            var meal = option.getMealCatalog();
+            if (option.isAlwaysOn() && (!AlwaysOnMenuService.listed(option) || meal.isOutOn(today))) {
+                throw OrderRuleException.itemUnavailable(option.getName());
+            }
+            if (meal.getAvailability() == Availability.ALWAYS && !lineRequest.getExtras().isEmpty()) {
+                throw OrderRuleException.extrasNotAllowed(option.getName());
+            }
 
             var line = new OrderLine();
             line.setOrder(order);
             line.setDailyMealOption(option);
+            line.setStation(meal.getStation());
             line.setUnitPrice(option.getPrice());
             line.setQuantity(lineRequest.getQuantity());
             var lineTotal = option.getPrice().multiply(BigDecimal.valueOf(lineRequest.getQuantity()));
@@ -136,7 +153,8 @@ public class OrderService {
         // which rolls back the whole transaction — including any decrements already applied
         // earlier in this same request — so no order is ever left half-fulfilled.
         for (var line : order.getLines()) {
-            var decremented = dailyMealOptionRepository.decrementPortionsRemaining(
+            // Always-on options have unlimited (NULL) portions: no guard, no decrement.
+            var decremented = line.getDailyMealOption().isAlwaysOn() ? 1 : dailyMealOptionRepository.decrementPortionsRemaining(
                     line.getDailyMealOption().getId(), line.getQuantity());
             if (decremented == 0) {
                 throw new InsufficientStockException(
@@ -173,7 +191,14 @@ public class OrderService {
             order.setComplimentary(complimentary);
         }
 
+        // A PENDING row per station the lines need; cold drinks only (station NONE) is COLLECTED at
+        // once — handed over at payment, so it never reaches a display or the public board.
+        orderStationService.startStations(order);
         orderRepository.save(order);
+        // Light meals take their ingredients from the Kitchen now that the lines have ids (set
+        // meals deducted at planning). Never blocks: the ledger may go negative. Complimentary
+        // orders too, since the food is eaten. A failed insert fails the order.
+        lightMealStockService.deductForSale(order.getLines(), currentUser);
         // The implicit null -> PENDING transition — retrofits this order onto the KDS stream
         // the instant it's paid, with no polling needed on the kitchen side.
         orderStatusEventPublisher.publish(order, null);

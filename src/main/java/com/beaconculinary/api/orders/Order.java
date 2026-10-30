@@ -82,6 +82,11 @@ public class Order {
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderAdjustment> adjustments = new ArrayList<>();
 
+    // One row per station the order needs (KITCHEN, BAR); none for a cold-only order. Written only
+    // by OrderStationService, which derives status from them.
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderStationStatus> stationStatuses = new ArrayList<>();
+
     // Stage 4 Part A — one row per payment method used (1 entry for a single-method order, up
     // to 2 for a CASH+CARD split, always exactly 1 for ACCOUNT). Replaces the old single
     // payment_method/amount_tendered/change_due/card_reference fields (Stage 1.3/3); those

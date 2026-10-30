@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 public interface DailyMealOptionRepository extends JpaRepository<DailyMealOption, Long> {
     List<DailyMealOption> findByOptionDateAndMealPeriodIdOrderById(LocalDate optionDate, Long mealPeriodId);
@@ -15,6 +16,18 @@ public interface DailyMealOptionRepository extends JpaRepository<DailyMealOption
      * rows already covered by a confirmation. With READY: what the POS may sell. */
     List<DailyMealOption> findByOptionDateAndMealPeriodIdAndStatusOrderById(
             LocalDate optionDate, Long mealPeriodId, DailyPlanItemStatus status);
+
+    /** Every option of a day with a status, any period: the full till menu. */
+    List<DailyMealOption> findByOptionDateAndStatusOrderById(LocalDate optionDate, DailyPlanItemStatus status);
+
+    /** The meals that already have their always-on option on a day. */
+    @Query("SELECT o.mealCatalog.id FROM DailyMealOption o WHERE o.optionDate = :date AND o.plannedPortions IS NULL")
+    List<Long> findAlwaysOnMealIds(@Param("date") LocalDate date);
+
+    Optional<DailyMealOption> findByMealCatalogIdAndOptionDateAndPlannedPortionsIsNull(Long mealCatalogId, LocalDate optionDate);
+
+    /** Planned (portioned) options of a meal on or after a day, which pin the meal to its group. */
+    boolean existsByMealCatalogIdAndOptionDateGreaterThanEqualAndPlannedPortionsIsNotNull(Long mealCatalogId, LocalDate from);
 
     /**
      * Records (or corrects) the actual, moving the row to READY. remaining shifts by the same

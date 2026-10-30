@@ -11,4 +11,7 @@ public class MealPeriodDto {
     private LocalTime startTime;
     private LocalTime endTime;
     private boolean allDay;
+    private CatalogGroup accepts;
+    // false for the period that takes light meals (All Day): nothing is planned there.
+    private boolean plannable;
 }

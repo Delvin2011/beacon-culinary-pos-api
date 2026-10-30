@@ -39,6 +39,8 @@ public class DailyMealOption {
     @Column(name = "price")
     private BigDecimal price;
 
+    // NULL for an always-on option (light meals, beverages): unlimited, never planned, no portion
+    // guard. Its actual and remaining portions are NULL too.
     @Column(name = "planned_portions")
     private Integer plannedPortions;
 
@@ -57,8 +59,17 @@ public class DailyMealOption {
     @Column(name = "status")
     private DailyPlanItemStatus status = DailyPlanItemStatus.PLANNED;
 
-    /** Portions sold so far (net of voids). Zero before an actual is recorded. */
+    /** An always-on option (light meals, beverages): unlimited portions. */
+    public boolean isAlwaysOn() {
+        return plannedPortions == null;
+    }
+
+    /** Portions sold so far (net of voids). Zero before an actual is recorded, and for an
+     * always-on option, which doesn't count portions. */
     public int getSold() {
+        if (isAlwaysOn()) {
+            return 0;
+        }
         return (actualPortions == null ? 0 : actualPortions) - portionsRemaining;
     }
 }

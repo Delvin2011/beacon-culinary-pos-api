@@ -5,6 +5,7 @@ import com.beaconculinary.api.inventory.StockRequestRepository;
 import com.beaconculinary.api.orders.OrderRepository;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
+import com.beaconculinary.api.support.CatalogTestHelper;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
@@ -114,7 +115,7 @@ class DailyPlanStatusIntegrationTests {
 
     private long createOption(String name, int plannedPortions) throws Exception {
         var componentId = createComponent(name + " Base");
-        var catalogBody = "{\"name\":\"" + name + "\",\"description\":\"desc\",\"price\":65.00,\"componentIds\":[" + componentId + "]}";
+        var catalogBody = "{\"name\":\"" + name + "\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":65.00,\"componentIds\":[" + componentId + "]}";
         var catalogResponse = mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(catalogBody))
                 .andExpect(status().isCreated())

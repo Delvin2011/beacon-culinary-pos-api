@@ -7,5 +7,7 @@ public enum MovementType {
     ISSUED,
     CONSUMED,
     WASTED,
-    STOCK_TAKE_ADJUSTMENT
+    STOCK_TAKE_ADJUSTMENT,
+    // Light meal stock: a void gives back what a light meal's sale consumed (positive, Kitchen).
+    CONSUMPTION_REVERSED
 }

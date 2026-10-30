@@ -2,11 +2,13 @@ package com.beaconculinary.api.orders;
 
 import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.inventory.LightMealStockService;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.users.User;
 import lombok.AllArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,10 +39,10 @@ public class OrderAdjustmentService {
     private final AuthService authService;
     private final DailyMealOptionRepository dailyMealOptionRepository;
     private final DailyComponentStockRepository dailyComponentStockRepository;
+    private final LightMealStockService lightMealStockService;
     private final OrderMapper orderMapper;
-    private final OrderSummaryMapper orderSummaryMapper;
     private final OrderStatusEventPublisher orderStatusEventPublisher;
-    private final OrderEventBroadcaster orderEventBroadcaster;
+    private final ApplicationEventPublisher applicationEventPublisher;
     private final Clock clock;
 
     @Transactional
@@ -145,6 +147,9 @@ public class OrderAdjustmentService {
                     }
                 }
             }
+            // Light meals' ingredients go back to the Kitchen, once per line. A refund gives
+            // nothing back: the food was made.
+            lightMealStockService.reverseForVoid(order.getLines(), authService.getCurrentUser());
         }
 
         var fromStatus = order.getStatus();
@@ -199,7 +204,8 @@ public class OrderAdjustmentService {
         orderRepository.save(order);
 
         if (order.getStatus() == OrderStatus.PENDING || order.getStatus() == OrderStatus.IN_PROGRESS) {
-            orderEventBroadcaster.broadcast(new OrderStatusStreamEvent(OrderEventType.ORDER_UPDATED, orderSummaryMapper.toDto(order)));
+            // Each station display that has this order gets its own view (kitchen and/or bar).
+            applicationEventPublisher.publishEvent(new StationViewChangedEvent(order, OrderEventType.ORDER_UPDATED));
         }
 
         return amount;
