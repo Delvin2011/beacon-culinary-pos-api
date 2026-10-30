@@ -10,4 +10,6 @@ import java.util.List;
 public class DailyPlanResponseDto {
     private List<DailyPlanOptionDto> options;
     private List<DailyPlanComponentStockDto> componentStock;
+    // false for the period that takes light meals (All Day): always-on items, nothing to plan.
+    private boolean plannable;
 }

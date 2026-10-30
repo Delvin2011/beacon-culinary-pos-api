@@ -2,6 +2,7 @@ package com.beaconculinary.api.orders;
 
 import com.beaconculinary.api.admin.InvalidAuthorizationTokenException;
 import com.beaconculinary.api.common.ErrorDto;
+import com.beaconculinary.api.menu.AlwaysOnMenuService;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -17,11 +18,15 @@ import java.util.List;
 public class OrderController {
     private final OrderService orderService;
     private final OrderAdjustmentService orderAdjustmentService;
+    private final AlwaysOnMenuService alwaysOnMenuService;
 
     @PostMapping
     public ResponseEntity<OrderDto> createOrder(
             @Valid @RequestBody CreateOrderRequest request,
             UriComponentsBuilder uriBuilder) {
+        // Defensive: today's always-on options normally exist from the till's menu request. Done
+        // here, outside the order's transaction, so it never holds two connections at once.
+        alwaysOnMenuService.ensureAlwaysOnOptionsToday();
         var order = orderService.createOrder(request);
         var uri = uriBuilder.path("/orders/{id}").buildAndExpand(order.getId()).toUri();
 

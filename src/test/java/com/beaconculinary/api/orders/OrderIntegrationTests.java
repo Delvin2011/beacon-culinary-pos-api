@@ -6,6 +6,7 @@ import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.MealCatalogRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
+import com.beaconculinary.api.support.CatalogTestHelper;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.DailyPlanTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
@@ -119,7 +120,7 @@ class OrderIntegrationTests {
             idsJson.append(componentIds[i]);
         }
         idsJson.append("]");
-        var body = "{\"name\":\"" + name + "\",\"description\":\"desc\",\"price\":" + price + ",\"componentIds\":" + idsJson + "}";
+        var body = "{\"name\":\"" + name + "\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":" + price + ",\"componentIds\":" + idsJson + "}";
         var response = mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -398,10 +399,19 @@ class OrderIntegrationTests {
                 .andExpect(status().isBadRequest());
     }
 
+    // All Day now takes light meals only (always-on, never planned), so the item is a light meal
+    // whose option the till menu creates, rather than a set meal planned under All Day.
     @Test
     void allDayOption_isOrderableRegardlessOfWallClockTime() throws Exception {
-        var mealId = createMealCatalog("Cool Drink", "15.00");
-        var optionId = createDailyOption(allDayId, mealId, 10);
+        var body0 = "{\"name\":\"Cool Wrap\",\"categoryId\":" + CatalogTestHelper.categoryId(mockMvc, "Light meals > Wraps")
+                + ",\"description\":\"desc\",\"price\":15.00}";
+        mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body0))
+                .andExpect(status().isCreated());
+        var menu = MAPPER.readTree(mockMvc.perform(get("/menu/today").param("period", "All Day"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        var optionId = menu.get("options").get(0).get("id").asLong();
+        assertThat(menu.get("options").get(0).get("mealPeriodId").asLong()).isEqualTo(allDayId);
         openShift(cashierToken);
 
         clock.setTime(LocalTime.of(3, 0)); // well outside both Breakfast and Lunch windows

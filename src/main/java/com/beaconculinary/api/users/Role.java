@@ -15,5 +15,8 @@ public enum Role {
     // requests stock issues and waste, submits stock takes, uses the kitchen display, and reviews
     // food sales (Sales Summary). Never approves, never holds manager-PIN authority, and never
     // raises purchase-order requests.
-    HEAD_CHEF
+    HEAD_CHEF,
+    // Barista — uses the bar display (BAR_DISPLAY until U2): sees and advances the bar's part of
+    // orders, and can mark beverages out today. Can't sell yet. PIN only.
+    BARISTA
 }

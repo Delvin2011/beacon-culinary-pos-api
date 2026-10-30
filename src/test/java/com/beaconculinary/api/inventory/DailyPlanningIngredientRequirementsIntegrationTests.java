@@ -4,6 +4,7 @@ import com.beaconculinary.api.menu.ComponentCatalogRepository;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.MealCatalogRepository;
+import com.beaconculinary.api.support.CatalogTestHelper;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -130,7 +131,7 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
     }
 
     private long createMealCatalog(String name, long componentId) throws Exception {
-        var body = "{\"name\":\"" + name + "\",\"description\":\"desc\",\"price\":50.00,\"componentIds\":[" + componentId + "]}";
+        var body = "{\"name\":\"" + name + "\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":50.00,\"componentIds\":[" + componentId + "]}";
         var response = mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -213,7 +214,7 @@ class DailyPlanningIngredientRequirementsIntegrationTests {
         putRecipe(riceComponentId, 10, "[{\"ingredientId\":" + riceId + ",\"quantity\":1.5}]");
         createDailyOption(createMealCatalog("Rice Meal", riceComponentId), 20);
 
-        var stewBody = "{\"name\":\"Lamb & Vegetable Stew\",\"description\":\"desc\",\"price\":50.00}";
+        var stewBody = "{\"name\":\"Lamb & Vegetable Stew\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":50.00}";
         var stewId = MAPPER.readTree(mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(stewBody))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asLong();

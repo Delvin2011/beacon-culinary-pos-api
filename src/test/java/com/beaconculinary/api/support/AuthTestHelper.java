@@ -94,6 +94,13 @@ public class AuthTestHelper {
         return loginWithPin(mockMvc, kitchenId(mockMvc), "654321");
     }
 
+    public static final String BARISTA_EMAIL = "barista@canteen.local";
+
+    /** The seeded Barista (V97), PIN only, like the kitchen user. */
+    public static String loginAsBarista(MockMvc mockMvc) throws Exception {
+        return loginWithPin(mockMvc, userId(mockMvc, BARISTA_EMAIL), "654321");
+    }
+
     public static String loginWithPin(MockMvc mockMvc, long cashierId, String pin) throws Exception {
         var body = MAPPER.writeValueAsString(new PinLoginRequest(cashierId, pin));
         var response = mockMvc.perform(post("/auth/pin-login").contentType(APPLICATION_JSON).content(body))

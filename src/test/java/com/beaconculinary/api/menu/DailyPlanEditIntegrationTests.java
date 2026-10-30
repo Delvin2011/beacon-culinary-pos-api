@@ -3,6 +3,7 @@ package com.beaconculinary.api.menu;
 import com.beaconculinary.api.inventory.RecipeRepository;
 import com.beaconculinary.api.inventory.StockRequestRepository;
 import com.beaconculinary.api.support.AuthTestHelper;
+import com.beaconculinary.api.support.CatalogTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -112,7 +113,7 @@ class DailyPlanEditIntegrationTests {
     }
 
     private long meal(String name, String price) throws Exception {
-        return created(as(post("/admin/meal-catalog"), "{\"name\":\"" + name + "\",\"description\":\"" + name
+        return created(as(post("/admin/meal-catalog"), "{\"name\":\"" + name + "\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"" + name
                 + " desc\",\"price\":" + price + "}"));
     }
 
@@ -139,7 +140,7 @@ class DailyPlanEditIntegrationTests {
         var optionId = created(as(post("/admin/daily-options"), optionBody(lunchId, today, stew, 20)));
 
         // A later catalog price change must not reach the planned day, even through an edit that keeps the meal.
-        as(put("/admin/meal-catalog/" + stew), "{\"name\":\"Lamb Stew\",\"description\":\"d\",\"price\":60.00,\"active\":true}")
+        as(put("/admin/meal-catalog/" + stew), "{\"name\":\"Lamb Stew\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"d\",\"price\":60.00,\"active\":true}")
                 .andExpect(status().isOk());
         as(put("/admin/daily-options/" + optionId), optionBody(lunchId, today, stew, 30))
                 .andExpect(status().isOk())

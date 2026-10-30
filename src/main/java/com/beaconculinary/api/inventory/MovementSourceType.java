@@ -9,5 +9,8 @@ public enum MovementSourceType {
     DIRECT_WASTE,
     STOCK_TAKE,
     // Stage 5 Revision — an approved StockRequest (ISSUE or WASTE) authored this movement.
-    STOCK_REQUEST
+    STOCK_REQUEST,
+    // Light meal stock: a sold (CONSUMED) or voided (CONSUMPTION_REVERSED) light meal line;
+    // sourceId = order_lines.id.
+    ORDER_LINE
 }

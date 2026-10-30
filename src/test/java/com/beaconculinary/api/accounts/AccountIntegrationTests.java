@@ -8,6 +8,7 @@ import com.beaconculinary.api.menu.MealCatalogRepository;
 import com.beaconculinary.api.orders.OrderRepository;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
+import com.beaconculinary.api.support.CatalogTestHelper;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.DailyPlanTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
@@ -113,7 +114,7 @@ class AccountIntegrationTests {
     }
 
     private long createMealCatalog(String name, String price, long componentId) throws Exception {
-        var body = "{\"name\":\"" + name + "\",\"description\":\"desc\",\"price\":" + price
+        var body = "{\"name\":\"" + name + "\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":" + price
                 + ",\"componentIds\":[" + componentId + "]}";
         var response = mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))

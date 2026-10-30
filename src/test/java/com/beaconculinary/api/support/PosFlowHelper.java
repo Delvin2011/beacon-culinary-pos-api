@@ -62,7 +62,7 @@ public class PosFlowHelper {
     }
 
     public long createMealCatalog(String name, String price, long componentId) throws Exception {
-        var body = "{\"name\":\"" + name + "\",\"description\":\"desc\",\"price\":" + price
+        var body = "{\"name\":\"" + name + "\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":" + price
                 + ",\"componentIds\":[" + componentId + "]}";
         return createdId(mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON).content(body)));

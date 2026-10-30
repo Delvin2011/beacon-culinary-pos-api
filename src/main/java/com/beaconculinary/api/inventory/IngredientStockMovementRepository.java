@@ -1,11 +1,13 @@
 package com.beaconculinary.api.inventory;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,4 +42,15 @@ public interface IngredientStockMovementRepository extends JpaRepository<Ingredi
     // one per line, pointed at that line's own id), so a same-day GRV edit can adjust it in place
     // rather than leaving it stale against the corrected quantity/cost.
     Optional<IngredientStockMovement> findBySourceTypeAndSourceId(MovementSourceType sourceType, Long sourceId);
+
+    /** Light meal stock: every given ingredient's figure per location, in one query, as rows of
+     * [ingredientId, locationId, sum]. */
+    @Query("SELECT m.ingredient.id, m.location.id, COALESCE(SUM(m.quantity), 0) FROM IngredientStockMovement m " +
+            "WHERE m.ingredient.id IN :ingredientIds GROUP BY m.ingredient.id, m.location.id")
+    List<Object[]> sumQuantityByIngredientIdsGroupedByLocation(@Param("ingredientIds") Collection<Long> ingredientIds);
+
+    /** Light meal stock: the movements some order lines wrote, of one type (sale or reversal). */
+    @EntityGraph(attributePaths = {"ingredient", "location"})
+    List<IngredientStockMovement> findBySourceTypeAndSourceIdInAndMovementType(
+            MovementSourceType sourceType, Collection<Long> sourceIds, MovementType movementType);
 }

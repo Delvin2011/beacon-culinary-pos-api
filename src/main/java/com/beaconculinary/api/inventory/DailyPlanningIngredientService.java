@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -40,7 +39,7 @@ public class DailyPlanningIngredientService {
     private final MealPeriodRepository mealPeriodRepository;
     private final DailyMealOptionRepository dailyMealOptionRepository;
     private final DailyComponentStockRepository dailyComponentStockRepository;
-    private final RecipeRepository recipeRepository;
+    private final MealIngredientRequirements mealIngredientRequirements;
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
     private final StockRequestRepository stockRequestRepository;
@@ -143,8 +142,12 @@ public class DailyPlanningIngredientService {
     // [SUM over its own component's recipe lines of (recipeLine.quantity / recipe.batchSize) x
     // dailyComponentStock.bufferQuantity].
     private RequirementsCalculation calculate(LocalDate date, Long mealPeriodId) {
+        // Always-on options (NULL portions) are never planned and are created READY; the filter
+        // keeps them out even so.
         var options = dailyMealOptionRepository.findByOptionDateAndMealPeriodIdAndStatusOrderById(
-                date, mealPeriodId, DailyPlanItemStatus.PLANNED);
+                date, mealPeriodId, DailyPlanItemStatus.PLANNED).stream()
+                .filter(option -> !option.isAlwaysOn())
+                .toList();
         var stocks = dailyComponentStockRepository.findByOptionDateAndMealPeriodIdAndStatusOrderById(
                 date, mealPeriodId, DailyPlanItemStatus.PLANNED);
 
@@ -187,17 +190,12 @@ public class DailyPlanningIngredientService {
      * ingredients worth tracking (e.g. a bought-in, pre-packaged item).
      */
     private boolean accumulate(Map<Long, BigDecimal> byIngredientId, ComponentCatalog componentCatalog, Integer portions) {
-        var recipe = recipeRepository.findWithLinesByComponentCatalogId(componentCatalog.getId()).orElse(null);
-        if (recipe == null || recipe.getLines().isEmpty()) {
-            return false;
+        var perUnit = mealIngredientRequirements.perUnitOfComponent(componentCatalog.getId());
+        for (var row : perUnit) {
+            var required = row.quantity().multiply(BigDecimal.valueOf(portions));
+            byIngredientId.merge(row.ingredient().getId(), required, BigDecimal::add);
         }
-        var batchSize = BigDecimal.valueOf(recipe.getBatchSize());
-        for (var line : recipe.getLines()) {
-            var perPortion = line.getQuantity().divide(batchSize, 6, RoundingMode.HALF_UP);
-            var required = perPortion.multiply(BigDecimal.valueOf(portions));
-            byIngredientId.merge(line.getIngredient().getId(), required, BigDecimal::add);
-        }
-        return true;
+        return !perUnit.isEmpty();
     }
 
     private record RequirementsCalculation(Map<Long, BigDecimal> byIngredientId, List<DailyMealOption> options,

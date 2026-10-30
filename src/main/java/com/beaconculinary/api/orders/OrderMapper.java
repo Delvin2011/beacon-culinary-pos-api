@@ -1,8 +1,12 @@
 package com.beaconculinary.api.orders;
 
+import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.users.UserRefDto;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+
+import java.util.Comparator;
+import java.util.List;
 
 @Mapper(componentModel = "spring", imports = UserRefDto.class)
 public interface OrderMapper {
@@ -25,7 +29,16 @@ public interface OrderMapper {
 
     @Mapping(target = "shiftId", source = "shift.id")
     @Mapping(target = "cashierId", source = "cashier.id")
+    @Mapping(target = "stations", expression = "java(toStationDtos(order))")
     OrderDto toDto(Order order);
+
+    default List<OrderStationDto> toStationDtos(Order order) {
+        return order.getStationStatuses().stream()
+                .sorted(Comparator.comparing(OrderStationStatus::getStation))
+                .map(row -> new OrderStationDto(row.getStation(), row.getStatus(),
+                        UtcTimestamps.toInstant(row.getUpdatedAt()), UserRefDto.of(row.getUpdatedBy())))
+                .toList();
+    }
 
     default OrderDiscountDto toDto(OrderDiscount discount) {
         if (discount == null) {

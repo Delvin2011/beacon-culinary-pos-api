@@ -28,6 +28,8 @@ public class OrderDto {
     private LocalDateTime createdAt;
     private boolean printFailed;
     private List<OrderLineDto> lines;
+    // One per station the order needs (KITCHEN, BAR); empty for a cold-only order.
+    private List<OrderStationDto> stations;
     private List<OrderAdjustmentDto> adjustments;
     private List<OrderPaymentDto> payments;
 }

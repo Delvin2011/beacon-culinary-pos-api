@@ -1,6 +1,7 @@
 package com.beaconculinary.api.orders;
 
 import com.beaconculinary.api.menu.DailyMealOption;
+import com.beaconculinary.api.menu.Station;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -26,6 +27,11 @@ public class OrderLine {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "daily_meal_option_id")
     private DailyMealOption dailyMealOption;
+
+    // Snapshot of the meal's station at sale (V97): which display prepares this line.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "station")
+    private Station station = Station.KITCHEN;
 
     // Snapshotted at order time — a later catalog/daily-option change must never
     // retroactively rewrite an already-sold order line.

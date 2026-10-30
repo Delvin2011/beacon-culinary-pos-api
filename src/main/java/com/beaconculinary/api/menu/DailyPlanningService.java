@@ -1,11 +1,15 @@
 package com.beaconculinary.api.menu;
 
+import com.beaconculinary.api.inventory.LightMealStockService;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.Comparator;
+import java.util.List;
 
 @Service
 @AllArgsConstructor
@@ -15,8 +19,15 @@ public class DailyPlanningService {
     private final ComponentCatalogRepository componentCatalogRepository;
     private final DailyMealOptionRepository dailyMealOptionRepository;
     private final DailyComponentStockRepository dailyComponentStockRepository;
+    private final LightMealStockService lightMealStockService;
     private final MealMapper mealMapper;
     private final Clock clock;
+
+    private static final Comparator<DailyMealOption> TILL_ORDER = Comparator
+            .comparing((DailyMealOption option) -> option.getMealCatalog().getGroup())
+            .thenComparingInt(option -> option.getMealCatalog().getCategory().getSortOrder())
+            .thenComparing(option -> option.getMealCatalog().getCategory().getName())
+            .thenComparing(DailyMealOption::getName, String.CASE_INSENSITIVE_ORDER);
 
     @Transactional
     public DailyMealOptionDto createDailyOption(CreateDailyOptionRequest request) {
@@ -24,6 +35,7 @@ public class DailyPlanningService {
                 .orElseThrow(() -> new InvalidMenuRequestException("mealPeriodId does not exist."));
         var mealCatalog = mealCatalogRepository.findById(request.getMealCatalogId())
                 .orElseThrow(() -> new InvalidMenuRequestException("mealCatalogId does not exist."));
+        requirePlannableIn(mealCatalog, mealPeriod);
 
         var option = new DailyMealOption();
         option.setMealPeriod(mealPeriod);
@@ -77,10 +89,17 @@ public class DailyPlanningService {
         requirePlanned(option.getStatus(), option.getName());
         var mealPeriod = mealPeriodRepository.findById(request.getMealPeriodId())
                 .orElseThrow(() -> new InvalidMenuRequestException("mealPeriodId does not exist."));
+        var mealChanged = !option.getMealCatalog().getId().equals(request.getMealCatalogId());
+        var mealCatalog = mealChanged
+                ? mealCatalogRepository.findById(request.getMealCatalogId())
+                        .orElseThrow(() -> new InvalidMenuRequestException("mealCatalogId does not exist."))
+                : option.getMealCatalog();
+        // Only a change of meal or period is checked, so an older option keeps working as it was.
+        if (mealChanged || !option.getMealPeriod().getId().equals(mealPeriod.getId())) {
+            requirePlannableIn(mealCatalog, mealPeriod);
+        }
 
-        if (!option.getMealCatalog().getId().equals(request.getMealCatalogId())) {
-            var mealCatalog = mealCatalogRepository.findById(request.getMealCatalogId())
-                    .orElseThrow(() -> new InvalidMenuRequestException("mealCatalogId does not exist."));
+        if (mealChanged) {
             option.setMealCatalog(mealCatalog);
             option.setName(mealCatalog.getName());
             option.setDescription(mealCatalog.getDescription());
@@ -133,6 +152,19 @@ public class DailyPlanningService {
         dailyComponentStockRepository.delete(stock);
     }
 
+    /** Always-on items are never planned; a set meal goes only under a period that accepts set
+     * meals (Breakfast, Lunch), so nothing is planned under All Day. */
+    private static void requirePlannableIn(MealCatalog meal, MealPeriod period) {
+        if (meal.getAvailability() == Availability.ALWAYS) {
+            throw MenuRuleException.badRequest("ALWAYS_ON_ITEM_NOT_PLANNABLE",
+                    "'" + meal.getName() + "' is always available and isn't planned.");
+        }
+        if (meal.getGroup() != period.getAccepts()) {
+            throw MenuRuleException.badRequest("MEAL_NOT_ALLOWED_IN_PERIOD",
+                    "'" + meal.getName() + "' can't be planned under " + period.getName() + ".");
+        }
+    }
+
     private static void requirePlanned(DailyPlanItemStatus status, String name) {
         if (status != DailyPlanItemStatus.PLANNED) {
             throw new InvalidMenuRequestException("'" + name + "' can't be changed or removed: its ingredients have "
@@ -146,6 +178,10 @@ public class DailyPlanningService {
     @Transactional
     public DailyPlanOptionDto recordActualPortions(Long id, RecordActualPortionsRequest request) {
         var option = dailyMealOptionRepository.findById(id).orElseThrow(DailyPlanItemNotFoundException::new);
+        if (option.isAlwaysOn()) {
+            throw MenuRuleException.badRequest("ALWAYS_ON_ITEM_NOT_PLANNABLE",
+                    "'" + option.getName() + "' is always available: it has no portions to record.");
+        }
         if (option.getStatus() == DailyPlanItemStatus.PLANNED) {
             throw new InvalidMenuRequestException(
                     "Ingredients must be reviewed before an actual can be recorded.");
@@ -191,26 +227,56 @@ public class DailyPlanningService {
                 .stream().map(mealMapper::toPlanDto).toList();
         var componentStock = dailyComponentStockRepository.findByOptionDateAndMealPeriodIdOrderById(date, mealPeriod.getId())
                 .stream().map(mealMapper::toPlanDto).toList();
-        return new DailyPlanResponseDto(options, componentStock);
+        return new DailyPlanResponseDto(options, componentStock, mealPeriod.isPlannable());
     }
 
-    /** The POS menu — READY items only. Order creation enforces the same rule server-side. */
+    /**
+     * The POS menu — READY items only. Order creation enforces the same rule server-side. Today's
+     * always-on options are created first (by MenuController, outside this read transaction).
+     * With a period: that period's items, as before. Without:
+     * the full till menu — every period open now, plus light meals and (Part B) beverages, sorted by
+     * group, category and item. An always-on item whose meal is inactive (or no longer always-on)
+     * is left out; one marked out today stays listed with outToday = true.
+     */
     @Transactional(readOnly = true)
     public MenuTodayResponseDto getTodayMenu(String periodName) {
-        var mealPeriod = resolvePeriod(periodName);
-
         var today = LocalDate.now(clock);
+        var now = LocalTime.now(clock);
 
-        var options = dailyMealOptionRepository.findByOptionDateAndMealPeriodIdAndStatusOrderById(
-                        today, mealPeriod.getId(), DailyPlanItemStatus.READY)
-                .stream().map(mealMapper::toDto).toList();
-        var availableExtras = dailyComponentStockRepository.findByOptionDateAndMealPeriodIdAndStatusOrderById(
-                        today, mealPeriod.getId(), DailyPlanItemStatus.READY)
-                .stream().map(mealMapper::toDto).toList();
+        List<DailyMealOption> options;
+        List<DailyComponentStock> extras;
+        if (periodName == null || periodName.isBlank()) {
+            options = dailyMealOptionRepository.findByOptionDateAndStatusOrderById(today, DailyPlanItemStatus.READY).stream()
+                    .filter(option -> option.getMealPeriod() == null || option.getMealPeriod().isActiveAt(now))
+                    .sorted(TILL_ORDER)
+                    .toList();
+            extras = mealPeriodRepository.findAll().stream().filter(period -> period.isActiveAt(now))
+                    .flatMap(period -> dailyComponentStockRepository.findByOptionDateAndMealPeriodIdAndStatusOrderById(
+                            today, period.getId(), DailyPlanItemStatus.READY).stream())
+                    .toList();
+        } else {
+            var mealPeriod = resolvePeriod(periodName);
+            options = dailyMealOptionRepository.findByOptionDateAndMealPeriodIdAndStatusOrderById(
+                    today, mealPeriod.getId(), DailyPlanItemStatus.READY);
+            extras = dailyComponentStockRepository.findByOptionDateAndMealPeriodIdAndStatusOrderById(
+                    today, mealPeriod.getId(), DailyPlanItemStatus.READY);
+        }
 
         var response = new MenuTodayResponseDto();
-        response.setOptions(options);
-        response.setAvailableExtras(availableExtras);
+        var listed = options.stream().filter(AlwaysOnMenuService::listed).toList();
+        // Light meal stock for the till's warning chip: one ledger query for the whole menu.
+        var stock = lightMealStockService.stockFor(listed.stream()
+                .filter(DailyMealOption::isAlwaysOn).map(DailyMealOption::getMealCatalog).distinct().toList());
+        response.setOptions(listed.stream().map(option -> {
+            var dto = mealMapper.toDto(option);
+            var mealStock = option.isAlwaysOn() ? stock.get(option.getMealCatalog().getId()) : null;
+            if (mealStock != null) {
+                dto.setStockStatus(mealStock.status());
+                dto.setUnitsAvailable(mealStock.unitsAvailable());
+            }
+            return dto;
+        }).toList());
+        response.setAvailableExtras(extras.stream().map(mealMapper::toDto).toList());
         return response;
     }
 

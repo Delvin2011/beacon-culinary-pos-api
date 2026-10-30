@@ -1,6 +1,7 @@
 package com.beaconculinary.api.kitchen;
 
 import com.beaconculinary.api.inventory.RecipeRepository;
+import com.beaconculinary.api.menu.Station;
 import com.beaconculinary.api.menu.ComponentCatalogRepository;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
@@ -8,6 +9,7 @@ import com.beaconculinary.api.menu.MealCatalogRepository;
 import com.beaconculinary.api.orders.OrderRepository;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
+import com.beaconculinary.api.support.CatalogTestHelper;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.DailyPlanTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
@@ -104,7 +106,7 @@ class KitchenIntegrationTests {
     }
 
     private long createMealCatalog(String name, String price, long componentId) throws Exception {
-        var body = "{\"name\":\"" + name + "\",\"description\":\"desc\",\"price\":" + price
+        var body = "{\"name\":\"" + name + "\",\"categoryId\":" + CatalogTestHelper.setMealsId(mockMvc) + ",\"description\":\"desc\",\"price\":" + price
                 + ",\"componentIds\":[" + componentId + "]}";
         var response = mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -185,7 +187,9 @@ class KitchenIntegrationTests {
                 .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
 
         assertThat(orderRepository.findById(orderId).orElseThrow().getStatus().name()).isEqualTo("IN_PROGRESS");
-        assertThat(orderStatusEventRepository.findAll()).hasSize(2); // creation + this transition
+        // The order: creation + this transition; the KITCHEN station: this transition, logged with its station.
+        assertThat(orderStatusEventRepository.findAll().stream().filter(e -> e.getStation() == null)).hasSize(2);
+        assertThat(orderStatusEventRepository.findAll().stream().filter(e -> e.getStation() == Station.KITCHEN)).hasSize(1);
     }
 
     @Test
@@ -198,7 +202,9 @@ class KitchenIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
 
-        assertThat(orderStatusEventRepository.findAll()).hasSize(3); // creation + 2 transitions
+        // The order: creation + 2 transitions; the KITCHEN station: the same 2, logged with its station.
+        assertThat(orderStatusEventRepository.findAll().stream().filter(e -> e.getStation() == null)).hasSize(3);
+        assertThat(orderStatusEventRepository.findAll().stream().filter(e -> e.getStation() == Station.KITCHEN)).hasSize(2);
     }
 
     @Test

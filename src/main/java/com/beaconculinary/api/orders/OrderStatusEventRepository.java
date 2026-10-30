@@ -9,7 +9,7 @@ import java.util.Collection;
 import java.util.List;
 
 public interface OrderStatusEventRepository extends JpaRepository<OrderStatusEvent, Long> {
-    /** When each order last moved into a status (UTC). */
+    /** When each order itself (not one of its stations) last moved into a status (UTC). */
     interface StatusReachedAt {
         Long getOrderId();
 
@@ -17,6 +17,6 @@ public interface OrderStatusEventRepository extends JpaRepository<OrderStatusEve
     }
 
     @Query("SELECT e.order.id AS orderId, MAX(e.changedAt) AS changedAt FROM OrderStatusEvent e "
-            + "WHERE e.order.id IN :orderIds AND e.toStatus = :status GROUP BY e.order.id")
+            + "WHERE e.order.id IN :orderIds AND e.toStatus = :status AND e.station IS NULL GROUP BY e.order.id")
     List<StatusReachedAt> findLastReachedAt(@Param("orderIds") Collection<Long> orderIds, @Param("status") OrderStatus status);
 }

@@ -12,7 +12,7 @@ import java.util.Optional;
  *
  * <ul>
  *   <li>ADMIN — email + password (back office) and a PIN (manager approvals, POS tile).</li>
- *   <li>CASHIER, KITCHEN — PIN only (POS / kitchen display tiles).</li>
+ *   <li>CASHIER, KITCHEN, BARISTA — PIN only (POS / kitchen / bar display tiles).</li>
  *   <li>HEAD_CHEF — email + password; PIN optional (kitchen display).</li>
  *   <li>STOCK_ADMIN, STOCK_CLERK — email + password only.</li>
  * </ul>
@@ -40,6 +40,7 @@ public final class StaffRolePolicy {
             new RoleRule(Role.ADMIN, "Admin (Manager)", Requirement.REQUIRED, Requirement.REQUIRED),
             new RoleRule(Role.CASHIER, "Cashier", Requirement.NONE, Requirement.REQUIRED),
             new RoleRule(Role.KITCHEN, "Kitchen", Requirement.NONE, Requirement.REQUIRED),
+            new RoleRule(Role.BARISTA, "Barista", Requirement.NONE, Requirement.REQUIRED),
             new RoleRule(Role.HEAD_CHEF, "Head Chef", Requirement.REQUIRED, Requirement.OPTIONAL),
             new RoleRule(Role.STOCK_ADMIN, "Stock Admin", Requirement.REQUIRED, Requirement.NONE),
             new RoleRule(Role.STOCK_CLERK, "Stock Clerk", Requirement.REQUIRED, Requirement.NONE));

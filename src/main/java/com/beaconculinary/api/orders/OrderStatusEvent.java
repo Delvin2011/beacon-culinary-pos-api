@@ -1,5 +1,6 @@
 package com.beaconculinary.api.orders;
 
+import com.beaconculinary.api.menu.Station;
 import com.beaconculinary.api.users.User;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -33,6 +34,11 @@ public class OrderStatusEvent {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "changed_by")
     private User changedBy;
+
+    // null for a change of the order's own status; KITCHEN or BAR for a station's change (V97).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "station")
+    private Station station;
 
     // UTC, set from the application clock by OrderStatusEventPublisher (the column's
     // SYSUTCDATETIME() default only covers rows written elsewhere).

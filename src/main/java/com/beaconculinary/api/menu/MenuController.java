@@ -12,9 +12,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class MenuController {
     private final DailyPlanningService dailyPlanningService;
+    private final AlwaysOnMenuService alwaysOnMenuService;
 
     @GetMapping("/menu/today")
-    public MenuTodayResponseDto getTodayMenu(@RequestParam String period) {
+    public MenuTodayResponseDto getTodayMenu(@RequestParam(required = false) String period) {
+        // Today's always-on options are created first, outside the menu's read transaction.
+        alwaysOnMenuService.ensureAlwaysOnOptionsToday();
         return dailyPlanningService.getTodayMenu(period);
     }
 
