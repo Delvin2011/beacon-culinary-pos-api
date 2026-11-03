@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 
 /**
  * The catalogue tree. The top-level groups are fixed (no add, rename or deactivate); subcategories
- * are added under "Light meals" or "Beverages" and can be renamed, re-sorted and deactivated, but
+ * are added under any group (Set meals, Light meals, Beverages) and can be renamed, re-sorted and deactivated, but
  * never deleted. A subcategory with active meals can't be deactivated.
  */
 @Service
@@ -49,7 +49,7 @@ public class CatalogCategoryService {
         var parent = categoryRepository.findById(request.getParentId())
                 .filter(CatalogCategory::acceptsSubcategories)
                 .orElseThrow(() -> MenuRuleException.badRequest("CATEGORY_INVALID",
-                        "Subcategories can only be added under Light meals or Beverages."));
+                        "Subcategories can only be added under a top-level group: Set meals, Light meals or Beverages."));
         var name = request.getName().trim();
         if (categoryRepository.existsByParentIdAndNameIgnoreCase(parent.getId(), name)) {
             throw MenuRuleException.conflict("CATEGORY_NAME_TAKEN", "'" + name + "' already exists under " + parent.getName() + ".");

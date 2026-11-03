@@ -164,7 +164,7 @@ public class MealCatalogService {
         return categoryRepository.findById(categoryId)
                 .filter(category -> category.isAssignable() && category.isActive())
                 .orElseThrow(() -> MenuRuleException.badRequest("CATEGORY_INVALID",
-                        "categoryId must be an active leaf category: Set meals, or a subcategory under Light meals or Beverages."));
+                        "categoryId must be an active leaf category: Set meals, or a subcategory under Set meals, Light meals or Beverages."));
     }
 
     private MealCatalogDto toDto(MealCatalog meal) {

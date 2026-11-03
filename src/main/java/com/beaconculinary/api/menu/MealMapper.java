@@ -9,6 +9,7 @@ import java.util.List;
 public interface MealMapper {
     MealPeriodDto toDto(MealPeriod mealPeriod);
 
+    @Mapping(target = "category", expression = "java(ComponentCategoryRefDto.of(componentCatalog.getCategory()))")
     ComponentCatalogDto toDto(ComponentCatalog componentCatalog);
 
     // outToday depends on today's date, so MealCatalogService sets it.

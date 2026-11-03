@@ -14,9 +14,13 @@ import java.util.List;
 public class ComponentCatalogController {
     private final ComponentCatalogService componentCatalogService;
 
+    /** ?categoryId= one category · ?uncategorised=true components without one · ?name= contains,
+     * case-insensitive. Filters combine; with none, every component. */
     @GetMapping
-    public List<ComponentCatalogDto> getAll() {
-        return componentCatalogService.getAll();
+    public List<ComponentCatalogDto> search(@RequestParam(required = false) Long categoryId,
+                                            @RequestParam(defaultValue = "false") boolean uncategorised,
+                                            @RequestParam(required = false) String name) {
+        return componentCatalogService.search(categoryId, uncategorised, name);
     }
 
     @PostMapping

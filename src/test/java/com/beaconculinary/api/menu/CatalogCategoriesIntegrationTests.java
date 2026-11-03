@@ -342,8 +342,8 @@ class CatalogCategoriesIntegrationTests {
 
         as(adminToken, post("/admin/catalog/categories"), Map.of("parentId", lightMeals, "name", "test pizzas"))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CATEGORY_NAME_TAKEN"));
-        as(adminToken, post("/admin/catalog/categories"), Map.of("parentId", setMeals, "name", "Curries"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("CATEGORY_INVALID"));
+        createdCategories.add(id(as(adminToken, post("/admin/catalog/categories"), Map.of("parentId", setMeals, "name", "Test Curries"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.group").value("SET_MEALS"))));
         as(adminToken, post("/admin/catalog/categories"), Map.of("parentId", burgersId, "name", "Deep"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("CATEGORY_INVALID"));
         as(adminToken, put("/admin/catalog/categories/" + lightMeals), Map.of("name", "Snacks", "sortOrder", 2, "active", true))
@@ -358,6 +358,39 @@ class CatalogCategoriesIntegrationTests {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("CATEGORY_INVALID"));
         as(adminToken, post("/admin/meal-catalog"), "{\"name\":\"No Category\",\"price\":10.00}")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.categoryId").value("categoryId is required"));
+    }
+
+    @Test
+    void setMealSubcategories_groupMeals_withoutRestrictingPeriods() throws Exception {
+        as(adminToken, get("/admin/catalog/categories"), null).andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.name == 'Set meals')].assignable").value(true))
+                .andExpect(jsonPath("$[?(@.name == 'Set meals')].children[*].name", hasItem("Breakfast")))
+                .andExpect(jsonPath("$[?(@.name == 'Set meals')].children[*].name", hasItem("Lunch")));
+
+        var setMeals = CatalogTestHelper.setMealsId(mockMvc);
+        var breakfastCategory = categoryRepository.findAll().stream()
+                .filter(c -> !c.isTopLevel() && c.getParent().getId().equals(setMeals) && c.getName().equals("Breakfast"))
+                .findFirst().orElseThrow().getId();
+
+        // A set meal in a subcategory is still a planned set meal.
+        var fullBreakfast = createMeal("Full Breakfast", "55.00", breakfastCategory);
+        as(adminToken, get("/admin/meal-catalog").param("categoryId", String.valueOf(breakfastCategory)), null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.name == 'Full Breakfast')].group").value("SET_MEALS"))
+                .andExpect(jsonPath("$[?(@.name == 'Full Breakfast')].availability").value("PLANNED"))
+                .andExpect(jsonPath("$[?(@.name == 'Full Breakfast')].category.name").value("Breakfast"));
+
+        // Not strict: a Breakfast meal can be planned under Lunch too, and shows in Lunch's picker.
+        plan(periodId("Breakfast"), fullBreakfast, 10).andExpect(status().isCreated());
+        plan(lunchId, fullBreakfast, 10).andExpect(status().isCreated());
+        as(adminToken, get("/admin/meal-catalog").param("periodId", String.valueOf(lunchId)), null).andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].name", hasItem("Full Breakfast")));
+
+        // Moving between Set meals and its subcategories is the same group, so planned options don't block it.
+        updateMeal(papStew, "Pap & Stew", "35.00", breakfastCategory).andExpect(status().isOk());
+        plan(lunchId, papStew, 5).andExpect(status().isCreated());
+        updateMeal(papStew, "Pap & Stew", "35.00", setMeals).andExpect(status().isOk())
+                .andExpect(jsonPath("$.category.name").value("Set meals"));
     }
 
     @Test

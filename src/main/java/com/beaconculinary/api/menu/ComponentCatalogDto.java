@@ -10,4 +10,5 @@ public class ComponentCatalogDto {
     private String name;
     private BigDecimal extraPrice;
     private boolean active;
+    private ComponentCategoryRefDto category;
 }

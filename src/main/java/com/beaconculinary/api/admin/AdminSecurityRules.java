@@ -31,7 +31,8 @@ public class AdminSecurityRules implements SecurityRules {
             .requestMatchers(HttpMethod.GET,
                     "/admin/meal-catalog", "/admin/meal-catalog/**",
                     "/admin/component-catalog", "/admin/component-catalog/**",
-                    "/admin/catalog/categories")
+                    "/admin/catalog/categories",
+                    "/admin/component-categories")
                 .hasAnyRole(Role.HEAD_CHEF.name(), Role.ADMIN.name())
             // "Out today" on always-on items: the service narrows the Head Chef to light meals and
             // the Barista to beverages.

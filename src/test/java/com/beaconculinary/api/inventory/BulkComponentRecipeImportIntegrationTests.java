@@ -179,4 +179,79 @@ class BulkComponentRecipeImportIntegrationTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0]").value(containsString("Count Sheet")));
     }
+
+    private static final String HEADER_WITH_CATEGORY =
+            "COMPONENT,CATEGORY,INGREDIENT (NAME),UNIT,COUNT SHEET,Quantities,Batch Size,Per Portion Price (R)\n";
+
+    private void importOk(String rows) throws Exception {
+        mockMvc.perform(multipart("/admin/component-catalog/bulk-import").file(csv(HEADER_WITH_CATEGORY + rows))
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void bulkImport_categoryColumn_setsComponentCategory_caseInsensitive() throws Exception {
+        var file = csv(HEADER_WITH_CATEGORY + """
+                Bulk Recipe Import Beef Stew,  meat ,Bulk Recipe Import Beef Chuck,kg,meat,2.5,10,25
+                Bulk Recipe Import Beef Stew,,Bulk Recipe Import Onion,kg,fveg,0.8,10,25
+                """);
+
+        mockMvc.perform(multipart("/admin/component-catalog/bulk-import").file(file)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components[0].category.name").value("Meat"));
+
+        var component = componentCatalogRepository.findByNameIgnoreCase(COMPONENT_NAME).orElseThrow();
+        assertThat(component.getCategory().getName()).isEqualTo("Meat");
+    }
+
+    @Test
+    void bulkImport_blankCategory_newComponentIsUncategorised() throws Exception {
+        importOk("""
+                Bulk Recipe Import Beef Stew,   ,Bulk Recipe Import Beef Chuck,kg,meat,2.5,10,25
+                """);
+
+        assertThat(componentCatalogRepository.findByNameIgnoreCase(COMPONENT_NAME).orElseThrow().getCategory()).isNull();
+    }
+
+    @Test
+    void bulkImport_blankCategory_existingComponentKeepsItsCategory() throws Exception {
+        importOk("""
+                Bulk Recipe Import Beef Stew,Meat,Bulk Recipe Import Beef Chuck,kg,meat,2.5,10,25
+                """);
+        importOk("""
+                Bulk Recipe Import Beef Stew,,Bulk Recipe Import Beef Chuck,kg,meat,3,10,25
+                """);
+
+        assertThat(componentCatalogRepository.findByNameIgnoreCase(COMPONENT_NAME).orElseThrow().getCategory().getName())
+                .isEqualTo("Meat");
+    }
+
+    @Test
+    void bulkImport_unknownCategory_rejectsWholeFile() throws Exception {
+        var file = csv(HEADER_WITH_CATEGORY + """
+                Bulk Recipe Import Beef Stew,Seafood,Bulk Recipe Import Beef Chuck,kg,meat,2.5,10,25
+                """);
+
+        mockMvc.perform(multipart("/admin/component-catalog/bulk-import").file(file)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0]").value(containsString("component category 'Seafood'")));
+
+        assertThat(componentCatalogRepository.findByNameIgnoreCase(COMPONENT_NAME)).isEmpty();
+    }
+
+    @Test
+    void bulkImport_conflictingCategoriesForOneComponent_rejectsWholeFile() throws Exception {
+        var file = csv(HEADER_WITH_CATEGORY + """
+                Bulk Recipe Import Beef Stew,Meat,Bulk Recipe Import Beef Chuck,kg,meat,2.5,10,25
+                Bulk Recipe Import Beef Stew,Starch,Bulk Recipe Import Onion,kg,fveg,0.8,10,25
+                """);
+
+        mockMvc.perform(multipart("/admin/component-catalog/bulk-import").file(file)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0]").value(containsString("Row 3")))
+                .andExpect(jsonPath("$.errors[0]").value(containsString("conflicts")));
+    }
 }

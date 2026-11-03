@@ -17,14 +17,21 @@ Until the permissions matrix (U2) lands, permissions are role checks:
 ## Category tree — `/admin/catalog/categories` (ADMIN; GET also HEAD_CHEF)
 - `GET` → the tree: `[{ id, name, group, sortOrder, active, topLevel, assignable, itemCount, children: [...] }]`.
   `itemCount` = active meals (a group row includes its children). `assignable` = a meal can sit here.
-- `POST { parentId, name, sortOrder? }` → `201`, a subcategory under **Light meals** or **Beverages** only.
+- `POST { parentId, name, sortOrder? }` → `201`, a subcategory under a top-level group: **Set meals** (V101),
+  **Light meals** or **Beverages**. Two levels only.
 - `PUT /{id} { name, sortOrder, active }` → rename, re-sort, (de)activate a subcategory. No delete.
 
-Seeded: `Set meals` (a leaf) · `Light meals` › Burgers, Wraps, Sandwiches, Chips & sides · `Beverages` › Hot beverages, Cold beverages.
+Seeded: `Set meals` › Breakfast, Lunch (V101) · `Light meals` › Burgers, Wraps, Sandwiches, Chips & sides · `Beverages` › Hot beverages, Cold beverages.
+
+**Set meals is a group that is also assignable** (`assignable: true`): a meal can sit on Set meals itself or in one of
+its subcategories. Existing set meals were left on Set meals; staff move them into Breakfast/Lunch. Every node under
+Set meals is the `SET_MEALS` group, so moving between them never hits `MEAL_HAS_PLANNED_OPTIONS`.
+The Breakfast/Lunch subcategories **only group meals**: they aren't linked to meal periods, so a meal in Breakfast can
+still be planned under Lunch, and the planning picker (`?periodId=`) still lists every set meal.
 
 | Code | HTTP | When |
 |---|---|---|
-| `CATEGORY_INVALID` | 400 | parent isn't Light meals/Beverages; or a meal's `categoryId` isn't an active leaf |
+| `CATEGORY_INVALID` | 400 | parent isn't a top-level group; or a meal's `categoryId` isn't active and assignable |
 | `CATEGORY_FIXED` | 400 | changing a top-level group |
 | `CATEGORY_NAME_TAKEN` | 409 | same name under the same parent (case-insensitive) |
 | `CATEGORY_HAS_ITEMS` | 409 | deactivating a subcategory that has active meals |
