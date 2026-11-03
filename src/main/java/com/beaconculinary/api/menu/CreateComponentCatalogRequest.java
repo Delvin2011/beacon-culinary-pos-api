@@ -15,4 +15,7 @@ public class CreateComponentCatalogRequest {
     @NotNull(message = "extraPrice is required")
     @PositiveOrZero(message = "extraPrice cannot be negative")
     private BigDecimal extraPrice;
+
+    /** Optional: an active component category. */
+    private Long categoryId;
 }

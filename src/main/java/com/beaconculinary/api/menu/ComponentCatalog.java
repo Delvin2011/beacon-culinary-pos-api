@@ -24,4 +24,9 @@ public class ComponentCatalog {
 
     @Column(name = "active")
     private boolean active = true;
+
+    // Optional (V100): CSV-imported and older components may be uncategorised.
+    @ManyToOne
+    @JoinColumn(name = "category_id")
+    private ComponentCategory category;
 }

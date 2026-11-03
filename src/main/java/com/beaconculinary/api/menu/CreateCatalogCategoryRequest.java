@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
-/** A new subcategory under "Light meals" (or "Beverages"). Its group is the parent's. */
+/** A new subcategory under a top-level group (Set meals, Light meals, Beverages). Its group is the parent's. */
 @Data
 public class CreateCatalogCategoryRequest {
     @NotNull(message = "parentId is required")

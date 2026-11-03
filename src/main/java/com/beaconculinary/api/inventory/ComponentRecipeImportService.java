@@ -2,6 +2,9 @@ package com.beaconculinary.api.inventory;
 
 import com.beaconculinary.api.menu.ComponentCatalog;
 import com.beaconculinary.api.menu.ComponentCatalogRepository;
+import com.beaconculinary.api.menu.ComponentCategory;
+import com.beaconculinary.api.menu.ComponentCategoryRefDto;
+import com.beaconculinary.api.menu.ComponentCategoryRepository;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,6 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +25,12 @@ import java.util.Map;
  * (case-insensitive) so the sheet doesn't require either to be created first; each component's
  * recipe is replaced wholesale from its rows, same as the existing PUT endpoint. Every row is
  * validated — including that a component's batch size/price stay consistent across its rows —
- * before anything is saved. */
+ * before anything is saved.
+ *
+ * An optional CATEGORY (or COMPONENT CATEGORY) column sets the component's category, matched by
+ * name (case-insensitive) against active component categories. A blank cell, or no column, leaves
+ * a new component uncategorised and an existing one in its current category. A component's rows
+ * must not name two different categories. */
 @Service
 @AllArgsConstructor
 public class ComponentRecipeImportService {
@@ -29,6 +38,7 @@ public class ComponentRecipeImportService {
     private final RecipeRepository recipeRepository;
     private final IngredientRepository ingredientRepository;
     private final CountSheetCategoryRepository countSheetCategoryRepository;
+    private final ComponentCategoryRepository componentCategoryRepository;
     private final InventoryMapper inventoryMapper;
 
     @Transactional
@@ -60,6 +70,7 @@ public class ComponentRecipeImportService {
             String quantityRaw = CsvImportUtils.cellAt(cells, columns.get("QUANTITY"));
             String batchSizeRaw = CsvImportUtils.cellAt(cells, columns.get("BATCHSIZE"));
             String priceRaw = CsvImportUtils.cellAt(cells, columns.get("PRICE"));
+            String componentCategoryRaw = CsvImportUtils.cellAt(cells, columns.get("COMPONENT_CATEGORY"));
 
             if (componentName == null || componentName.isBlank()) {
                 errors.add("Row " + lineNumber + ": component is required.");
@@ -96,6 +107,15 @@ public class ComponentRecipeImportService {
                 errors.add("Row " + lineNumber + ": per portion price '" + priceRaw + "' must be a non-negative number.");
                 continue;
             }
+            ComponentCategory componentCategory = null;
+            if (componentCategoryRaw != null && !componentCategoryRaw.isBlank()) {
+                componentCategory = resolveComponentCategoryByName(componentCategoryRaw);
+                if (componentCategory == null) {
+                    errors.add("Row " + lineNumber + ": component category '" + componentCategoryRaw.trim()
+                            + "' must be one of " + componentCategoryNames() + ", or left blank.");
+                    continue;
+                }
+            }
 
             var group = groupsByName.computeIfAbsent(componentName.trim().toUpperCase(),
                     k -> new ParsedComponentGroup(componentName.trim()));
@@ -115,6 +135,17 @@ public class ComponentRecipeImportService {
                         + group.price + " already used for component '" + group.componentName
                         + "' earlier in the file.");
                 continue;
+            }
+            // Blank cells don't conflict: the first non-blank category wins and later ones must match.
+            if (componentCategory != null) {
+                if (group.category == null) {
+                    group.category = componentCategory;
+                } else if (!group.category.getId().equals(componentCategory.getId())) {
+                    errors.add("Row " + lineNumber + ": component category '" + componentCategory.getName()
+                            + "' conflicts with category '" + group.category.getName()
+                            + "' already used for component '" + group.componentName + "' earlier in the file.");
+                    continue;
+                }
             }
 
             // Keyed by ingredient name so a repeated ingredient within the same component keeps
@@ -149,6 +180,9 @@ public class ComponentRecipeImportService {
                 componentsCreated++;
             }
             componentCatalog.setExtraPrice(group.price);
+            if (group.category != null) {
+                componentCatalog.setCategory(group.category);
+            }
             componentCatalogRepository.save(componentCatalog);
 
             var recipe = recipeRepository.findWithLinesByComponentCatalogId(componentCatalog.getId()).orElseGet(() -> {
@@ -188,6 +222,9 @@ public class ComponentRecipeImportService {
             dto.setComponentCatalogId(componentCatalog.getId());
             dto.setComponentName(componentCatalog.getName());
             dto.setExtraPrice(componentCatalog.getExtraPrice());
+            var category = componentCatalog.getCategory();
+            dto.setCategory(category == null ? null
+                    : new ComponentCategoryRefDto(category.getId(), category.getName(), category.getSortOrder()));
             dto.setBatchSize(recipe.getBatchSize());
             dto.setLines(recipe.getLines().stream().map(inventoryMapper::toDto).toList());
             results.add(dto);
@@ -201,6 +238,7 @@ public class ComponentRecipeImportService {
         private final String componentName;
         private Integer batchSize;
         private BigDecimal price;
+        private ComponentCategory category;
         private final Map<String, ParsedLine> lines = new LinkedHashMap<>();
 
         private ParsedComponentGroup(String componentName) {
@@ -224,6 +262,9 @@ public class ComponentRecipeImportService {
                 columns.put("UNIT", i);
             } else if (normalized.contains("COUNTSHEET")) {
                 columns.put("CATEGORY", i);
+            } else if (normalized.equals("CATEGORY") || normalized.equals("COMPONENTCATEGORY")) {
+                // Optional; checked after COUNTSHEET so "Count Sheet Category" stays the ingredient's.
+                columns.put("COMPONENT_CATEGORY", i);
             } else if (normalized.contains("QUANTIT")) {
                 columns.put("QUANTITY", i);
             } else if (normalized.contains("BATCHSIZE")) {
@@ -289,6 +330,20 @@ public class ComponentRecipeImportService {
             return null;
         }
         return countSheetCategoryRepository.findByNameIgnoreCase(raw.trim()).orElse(null);
+    }
+
+    private ComponentCategory resolveComponentCategoryByName(String raw) {
+        return componentCategoryRepository.findByNameIgnoreCase(raw.trim())
+                .filter(ComponentCategory::isActive)
+                .orElse(null);
+    }
+
+    private List<String> componentCategoryNames() {
+        return componentCategoryRepository.findAll().stream()
+                .filter(ComponentCategory::isActive)
+                .sorted(Comparator.comparingInt(ComponentCategory::getSortOrder))
+                .map(ComponentCategory::getName)
+                .toList();
     }
 
     private List<String> categoryNames() {

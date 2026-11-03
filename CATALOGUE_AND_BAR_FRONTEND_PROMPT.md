@@ -252,3 +252,50 @@ Orange Juice 300ml (Cold, R18, Counter), Chicken Burger (Burgers, R55).
 Bulk insert (meals and beverages are created by hand), extras and choices, bar printing, a Barista selling
 beverages, stock for always-available items, per-item sort order, editing the top-level category groups.
 Known: the R2 Meal & Extras Sales report leaves beverages out until the R2 update — not a frontend bug.
+
+---
+
+# ADDENDUM — Set meal subcategories (backend V101)
+
+Set meals now takes subcategories, like Light meals. Seeded: **Set meals › Breakfast, Lunch**. This replaces the
+statements above that "Set meals" is a leaf and that subcategories go only under Light meals or Beverages.
+Backend contract: `CATALOGUE_AND_BAR.md`, "Category tree".
+
+**What the backend does**
+- `GET /admin/catalog/categories`: the Set meals row now has `children` (Breakfast, Lunch, plus any added later).
+  **Set meals keeps `assignable: true`**: it's the only group row a meal can sit on directly. Its subcategories are
+  `assignable: true` as well. Its `itemCount` includes its children, as for the other groups.
+- `POST /admin/catalog/categories { parentId: <Set meals id>, name, sortOrder }` → `201` with `group: "SET_MEALS"`.
+- **Existing set meals were not moved.** They stay on Set meals until staff move them into Breakfast or Lunch.
+- **Not strict (for now):** subcategories only group meals. A meal in Breakfast can still be planned under Lunch, and
+  the planning picker (`GET /admin/meal-catalog?periodId=`) still lists every set meal, whatever its subcategory.
+- Moving a meal between Set meals, Breakfast and Lunch is always allowed, even with planned options (same group).
+
+**Frontend changes**
+1. **Meal form, Category dropdown:** show Set meals as a selectable option **and** its subcategories under it:
+   *Set meals* · *Set meals › Breakfast* · *Set meals › Lunch* · *Light meals › Burgers* … Keep using
+   `assignable && active`, which already gives the right answer. Don't assume group rows are never selectable, or that
+   Set meals has no children.
+   "Planned daily / Always available" still comes from the group (`SET_MEALS` → Planned daily).
+2. **Meals list:** the subcategory filter should also offer Set meals' subcategories, plus a **"Not sorted"** option
+   for meals sitting directly on Set meals (filter `categoryId=<Set meals id>`; that returns only meals on the row
+   itself, not its children). Showing `category.name` per row lets staff see what still needs sorting.
+   Optional, to help staff sort: bulk-select meals and move them with one `PUT /admin/meal-catalog/{id}` each
+   (send the full meal with the new `categoryId`).
+3. **Categories screen:** allow **Add subcategory** under Set meals, the same as under Light meals. Set meals itself
+   stays fixed (no rename/reorder/deactivate; `CATEGORY_FIXED`).
+4. **Daily Planning picker:** no change required. Optional: show each meal's subcategory as a tag, or group the list by
+   subcategory, so Breakfast items are easy to find when planning Breakfast. Don't hide anything: a Breakfast meal
+   may be planned under Lunch.
+5. **Till:** no change required. Options carry `category`; if the till groups by category within the Breakfast/Lunch
+   tabs, meals on Set meals itself show under a "Set meals" heading.
+
+**Test scenarios**
+- The Categories screen shows Set meals › Breakfast, Lunch; add "Salads" under Set meals → it appears; Set meals
+  can't be renamed.
+- Create "Full Breakfast" in Set meals › Breakfast → the form shows "Planned daily"; it's listed under Breakfast.
+- Plan "Full Breakfast" under Breakfast **and** under Lunch → both succeed.
+- Move an existing set meal from Set meals to Lunch → saved; the "Not sorted" filter no longer lists it.
+- Try to deactivate Breakfast while it has active meals → `409 CATEGORY_HAS_ITEMS`.
+
+**Later (not in this change):** linking subcategories to meal periods and making planning strict.

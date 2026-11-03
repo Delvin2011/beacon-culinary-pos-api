@@ -17,4 +17,8 @@ public class UpdateComponentCatalogRequest {
     private BigDecimal extraPrice;
 
     private boolean active = true;
+
+    /** An active component category. Omitted/null keeps the current one, so clients that predate
+     * categories don't wipe it on save. */
+    private Long categoryId;
 }
