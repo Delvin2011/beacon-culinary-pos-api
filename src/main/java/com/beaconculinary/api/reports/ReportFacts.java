@@ -107,6 +107,14 @@ public class ReportFacts {
         return jdbc.queryForObject("SELECT " + SALES_SELECT, rangeParams(range), (rs, i) -> salesFacts(rs, null));
     }
 
+    /** The same totals, counting only orders rung at or before a UTC instant: the dashboard's
+     * "same time last week" comparison for a day that is still trading. */
+    public SalesFacts salesTotalsUntil(ReportRange range, java.sql.Timestamp cutoffUtc) {
+        return jdbc.queryForObject("SELECT " + SALES_SELECT
+                        + " AND order_id IN (SELECT o.id FROM orders o WHERE o.created_at <= :cutoff)",
+                rangeParams(range).addValue("cutoff", cutoffUtc), (rs, i) -> salesFacts(rs, null));
+    }
+
     public List<CollectedFacts> collected(ReportRange range, GroupBy groupBy) {
         var bucket = groupBy.bucketSql("day_of_sale", "sale_hour");
         var sql = "SELECT " + bucket + " AS bucket,"

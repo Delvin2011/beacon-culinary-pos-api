@@ -80,10 +80,12 @@ public class MealExtrasSalesReport implements ReportDefinition {
     }
 
     /** 2: complimentary portions and their list value in their own columns, outside rung,
-     * net and gross. */
+     * net and gross.
+     * 3: "Sold value" (net portions at the order-time price, before discounts), the figure the
+     * back-office dashboard's "What sells" shows. */
     @Override
     public int definitionVersion() {
-        return 2;
+        return 3;
     }
 
     @Override
@@ -95,6 +97,8 @@ public class MealExtrasSalesReport implements ReportDefinition {
                 "Net portions are what was actually sold.",
                 "Gross as rung is the price of every rung portion before discounts, voids and refunds. Discounts and "
                         + "adjustments apply to whole orders and are not spread across items; see Sales Summary for net sales.",
+                "Sold value is the net portions at the price they were rung at, before discounts. It is neither gross as "
+                        + "rung (which includes voided and refunded portions) nor net sales.",
                 "Items offered but not sold show zero. Days offered is the number of days the item was on the daily plan.",
                 "Days are trading days: an order counts on the day its shift opened.",
                 "Complimentary portions were given away with manager approval and no payment. They are not part of "
@@ -165,6 +169,7 @@ public class MealExtrasSalesReport implements ReportDefinition {
             row.put("avgNetPerDayOffered", item.daysOffered() == 0 ? null
                     : BigDecimal.valueOf(item.net()).divide(BigDecimal.valueOf(item.daysOffered()), 2, RoundingMode.HALF_UP));
             row.put("grossAsRung", ReportValues.money(item.gross()));
+            row.put("soldValue", ReportValues.money(item.soldValue()));
             row.put("shareOfGross", null);
             row.put("complimentaryPortions", item.complimentaryPortions());
             row.put("complimentaryValue", ReportValues.money(item.complimentaryValue()));
@@ -186,6 +191,7 @@ public class MealExtrasSalesReport implements ReportDefinition {
                 r.put("refundedOrRemoved", 0L);
                 r.put("netPortions", 0L);
                 r.put("grossAsRung", ReportValues.money(BigDecimal.ZERO));
+                r.put("soldValue", ReportValues.money(BigDecimal.ZERO));
                 r.put("shareOfGross", null);
                 r.put("complimentaryPortions", 0L);
                 r.put("complimentaryValue", ReportValues.money(BigDecimal.ZERO));
@@ -200,6 +206,7 @@ public class MealExtrasSalesReport implements ReportDefinition {
             row.merge("refundedOrRemoved", item.refundedOrRemoved(), (a, b) -> (Long) a + (Long) b);
             row.merge("netPortions", item.net(), (a, b) -> (Long) a + (Long) b);
             row.merge("grossAsRung", ReportValues.money(item.gross()), (a, b) -> ((BigDecimal) a).add((BigDecimal) b));
+            row.merge("soldValue", ReportValues.money(item.soldValue()), (a, b) -> ((BigDecimal) a).add((BigDecimal) b));
             row.merge("complimentaryPortions", item.complimentaryPortions(), (a, b) -> (Long) a + (Long) b);
             row.merge("complimentaryValue", ReportValues.money(item.complimentaryValue()),
                     (a, b) -> ((BigDecimal) a).add((BigDecimal) b));
@@ -237,6 +244,8 @@ public class MealExtrasSalesReport implements ReportDefinition {
             totals.put(key, rows.stream().mapToLong(row -> (Long) row.get(key)).sum());
         }
         totals.put("grossAsRung", ReportValues.money(totalGross));
+        totals.put("soldValue", rows.stream().map(row -> (BigDecimal) row.get("soldValue"))
+                .reduce(ReportValues.money(BigDecimal.ZERO), BigDecimal::add));
         totals.put("shareOfGross", ReportValues.money(totalGross.signum() == 0 ? BigDecimal.ZERO : HUNDRED));
         totals.put("complimentaryPortions", rows.stream().mapToLong(row -> (Long) row.get("complimentaryPortions")).sum());
         totals.put("complimentaryValue", rows.stream().map(row -> (BigDecimal) row.get("complimentaryValue"))
@@ -258,6 +267,7 @@ public class MealExtrasSalesReport implements ReportDefinition {
                 ReportColumn.of("netPortions", "Net portions", ColumnType.INT, ColumnTotal.SUM),
                 ReportColumn.of("avgNetPerDayOffered", "Avg net per day offered", ColumnType.DECIMAL, ColumnTotal.NONE),
                 ReportColumn.of("grossAsRung", "Gross as rung", ColumnType.MONEY, ColumnTotal.SUM),
+                ReportColumn.of("soldValue", "Sold value", ColumnType.MONEY, ColumnTotal.SUM),
                 ReportColumn.of("shareOfGross", "Share of gross", ColumnType.PERCENT, ColumnTotal.DERIVED),
                 ReportColumn.of("complimentaryPortions", "Complimentary portions", ColumnType.INT, ColumnTotal.SUM),
                 ReportColumn.of("complimentaryValue", "Complimentary value (list price)", ColumnType.MONEY, ColumnTotal.SUM));
@@ -272,6 +282,7 @@ public class MealExtrasSalesReport implements ReportDefinition {
                 ReportColumn.of("refundedOrRemoved", "Refunded/removed", ColumnType.INT, ColumnTotal.SUM),
                 ReportColumn.of("netPortions", "Net portions", ColumnType.INT, ColumnTotal.SUM),
                 ReportColumn.of("grossAsRung", "Gross as rung", ColumnType.MONEY, ColumnTotal.SUM),
+                ReportColumn.of("soldValue", "Sold value", ColumnType.MONEY, ColumnTotal.SUM),
                 ReportColumn.of("shareOfGross", "Share of gross", ColumnType.PERCENT, ColumnTotal.DERIVED),
                 ReportColumn.of("complimentaryPortions", "Complimentary portions", ColumnType.INT, ColumnTotal.SUM),
                 ReportColumn.of("complimentaryValue", "Complimentary value (list price)", ColumnType.MONEY, ColumnTotal.SUM));

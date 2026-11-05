@@ -23,11 +23,12 @@ public class ItemSalesFacts {
 
     /** One catalog item in one meal period: offered in the range, sold in it, or both. rung,
      * voided, refundedOrRemoved and gross cover sales orders; complimentary portions and their
-     * list value (non-voided complimentary orders) are kept apart. */
+     * list value (non-voided complimentary orders) are kept apart. soldValue is the net units at
+     * their order-time unit price, before discounts (the NET bucket's gross). */
     public record ItemFacts(String itemType, long catalogId, String itemName, String pluCode, long mealPeriodId,
                             String mealPeriodName, LocalTime mealPeriodStart, long daysOffered, long rung, long voided,
                             long refundedOrRemoved, BigDecimal gross, long complimentaryPortions,
-                            BigDecimal complimentaryValue) {
+                            BigDecimal complimentaryValue, BigDecimal soldValue) {
         public long net() {
             return rung - voided - refundedOrRemoved;
         }
@@ -57,6 +58,7 @@ public class ItemSalesFacts {
                            SUM(CASE WHEN unit_bucket = 'VOIDED' THEN quantity ELSE 0 END) AS voided,
                            SUM(CASE WHEN unit_bucket = 'REFUNDED_OR_REMOVED' THEN quantity ELSE 0 END) AS refunded_or_removed,
                            SUM(CASE WHEN unit_bucket <> 'COMPLIMENTARY' THEN gross ELSE 0 END) AS gross,
+                           SUM(CASE WHEN unit_bucket = 'NET' THEN gross ELSE 0 END) AS sold_value,
                            SUM(CASE WHEN unit_bucket = 'COMPLIMENTARY' THEN quantity ELSE 0 END) AS complimentary_portions,
                            SUM(CASE WHEN unit_bucket = 'COMPLIMENTARY' THEN gross ELSE 0 END) AS complimentary_value
                     FROM v_order_line_facts
@@ -85,7 +87,8 @@ public class ItemSalesFacts {
                        COALESCE(s.refunded_or_removed, 0) AS refunded_or_removed,
                        COALESCE(s.gross, 0) AS gross,
                        COALESCE(s.complimentary_portions, 0) AS complimentary_portions,
-                       COALESCE(s.complimentary_value, 0) AS complimentary_value
+                       COALESCE(s.complimentary_value, 0) AS complimentary_value,
+                       COALESCE(s.sold_value, 0) AS sold_value
                 FROM items i
                 LEFT JOIN sold s ON s.item_type = i.item_type AND s.catalog_id = i.catalog_id AND s.meal_period_id = i.meal_period_id
                 LEFT JOIN offered o ON o.item_type = i.item_type AND o.catalog_id = i.catalog_id AND o.meal_period_id = i.meal_period_id
@@ -107,7 +110,8 @@ public class ItemSalesFacts {
                 rs.getLong("refunded_or_removed"),
                 rs.getBigDecimal("gross"),
                 rs.getLong("complimentary_portions"),
-                rs.getBigDecimal("complimentary_value")));
+                rs.getBigDecimal("complimentary_value"),
+                rs.getBigDecimal("sold_value")));
     }
 
     /** Gross as rung over every sales line in the range, with no item filters. */

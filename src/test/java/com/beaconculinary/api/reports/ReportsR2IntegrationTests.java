@@ -144,7 +144,7 @@ class ReportsR2IntegrationTests {
                 .andExpect(jsonPath("$.meta.params.limit").value("ALL"))
                 .andExpect(jsonPath("$.page").value(nullValue()))
                 .andExpect(jsonPath("$.columns[*].key", contains("rank", "item", "type", "plu", "mealPeriod", "daysOffered",
-                        "portionsRung", "voided", "refundedOrRemoved", "netPortions", "avgNetPerDayOffered", "grossAsRung",
+                        "portionsRung", "voided", "refundedOrRemoved", "netPortions", "avgNetPerDayOffered", "grossAsRung", "soldValue",
                         "shareOfGross", "complimentaryPortions", "complimentaryValue")))
                 .andExpect(jsonPath("$.rows[*].rank", contains(1, 2, 3, 4, 5, 6, 7, 8)))
                 .andExpect(jsonPath("$.rows[*].item", contains("Breakfast Plate", "Extra Egg", "Pap & Stew", "Chicken & Rice",
@@ -159,6 +159,9 @@ class ReportsR2IntegrationTests {
                 .andExpect(jsonPath("$.rows[*].netPortions", contains(6, 4, 3, 2, 0, 0, 0, 0)))
                 .andExpect(jsonPath("$.rows[*].avgNetPerDayOffered", contains(3.00, 2.00, 1.50, 2.00, 0.00, 0.00, 0.00, 0.00)))
                 .andExpect(jsonPath("$.rows[*].grossAsRung", contains(240.00, 40.00, 210.00, 120.00, 0.00, 10.00, 0.00, 40.00)))
+                // Sold value: net portions at the rung price (Pap & Stew: O7 2 + O9 1 at R35).
+                .andExpect(jsonPath("$.rows[*].soldValue", contains(240.00, 40.00, 105.00, 120.00, 0.00, 0.00, 0.00, 0.00)))
+                .andExpect(jsonPath("$.totals.soldValue").value(505.00))
                 .andExpect(jsonPath("$.rows[*].shareOfGross", contains(36.36, 6.06, 31.82, 18.18, 0.00, 1.52, 0.00, 6.06)))
                 // No PLU column in the catalog yet: empty, not an error.
                 .andExpect(jsonPath("$.rows[0].plu").value(nullValue()))
@@ -174,7 +177,7 @@ class ReportsR2IntegrationTests {
                 .andExpect(jsonPath("$.rows[*].complimentaryValue", contains(0.00, 0.00, 35.00, 0.00, 0.00, 0.00, 0.00, 10.00)))
                 .andExpect(jsonPath("$.totals.complimentaryPortions").value(2))
                 .andExpect(jsonPath("$.totals.complimentaryValue").value(45.00))
-                .andExpect(jsonPath("$.meta.definitionVersion").value(2))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(3))
                 .andExpect(jsonPath("$.totals.daysOffered").doesNotExist())
                 .andExpect(jsonPath("$.totals.avgNetPerDayOffered").doesNotExist())
                 .andExpect(jsonPath("$.checks[0].key").value("gross-agrees-with-sales-summary"))
@@ -186,7 +189,7 @@ class ReportsR2IntegrationTests {
     void mealExtras_byMealPeriod() throws Exception {
         run("meal-extras-sales", RANGE + "&groupBy=MEAL_PERIOD").andExpect(status().isOk())
                 .andExpect(jsonPath("$.columns[*].key", contains("mealPeriod", "itemsOffered", "portionsRung", "voided",
-                        "refundedOrRemoved", "netPortions", "grossAsRung", "shareOfGross", "complimentaryPortions",
+                        "refundedOrRemoved", "netPortions", "grossAsRung", "soldValue", "shareOfGross", "complimentaryPortions",
                         "complimentaryValue")))
                 .andExpect(jsonPath("$.rows[*].mealPeriod", contains("Breakfast", "Lunch")))
                 .andExpect(jsonPath("$.rows[*].itemsOffered", contains(2, 6)))
@@ -195,6 +198,7 @@ class ReportsR2IntegrationTests {
                 .andExpect(jsonPath("$.rows[*].refundedOrRemoved", contains(0, 6)))
                 .andExpect(jsonPath("$.rows[*].netPortions", contains(10, 5)))
                 .andExpect(jsonPath("$.rows[*].grossAsRung", contains(280.00, 380.00)))
+                .andExpect(jsonPath("$.rows[*].soldValue", contains(280.00, 225.00)))
                 .andExpect(jsonPath("$.rows[*].shareOfGross", contains(42.42, 57.58)))
                 .andExpect(jsonPath("$.rows[0].periodStart").doesNotExist())
                 .andExpect(jsonPath("$.totals.mealPeriod").value("Total"))
@@ -307,9 +311,10 @@ class ReportsR2IntegrationTests {
         var lines = new String(bytes, StandardCharsets.UTF_8).substring(1).split("\r\n");
         assertThat(lines).containsExactly(
                 "Rank,Item,Type,PLU,Meal period,Days offered,Portions rung,Voided,Refunded/removed,Net portions,"
-                        + "Avg net per day offered,Gross as rung,Share of gross,Complimentary portions,Complimentary value (list price)",
-                "1,Breakfast Plate,Meal,,Breakfast,2,6,0,0,6,3.00,240.00,36.36,0,0.00",
-                "2,Extra Egg,Extra,,Breakfast,2,4,0,0,4,2.00,40.00,6.06,0,0.00");
+                        + "Avg net per day offered,Gross as rung,Sold value,Share of gross,Complimentary portions,"
+                        + "Complimentary value (list price)",
+                "1,Breakfast Plate,Meal,,Breakfast,2,6,0,0,6,3.00,240.00,240.00,36.36,0,0.00",
+                "2,Extra Egg,Extra,,Breakfast,2,4,0,0,4,2.00,40.00,40.00,6.06,0,0.00");
     }
 
     // --- Account Balances ----------------------------------------------------------------------

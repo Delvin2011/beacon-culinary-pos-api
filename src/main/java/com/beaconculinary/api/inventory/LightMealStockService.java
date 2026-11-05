@@ -51,13 +51,42 @@ public class LightMealStockService {
     public MealStockReviewDto review(MealCatalog meal, LocalDate today) {
         var perUnit = trackedPerUnit(meal);
         if (perUnit.isEmpty()) {
-            return new MealStockReviewDto(meal.getId(), meal.getName(), false, StockStatus.NOT_TRACKED, null, null,
-                    meal.getLowStockUnits(), meal.isOutOn(today), List.of());
+            return untracked(meal, today);
         }
-        var ledger = ledger(perUnit);
-        var kitchenId = kitchen().getId();
-        var mainStoreId = mainStore().getId();
+        return review(meal, perUnit, ledger(perUnit), kitchen().getId(), mainStore().getId(), today);
+    }
 
+    /**
+     * The same review for many meals in one pass (one recipe query, one ledger query), in the
+     * order given: the back-office dashboard's light meal stock. Meals that aren't light meals, or
+     * have no recipe lines, come back NOT_TRACKED.
+     */
+    public List<MealStockReviewDto> reviewAll(Collection<MealCatalog> meals, LocalDate today) {
+        var lightMeals = meals.stream().filter(meal -> meal.getGroup() == CatalogGroup.LIGHT_MEALS).toList();
+        var perUnitByMeal = lightMeals.isEmpty() ? Map.<Long, List<MealIngredientRequirements.PerUnit>>of()
+                : mealIngredientRequirements.perUnitForMeals(lightMeals);
+        var tracked = perUnitByMeal.values().stream().anyMatch(rows -> !rows.isEmpty());
+        var ledger = ledger(perUnitByMeal.values().stream().flatMap(List::stream).toList());
+        var kitchenId = tracked ? kitchen().getId() : null;
+        var mainStoreId = tracked ? mainStore().getId() : null;
+
+        var reviews = new ArrayList<MealStockReviewDto>();
+        for (var meal : meals) {
+            var perUnit = meal.getGroup() == CatalogGroup.LIGHT_MEALS
+                    ? perUnitByMeal.getOrDefault(meal.getId(), List.of()) : List.<MealIngredientRequirements.PerUnit>of();
+            reviews.add(perUnit.isEmpty() ? untracked(meal, today)
+                    : review(meal, perUnit, ledger, kitchenId, mainStoreId, today));
+        }
+        return reviews;
+    }
+
+    private static MealStockReviewDto untracked(MealCatalog meal, LocalDate today) {
+        return new MealStockReviewDto(meal.getId(), meal.getName(), false, StockStatus.NOT_TRACKED, null, null,
+                meal.getLowStockUnits(), meal.isOutOn(today), List.of());
+    }
+
+    private static MealStockReviewDto review(MealCatalog meal, List<MealIngredientRequirements.PerUnit> perUnit, Ledger ledger,
+                                             Long kitchenId, Long mainStoreId, LocalDate today) {
         var lines = new ArrayList<MealStockReviewDto.Line>();
         MealStockReviewDto.Line limiting = null;
         for (var row : perUnit) {

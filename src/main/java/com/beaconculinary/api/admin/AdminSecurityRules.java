@@ -36,6 +36,10 @@ public class AdminSecurityRules implements SecurityRules {
                 .hasAnyRole(Role.HEAD_CHEF.name(), Role.ADMIN.name())
             // "Out today" on always-on items: the service narrows the Head Chef to light meals and
             // the Barista to beverages.
+            // Back-office dashboard (read only): every role with DASHBOARD_VIEW; each section then
+            // checks its own permission in DashboardService.
+            .requestMatchers(HttpMethod.GET, "/admin/dashboard/**")
+                .hasAnyRole(Role.HEAD_CHEF.name(), Role.ADMIN.name())
             .requestMatchers(HttpMethod.POST, "/admin/meal-catalog/*/out-today")
                 .hasAnyRole(Role.HEAD_CHEF.name(), Role.BARISTA.name(), Role.ADMIN.name())
             .requestMatchers(

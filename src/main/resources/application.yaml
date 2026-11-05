@@ -47,3 +47,26 @@ vat:
 reports:
   close-day:
     first-trading-day: ${CLOSE_DAY_FIRST_TRADING_DAY:2026-10-12}
+
+# Back-office dashboard. Thresholds (no settings screen yet). Times are quoted: YAML 1.1 reads an
+# unquoted 12:30 as a number.
+dashboard:
+  variance:
+    threshold: 50.00
+  voidRefund:
+    watchPercent: 3.0
+  slowMeal:
+    thresholdPercent: 25
+    afterTime: "12:30"
+  openingHours: "06:00-15:00"
+  cache:
+    enabled: true
+  # One flag per stage the dashboard reads; a section whose stage is off is left out of the layout.
+  features:
+    complimentary: true
+    categories: true
+    barStation: true
+    lightMealStock: true
+    signOff: true
+    reportDefinitions: true
+    accountReports: true
