@@ -17,7 +17,7 @@ import java.util.List;
 
 /**
  * WS1-1 login protection settings ({@code security.login-protection.*}). Defaults follow decision D3.
- * Validated at startup: an invalid value, or {@code mode=enforce} before Phase 2, stops the app.
+ * Validated at startup: an invalid value stops the app.
  */
 @Data
 @Validated
@@ -51,11 +51,11 @@ public class LoginProtectionProperties {
     @Valid @NotNull
     private Threshold changePasswordUser = new Threshold(5, Duration.ofMinutes(15));
 
-    /** How long a BLOCK rule (PIN_PAIR, MANAGER_PIN_CALLER, CHANGE_PASSWORD_USER) blocks. */
-    @NotNull
-    private Duration blockDuration = Duration.ofMinutes(15);
-
-    /** First and second lock durations for LOCK rules. The third lock needs an admin to unlock. */
+    /**
+     * First and second lock durations for LOCK rules. The third lock needs an admin to unlock.
+     * BLOCK rules have no duration of their own: a block lasts until the failures in its window
+     * drop below the threshold.
+     */
     @NotNull
     @Size(min = 2, max = 2, message = "lock-durations must list exactly two durations (first and second lock)")
     private List<Duration> lockDurations = new ArrayList<>(List.of(Duration.ofMinutes(15), Duration.ofMinutes(60)));
@@ -76,10 +76,9 @@ public class LoginProtectionProperties {
     @Min(100)
     private int retentionBatchSize = 5000;
 
-    @AssertTrue(message = "security.login-protection.mode=enforce is not available until WS1-1 Phase 2; use off or monitor")
-    public boolean isModeSupported() {
-        return mode != LoginProtectionMode.ENFORCE;
-    }
+    /** Per-client-IP burst limit on /auth/** and the manager-PIN endpoints. */
+    @Valid @NotNull
+    private Burst burst = new Burst();
 
     @AssertTrue(message = "security.login-protection.trusted-proxies must contain IP addresses or CIDR ranges only")
     public boolean isTrustedProxiesValid() {
@@ -88,12 +87,18 @@ public class LoginProtectionProperties {
 
     @AssertTrue(message = "security.login-protection durations must be positive")
     public boolean isDurationsPositive() {
-        return positive(blockDuration) && positive(escalationReset)
-                && (lockDurations == null || lockDurations.stream().allMatch(LoginProtectionProperties::positive));
+        return positive(escalationReset)
+                && (lockDurations == null || lockDurations.stream().allMatch(LoginProtectionProperties::positive))
+                && (burst == null || (positive(burst.getRefillPeriod()) && positive(burst.getIdleExpiry())
+                        && positive(burst.getWarnInterval())));
     }
 
     public boolean isActive() {
         return mode != LoginProtectionMode.OFF;
+    }
+
+    public boolean isEnforcing() {
+        return mode == LoginProtectionMode.ENFORCE;
     }
 
     private static boolean positive(Duration duration) {
@@ -110,5 +115,35 @@ public class LoginProtectionProperties {
 
         @NotNull
         private Duration window;
+    }
+
+    /**
+     * Token bucket per client IP. Defaults allow a burst of 60 requests, refilled at 60 per minute
+     * (one per second on average): generous for one canteen whose tills share a NAT address.
+     */
+    @Data
+    public static class Burst {
+        /** Requests a client may make in one burst. */
+        @Min(1)
+        private int capacity = 60;
+
+        /** Tokens added back every refill-period. */
+        @Min(1)
+        private int refillTokens = 60;
+
+        @NotNull
+        private Duration refillPeriod = Duration.ofMinutes(1);
+
+        /** Upper bound on client IPs tracked at once; the least recently used are dropped. */
+        @Min(100)
+        private int maxTrackedClients = 10_000;
+
+        /** A client's bucket is dropped after this long without a request. */
+        @NotNull
+        private Duration idleExpiry = Duration.ofMinutes(10);
+
+        /** At most one WARN per client IP in this interval. */
+        @NotNull
+        private Duration warnInterval = Duration.ofMinutes(1);
     }
 }

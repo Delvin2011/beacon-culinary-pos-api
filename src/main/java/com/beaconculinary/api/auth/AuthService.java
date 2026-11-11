@@ -75,8 +75,11 @@ public class AuthService {
     }
 
     public LoginResponse pinLogin(PinLoginRequest request) {
-        var attempt = loginAttempts.begin(LoginMethod.PIN, String.valueOf(request.getCashierId()), request.getCashierId());
+        // Looked up first, for every attempt, so protection knows whether the cashier exists (known
+        // cashiers have account state; unknown ids are tracked by id alone). Same query either way.
         var user = userRepository.findById(request.getCashierId()).orElse(null);
+        var attempt = loginAttempts.begin(LoginMethod.PIN, String.valueOf(request.getCashierId()),
+                user == null ? null : user.getId());
         var hashToCheck = user != null && user.getPinHash() != null ? user.getPinHash() : DUMMY_PIN_HASH;
         var matches = passwordEncoder.matches(request.getPin(), hashToCheck);
 

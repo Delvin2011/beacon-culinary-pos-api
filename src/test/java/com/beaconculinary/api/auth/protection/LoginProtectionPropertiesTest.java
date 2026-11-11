@@ -22,10 +22,26 @@ class LoginProtectionPropertiesTest {
     }
 
     @Test
-    void enforce_isRefusedUntilPhaseTwo() {
+    void enforce_isAccepted_andBurstDefaultsSuitOneCanteen() {
         var properties = new LoginProtectionProperties();
         properties.setMode(LoginProtectionMode.ENFORCE);
-        assertThat(messages(properties)).anyMatch(m -> m.contains("enforce is not available until WS1-1 Phase 2"));
+        assertThat(validator.validate(properties)).isEmpty();
+        assertThat(properties.isEnforcing()).isTrue();
+        assertThat(properties.getBurst().getCapacity()).isEqualTo(60);
+        assertThat(properties.getBurst().getRefillTokens()).isEqualTo(60);
+        assertThat(properties.getBurst().getRefillPeriod()).isEqualTo(Duration.ofMinutes(1));
+        assertThat(properties.getBurst().getMaxTrackedClients()).isEqualTo(10_000);
+    }
+
+    @Test
+    void burst_settingsAreValidated() {
+        var properties = new LoginProtectionProperties();
+        properties.getBurst().setCapacity(0);
+        assertThat(validator.validate(properties)).isNotEmpty();
+
+        var zeroRefill = new LoginProtectionProperties();
+        zeroRefill.getBurst().setRefillPeriod(Duration.ZERO);
+        assertThat(messages(zeroRefill)).anyMatch(m -> m.contains("positive"));
     }
 
     @Test
