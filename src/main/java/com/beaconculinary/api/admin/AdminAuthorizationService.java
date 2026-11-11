@@ -1,9 +1,13 @@
 package com.beaconculinary.api.admin;
 
+import com.beaconculinary.api.auth.protection.LoginAttemptService;
+import com.beaconculinary.api.auth.protection.LoginMethod;
+import com.beaconculinary.api.auth.protection.LoginOutcome;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import com.beaconculinary.api.users.UserRepository;
 import lombok.AllArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -32,6 +36,7 @@ public class AdminAuthorizationService {
     private final AuthorizationSessionRepository authorizationSessionRepository;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
+    private final LoginAttemptService loginAttempts;
 
     @Transactional
     public AuthorizeResponse authorize(AuthorizeRequest request) {
@@ -140,12 +145,24 @@ public class AdminAuthorizationService {
     }
 
     private User matchAdmin(String pin) {
+        var callerId = currentCallerId();
+        var attempt = loginAttempts.begin(LoginMethod.MANAGER_PIN, callerId == null ? null : callerId.toString(), callerId);
         var activeAdmins = userRepository.findByActiveTrueAndRoleIn(List.of(Role.ADMIN));
 
-        return activeAdmins.stream()
+        var matched = activeAdmins.stream()
                 .filter(admin -> admin.getPinHash() != null && passwordEncoder.matches(pin, admin.getPinHash()))
-                .findFirst()
-                .orElseThrow(InvalidPinException::new);
+                .findFirst();
+        if (matched.isEmpty()) {
+            loginAttempts.finish(attempt, LoginOutcome.BAD_CREDENTIAL, callerId);
+            throw new InvalidPinException();
+        }
+        loginAttempts.finish(attempt, LoginOutcome.SUCCESS, callerId);
+        return matched.get();
+    }
+
+    private static Long currentCallerId() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getPrincipal() instanceof Long id ? id : null;
     }
 
     private String generateToken() {
