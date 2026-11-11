@@ -118,8 +118,9 @@ public class AuthService {
         }
 
         var user = userRepository.findById(jwt.getUserId()).orElseThrow();
-        // A deactivated user's existing refresh token stops working too.
-        if (!user.isActive()) {
+        // A deactivated user's existing refresh token stops working too, and so does a user whose
+        // password or PIN sign-in is locked (enforce mode only).
+        if (!user.isActive() || loginAttempts.isAccountLocked(user.getId())) {
             throw new BadCredentialsException("Invalid refresh token");
         }
         return jwtService.generateAccessToken(user);
