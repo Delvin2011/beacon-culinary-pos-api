@@ -1,16 +1,22 @@
 package com.beaconculinary.api.staff;
 
+import com.beaconculinary.api.auth.protection.LoginAttemptService;
+import com.beaconculinary.api.auth.protection.LoginMethod;
+import com.beaconculinary.api.auth.protection.LoginProtectionStore;
 import com.beaconculinary.api.staff.StaffRolePolicy.Requirement;
 import com.beaconculinary.api.staff.StaffRolePolicy.RoleRule;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import com.beaconculinary.api.users.UserRepository;
 import lombok.AllArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -34,6 +40,7 @@ public class StaffService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final LoginAttemptService loginAttempts;
 
     public List<RoleRule> roles() {
         return StaffRolePolicy.RULES;
@@ -41,11 +48,35 @@ public class StaffService {
 
     @Transactional(readOnly = true)
     public List<StaffDto> list() {
+        var locks = loginAttempts.activeAccountLocks();
         return userRepository.findAll().stream()
                 .filter(user -> user.getRole() != Role.USER)
                 .sorted(Comparator.comparing(User::getName, String.CASE_INSENSITIVE_ORDER))
-                .map(StaffService::toDto)
+                .map(user -> toDto(user, locks))
                 .toList();
+    }
+
+    /**
+     * WS1-1: ends sign-in locks and short-term blocks for one scope, or for all when none is given.
+     * Runs in this transaction (see LoginProtectionStore.unlock).
+     */
+    @Transactional
+    public StaffDto unlock(Long id, StaffRequests.Unlock request) {
+        var user = load(id);
+        var scope = request == null ? null : request.getScope();
+        EnumSet<LoginMethod> scopes;
+        if (blank(scope)) {
+            scopes = EnumSet.allOf(LoginMethod.class);
+        } else {
+            var match = Arrays.stream(LoginMethod.values()).filter(m -> m.name().equals(scope.trim())).findFirst();
+            if (match.isEmpty()) {
+                throw new StaffExceptions.Invalid(Map.of("scope",
+                        "Scope must be one of PASSWORD, PIN, MANAGER_PIN, CHANGE_PASSWORD."));
+            }
+            scopes = EnumSet.of(match.get());
+        }
+        loginAttempts.unlock(user.getId(), scopes, currentUserId(), "ADMIN_UNLOCK");
+        return toDto(user);
     }
 
     @Transactional(readOnly = true)
@@ -129,6 +160,12 @@ public class StaffService {
             user.setPinHash(passwordEncoder.encode(request.getPin()));
         }
         userRepository.save(user);
+        if (rule.usesPassword() && !blank(request.getPassword())) {
+            clearPasswordLocks(user);
+        }
+        if (rule.usesPin() && !blank(request.getPin())) {
+            clearPinLocks(user);
+        }
         return toDto(user);
     }
 
@@ -145,6 +182,7 @@ public class StaffService {
         throwIfAny(errors);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         userRepository.save(user);
+        clearPasswordLocks(user);
         return toDto(user);
     }
 
@@ -164,7 +202,24 @@ public class StaffService {
         }
         user.setPinHash(passwordEncoder.encode(request.getPin()));
         userRepository.save(user);
+        clearPinLocks(user);
         return toDto(user);
+    }
+
+    /** A new password ends password sign-in locks and change-password blocks (same transaction). */
+    private void clearPasswordLocks(User user) {
+        loginAttempts.unlock(user.getId(), EnumSet.of(LoginMethod.PASSWORD, LoginMethod.CHANGE_PASSWORD),
+                currentUserId(), "PASSWORD_RESET");
+    }
+
+    /** A new PIN ends PIN sign-in locks and PIN blocks (same transaction). */
+    private void clearPinLocks(User user) {
+        loginAttempts.unlock(user.getId(), EnumSet.of(LoginMethod.PIN), currentUserId(), "PIN_RESET");
+    }
+
+    private static Long currentUserId() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getPrincipal() instanceof Long id ? id : null;
     }
 
     private User load(Long id) {
@@ -283,8 +338,16 @@ public class StaffService {
         return value == null || value.isBlank();
     }
 
-    private static StaffDto toDto(User user) {
+    private StaffDto toDto(User user) {
+        return toDto(user, loginAttempts.activeAccountLocks());
+    }
+
+    private static StaffDto toDto(User user, Map<Long, Map<LoginMethod, LoginProtectionStore.ActiveLock>> locks) {
+        var userLocks = locks.getOrDefault(user.getId(), Map.of());
+        var lockDtos = new LinkedHashMap<String, AccountLockDto>();
+        lockDtos.put(LoginMethod.PASSWORD.name(), AccountLockDto.of(userLocks.get(LoginMethod.PASSWORD)));
+        lockDtos.put(LoginMethod.PIN.name(), AccountLockDto.of(userLocks.get(LoginMethod.PIN)));
         return new StaffDto(user.getId(), user.getName(), user.getEmail(), user.getRole(), user.isActive(),
-                user.getPassword() != null, user.getPinHash() != null);
+                user.getPassword() != null, user.getPinHash() != null, lockDtos);
     }
 }

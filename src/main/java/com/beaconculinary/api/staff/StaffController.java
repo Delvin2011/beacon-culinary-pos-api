@@ -52,6 +52,12 @@ public class StaffController {
         return staffService.setPin(id, request);
     }
 
+    /** WS1-1: ends sign-in locks and blocks. Body {"scope": "PIN"} for one scope; no body for all. */
+    @PostMapping("/{id}/unlock")
+    public StaffDto unlock(@PathVariable Long id, @RequestBody(required = false) StaffRequests.Unlock request) {
+        return staffService.unlock(id, request);
+    }
+
     /** Field-level messages keyed by field: { "pin": "PIN must be exactly 6 digits." }. */
     @ExceptionHandler(StaffExceptions.Invalid.class)
     public ResponseEntity<Map<String, String>> handleInvalid(StaffExceptions.Invalid ex) {
