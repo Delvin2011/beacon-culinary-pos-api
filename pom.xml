@@ -166,11 +166,10 @@
                 <artifactId>flyway-maven-plugin</artifactId>
                 <version>10.20.1</version>
                 <configuration>
-                    <url>jdbc:sqlserver://localhost:1433;databaseName=Ecommerce;encrypt=false;trustServerCertificate=true</url>
-                    <user>sa</user> <!-- your SQL login -->
-                    <password>Delvin2011</password>
+                    <!-- url, user and password come from FLYWAY_URL, FLYWAY_USER and FLYWAY_PASSWORD.
+                         See docs/2026-11-11-running-flyway-locally.md. -->
                     <schemas>dbo</schemas>
-                    <cleanDisabled>false</cleanDisabled>
+                    <cleanDisabled>true</cleanDisabled>
                 </configuration>
                 <dependencies>
                     <dependency>
