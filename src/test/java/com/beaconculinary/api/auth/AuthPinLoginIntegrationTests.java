@@ -29,7 +29,7 @@ class AuthPinLoginIntegrationTests {
 
     @Test
     void wrongPin_forExistingCashier_returns401() throws Exception {
-        var body = "{\"cashierId\":" + AuthTestHelper.cashierAId(mockMvc) + ",\"pin\":\"0000\"}";
+        var body = "{\"cashierId\":" + AuthTestHelper.cashierAId(mockMvc) + ",\"pin\":\"000000\"}";
 
         mockMvc.perform(post("/auth/pin-login").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isUnauthorized());
@@ -37,7 +37,7 @@ class AuthPinLoginIntegrationTests {
 
     @Test
     void unknownCashierId_returns401_sameAsWrongPin() throws Exception {
-        var body = "{\"cashierId\":999999,\"pin\":\"1234\"}";
+        var body = "{\"cashierId\":999999,\"pin\":\"123456\"}";
 
         mockMvc.perform(post("/auth/pin-login").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isUnauthorized());

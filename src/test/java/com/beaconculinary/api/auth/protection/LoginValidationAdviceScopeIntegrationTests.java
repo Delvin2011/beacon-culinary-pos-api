@@ -89,7 +89,7 @@ class LoginValidationAdviceScopeIntegrationTests {
                 .contentType(MediaType.APPLICATION_JSON).content("{\"pin\":\"12\"}")).andReturn();
 
         assertThat(result.getResponse().getStatus()).isEqualTo(400);
-        assertThat(body(result)).isEqualTo(Map.of("pin", "PIN must be 4-6 digits"));
+        assertThat(body(result)).isEqualTo(Map.of("pin", "PIN must be 6 digits"));
         assertThat(validationCount("MANAGER_PIN")).isEqualTo(before + 1);
     }
 
@@ -100,7 +100,7 @@ class LoginValidationAdviceScopeIntegrationTests {
                 .contentType(MediaType.APPLICATION_JSON).content("{\"pin\":\"abc\"}")).andReturn();
 
         assertThat(result.getResponse().getStatus()).isEqualTo(400);
-        assertThat(body(result)).isEqualTo(Map.of("pin", "PIN must be 4-6 digits"));
+        assertThat(body(result)).isEqualTo(Map.of("pin", "PIN must be 6 digits"));
         assertThat(validationCount("MANAGER_PIN")).isEqualTo(before + 1);
     }
 

@@ -168,19 +168,22 @@ class LoginProtectionMonitorIntegrationTests {
     }
 
     @Test
-    void pinLogin_success_setsPinNonStandard_onlyWhenThePinIsNotSixDigits() throws Exception {
+    void pinLogin_sixDigitSuccess_isStandard_andALegacyShortPinIsNowRejectedByValidation() throws Exception {
         var pin = randomPin();
         var cashierId = createStaff(Map.of("role", "CASHIER", "pin", pin));
         assertThat(pinLogin(cashierId, pin, "10.0.2.1").getResponse().getStatus()).isEqualTo(200);
 
-        // A legacy 4-digit PIN can't be set through staff management, so set its hash directly.
+        // WS1-1 Phase 2 (D4): PINs must be exactly 6 digits, so a legacy 4-digit PIN no longer
+        // reaches the credential check. Staff management can't set one, so set its hash directly.
         var shortPin = String.format("%04d", RANDOM.nextInt(10_000));
         jdbc.update("UPDATE [users] SET [pin_hash] = ? WHERE [id] = ?", passwordEncoder.encode(shortPin), cashierId);
-        assertThat(pinLogin(cashierId, shortPin, "10.0.2.1").getResponse().getStatus()).isEqualTo(200);
+        var shortResult = pinLogin(cashierId, shortPin, "10.0.2.1");
+        assertThat(shortResult.getResponse().getStatus()).isEqualTo(400);
+        assertThat(MAPPER.readTree(shortResult.getResponse().getContentAsString()).get("pin").asText()).isEqualTo("PIN must be 6 digits");
 
         var rows = rows("PIN", String.valueOf(cashierId));
-        assertThat(rows).extracting(r -> r.get("outcome")).containsExactly("SUCCESS", "SUCCESS");
-        assertThat(rows).extracting(r -> r.get("pin_non_standard")).containsExactly(false, true);
+        assertThat(rows).extracting(r -> r.get("outcome")).containsExactly("SUCCESS", "VALIDATION");
+        assertThat(rows).extracting(r -> r.get("pin_non_standard")).containsExactly(false, null);
         assertThat(lastSuccess(cashierId, "PIN")).isNotNull();
     }
 
@@ -190,7 +193,7 @@ class LoginProtectionMonitorIntegrationTests {
         var result = mockMvc.perform(post("/auth/pin-login").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"cashierId\":" + cashierId + ",\"pin\":\"12\"}")).andReturn();
         assertThat(result.getResponse().getStatus()).isEqualTo(400);
-        assertThat(MAPPER.readTree(result.getResponse().getContentAsString()).get("pin").asText()).isEqualTo("PIN must be 4-6 digits");
+        assertThat(MAPPER.readTree(result.getResponse().getContentAsString()).get("pin").asText()).isEqualTo("PIN must be 6 digits");
 
         assertThat(rows("PIN", String.valueOf(cashierId))).singleElement().satisfies(row -> {
             assertThat(row.get("outcome")).isEqualTo("VALIDATION");

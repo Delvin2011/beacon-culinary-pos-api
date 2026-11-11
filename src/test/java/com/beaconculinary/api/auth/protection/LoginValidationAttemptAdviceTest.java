@@ -65,7 +65,7 @@ class LoginValidationAttemptAdviceTest {
     void pinLoginRequest_recordsPinValidation_withTheCashierId() throws Exception {
         var request = new PinLoginRequest();
         request.setCashierId(42L);
-        var exception = invalid(request, "pin", "PIN must be 4-6 digits");
+        var exception = invalid(request, "pin", "PIN must be 6 digits");
 
         var response = advice.handleValidationErrors(exception);
 
@@ -77,7 +77,7 @@ class LoginValidationAttemptAdviceTest {
     @Test
     void authorizeRequest_recordsManagerPinValidation_forTheCaller() throws Exception {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(7L, null, List.of()));
-        var exception = invalid(new AuthorizeRequest(), "pin", "PIN must be 4-6 digits");
+        var exception = invalid(new AuthorizeRequest(), "pin", "PIN must be 6 digits");
 
         var response = advice.handleValidationErrors(exception);
 
