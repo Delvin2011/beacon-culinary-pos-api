@@ -1,7 +1,9 @@
 package com.beaconculinary.api.auth.protection;
 
 import com.beaconculinary.api.support.AuthTestHelper;
+import com.beaconculinary.api.support.TestStaffCleanup;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,13 +49,27 @@ class LoginProtectionMonitorIntegrationTests {
     private LoginProtectionProperties properties;
 
     private String adminToken;
+    /** Staff created by this test, deleted after each test. */
+    private final List<Long> createdUserIds = new ArrayList<>();
+    /** Leftovers from earlier runs are swept once per JVM. */
+    private static boolean swept;
 
     @BeforeEach
     void setUp() throws Exception {
         assertThat(properties.getMode()).isEqualTo(LoginProtectionMode.MONITOR);
+        if (!swept) {
+            TestStaffCleanup.deleteByNamePrefix(jdbc, "WS1 ");
+            swept = true;
+        }
         adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
         jdbc.update("DELETE FROM [login_attempts]");
         jdbc.update("DELETE FROM [user_auth_state]");
+    }
+
+    @AfterEach
+    void deleteCreatedStaff() {
+        TestStaffCleanup.delete(jdbc, createdUserIds);
+        createdUserIds.clear();
     }
 
     // ---- PASSWORD ----
@@ -326,7 +343,9 @@ class LoginProtectionMonitorIntegrationTests {
         var result = mockMvc.perform(post("/admin/staff").header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON).content(json(body))).andReturn();
         assertThat(result.getResponse().getStatus()).as("create staff").isEqualTo(201);
-        return MAPPER.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+        var id = MAPPER.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+        createdUserIds.add(id);
+        return id;
     }
 
     /** A new admin with a random PIN no other admin uses; returns the PIN. */
@@ -339,6 +358,7 @@ class LoginProtectionMonitorIntegrationTests {
             var result = mockMvc.perform(post("/admin/staff").header("Authorization", "Bearer " + adminToken)
                     .contentType(MediaType.APPLICATION_JSON).content(json(body))).andReturn();
             if (result.getResponse().getStatus() == 201) {
+                createdUserIds.add(MAPPER.readTree(result.getResponse().getContentAsString()).get("id").asLong());
                 return pin;
             }
         }

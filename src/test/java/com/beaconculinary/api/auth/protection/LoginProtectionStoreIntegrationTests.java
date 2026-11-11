@@ -1,6 +1,7 @@
 package com.beaconculinary.api.auth.protection;
 
 import com.beaconculinary.api.common.UtcTimestamps;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +40,12 @@ class LoginProtectionStoreIntegrationTests {
         jdbc.update("DELETE FROM [login_attempts]");
         jdbc.update("DELETE FROM [user_auth_state]");
         userId = jdbc.queryForObject("SELECT TOP 1 [id] FROM [users] ORDER BY [id]", Long.class);
+    }
+
+    @AfterEach
+    void cleanUp() {
+        jdbc.update("DELETE FROM [login_attempts]");
+        jdbc.update("DELETE FROM [user_auth_state]");
     }
 
     @Test
