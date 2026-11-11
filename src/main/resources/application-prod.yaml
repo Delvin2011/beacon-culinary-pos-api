@@ -1,3 +1,10 @@
 spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL}
+
+# Swagger UI and the OpenAPI document are off in production (go-live checklist item 4).
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
