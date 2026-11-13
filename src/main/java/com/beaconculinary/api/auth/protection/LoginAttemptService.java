@@ -400,6 +400,11 @@ public class LoginAttemptService {
                 scopes, unlockedBy == null ? "-" : unlockedBy, wereLocked);
     }
 
+    /** Logs a refused attempt to clear your own lock, for alerting. Changes nothing. */
+    public void selfUnlockRefused(Long userId, String reason) {
+        log.warn("{} type=SELF_UNLOCK_REFUSED reason={} user={}", ALERT_MARKER, reason, userId);
+    }
+
     /** Active PASSWORD and PIN locks by user, for the staff page. Empty on error. */
     public Map<Long, Map<LoginMethod, LoginProtectionStore.ActiveLock>> activeAccountLocks() {
         try {

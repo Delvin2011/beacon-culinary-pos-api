@@ -63,6 +63,11 @@ public class StaffService {
     @Transactional
     public StaffDto unlock(Long id, StaffRequests.Unlock request) {
         var user = load(id);
+        if (isCurrentUser(user)) {
+            loginAttempts.selfUnlockRefused(user.getId(), "ADMIN_UNLOCK");
+            throw new StaffExceptions.Conflict("SELF_UNLOCK",
+                    "You can't unlock your own sign-in. Ask another admin to do it.");
+        }
         var scope = request == null ? null : request.getScope();
         EnumSet<LoginMethod> scopes;
         if (blank(scope)) {
@@ -208,13 +213,28 @@ public class StaffService {
 
     /** A new password ends password sign-in locks and change-password blocks (same transaction). */
     private void clearPasswordLocks(User user) {
+        if (isCurrentUser(user)) {
+            // The new password is saved, but your own lock stays: another admin must unlock it.
+            loginAttempts.selfUnlockRefused(user.getId(), "PASSWORD_RESET");
+            return;
+        }
         loginAttempts.unlock(user.getId(), EnumSet.of(LoginMethod.PASSWORD, LoginMethod.CHANGE_PASSWORD),
                 currentUserId(), "PASSWORD_RESET");
     }
 
     /** A new PIN ends PIN sign-in locks and PIN blocks (same transaction). */
     private void clearPinLocks(User user) {
+        if (isCurrentUser(user)) {
+            loginAttempts.selfUnlockRefused(user.getId(), "PIN_RESET");
+            return;
+        }
         loginAttempts.unlock(user.getId(), EnumSet.of(LoginMethod.PIN), currentUserId(), "PIN_RESET");
+    }
+
+    /** WS1-1: admins can't clear their own sign-in locks (another admin must). */
+    private static boolean isCurrentUser(User user) {
+        var current = currentUserId();
+        return current != null && current.equals(user.getId());
     }
 
     private static Long currentUserId() {
