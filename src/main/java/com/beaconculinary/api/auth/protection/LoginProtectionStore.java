@@ -225,6 +225,48 @@ public class LoginProtectionStore {
                         rs.getObject(4, LocalDateTime.class)), now);
     }
 
+    /**
+     * Active window blocks per user, for the staff page: user id to the time of the failure that
+     * keeps the block in place (the {@code maxFailures}-th most recent counted failure). The block
+     * ends when that failure leaves the window. Counts follow the sign-in check: failures in the
+     * window, after the user's last success and last unlock for that scope.
+     *
+     * @param perClientIp true for PIN_PAIR (cashier id + address; the latest block on any address
+     *                    wins), false for blocks keyed by user (MANAGER_PIN_CALLER, CHANGE_PASSWORD_USER)
+     */
+    public java.util.Map<Long, LocalDateTime> activeBlocks(LoginMethod scope, boolean perClientIp, int maxFailures,
+                                                           LocalDateTime windowStart) {
+        var sql = perClientIp ? """
+                WITH f AS (
+                    SELECT u.[id] AS [uid], a.[attempted_at] AS [at],
+                           ROW_NUMBER() OVER (PARTITION BY u.[id], a.[client_ip] ORDER BY a.[attempted_at] DESC, a.[id] DESC) AS [rn]
+                    FROM [login_attempts] a
+                    JOIN [users] u ON a.[identifier] = CAST(u.[id] AS NVARCHAR(255))
+                    LEFT JOIN [user_auth_state] s ON s.[user_id] = u.[id] AND s.[scope] = ?
+                    WHERE a.[method] = ? AND a.%s AND a.[attempted_at] > ?
+                      AND (s.[last_success_at] IS NULL OR a.[attempted_at] > s.[last_success_at])
+                      AND (s.[unlocked_at] IS NULL OR a.[attempted_at] > s.[unlocked_at])
+                )
+                SELECT [uid], MAX([at]) FROM f WHERE [rn] = ? GROUP BY [uid]
+                """ : """
+                WITH f AS (
+                    SELECT a.[user_id] AS [uid], a.[attempted_at] AS [at],
+                           ROW_NUMBER() OVER (PARTITION BY a.[user_id] ORDER BY a.[attempted_at] DESC, a.[id] DESC) AS [rn]
+                    FROM [login_attempts] a
+                    LEFT JOIN [user_auth_state] s ON s.[user_id] = a.[user_id] AND s.[scope] = ?
+                    WHERE a.[method] = ? AND a.%s AND a.[user_id] IS NOT NULL AND a.[attempted_at] > ?
+                      AND (s.[last_success_at] IS NULL OR a.[attempted_at] > s.[last_success_at])
+                      AND (s.[unlocked_at] IS NULL OR a.[attempted_at] > s.[unlocked_at])
+                )
+                SELECT [uid], MAX([at]) FROM f WHERE [rn] = ? GROUP BY [uid]
+                """;
+        var result = new java.util.HashMap<Long, LocalDateTime>();
+        jdbc.query(sql.formatted(FAILURE), rs -> {
+            result.put(rs.getLong(1), rs.getObject(2, LocalDateTime.class));
+        }, scope.name(), scope.name(), windowStart, maxFailures);
+        return result;
+    }
+
     // ---- writes ----
 
     /**

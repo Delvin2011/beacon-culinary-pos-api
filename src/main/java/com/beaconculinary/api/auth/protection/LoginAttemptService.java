@@ -400,6 +400,37 @@ public class LoginAttemptService {
                 scopes, unlockedBy == null ? "-" : unlockedBy, wereLocked);
     }
 
+    /**
+     * Enforce mode: active short-term (window) blocks by user, for the staff page, as user id to
+     * scope to the time the block ends. PIN covers PIN_PAIR on any till (the latest end wins);
+     * MANAGER_PIN and CHANGE_PASSWORD are the per-user blocks. Empty in monitor and off mode, and
+     * on error (logged).
+     */
+    public Map<Long, Map<LoginMethod, LocalDateTime>> activeBlocks() {
+        if (!properties.isEnforcing()) {
+            return Map.of();
+        }
+        try {
+            var now = UtcTimestamps.nowUtc(clock);
+            var result = new HashMap<Long, Map<LoginMethod, LocalDateTime>>();
+            addBlocks(result, LoginMethod.PIN, true, properties.getPinPair(), now);
+            addBlocks(result, LoginMethod.MANAGER_PIN, false, properties.getManagerPinCaller(), now);
+            addBlocks(result, LoginMethod.CHANGE_PASSWORD, false, properties.getChangePasswordUser(), now);
+            return result;
+        } catch (RuntimeException e) {
+            log.error("Login protection could not read short-term blocks", e);
+            return Map.of();
+        }
+    }
+
+    private void addBlocks(Map<Long, Map<LoginMethod, LocalDateTime>> result, LoginMethod scope, boolean perClientIp,
+                           LoginProtectionProperties.Threshold threshold, LocalDateTime now) {
+        var window = threshold.getWindow();
+        store.activeBlocks(scope, perClientIp, threshold.getMaxFailures(), now.minus(window))
+                .forEach((userId, keptBy) -> result.computeIfAbsent(userId, id -> new EnumMap<>(LoginMethod.class))
+                        .put(scope, keptBy.plus(window)));
+    }
+
     /** Logs a refused attempt to clear your own lock, for alerting. Changes nothing. */
     public void selfUnlockRefused(Long userId, String reason) {
         log.warn("{} type=SELF_UNLOCK_REFUSED reason={} user={}", ALERT_MARKER, reason, userId);

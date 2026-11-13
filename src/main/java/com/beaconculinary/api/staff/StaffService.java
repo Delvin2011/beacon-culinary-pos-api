@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -49,10 +50,11 @@ public class StaffService {
     @Transactional(readOnly = true)
     public List<StaffDto> list() {
         var locks = loginAttempts.activeAccountLocks();
+        var blocks = loginAttempts.activeBlocks();
         return userRepository.findAll().stream()
                 .filter(user -> user.getRole() != Role.USER)
                 .sorted(Comparator.comparing(User::getName, String.CASE_INSENSITIVE_ORDER))
-                .map(user -> toDto(user, locks))
+                .map(user -> toDto(user, locks, blocks))
                 .toList();
     }
 
@@ -359,15 +361,21 @@ public class StaffService {
     }
 
     private StaffDto toDto(User user) {
-        return toDto(user, loginAttempts.activeAccountLocks());
+        return toDto(user, loginAttempts.activeAccountLocks(), loginAttempts.activeBlocks());
     }
 
-    private static StaffDto toDto(User user, Map<Long, Map<LoginMethod, LoginProtectionStore.ActiveLock>> locks) {
+    private static StaffDto toDto(User user, Map<Long, Map<LoginMethod, LoginProtectionStore.ActiveLock>> locks,
+                                  Map<Long, Map<LoginMethod, LocalDateTime>> blocks) {
         var userLocks = locks.getOrDefault(user.getId(), Map.of());
         var lockDtos = new LinkedHashMap<String, AccountLockDto>();
         lockDtos.put(LoginMethod.PASSWORD.name(), AccountLockDto.of(userLocks.get(LoginMethod.PASSWORD)));
         lockDtos.put(LoginMethod.PIN.name(), AccountLockDto.of(userLocks.get(LoginMethod.PIN)));
+        var userBlocks = blocks.getOrDefault(user.getId(), Map.of());
+        var blockDtos = new LinkedHashMap<String, AccountBlockDto>();
+        blockDtos.put(LoginMethod.PIN.name(), AccountBlockDto.of(userBlocks.get(LoginMethod.PIN)));
+        blockDtos.put(LoginMethod.MANAGER_PIN.name(), AccountBlockDto.of(userBlocks.get(LoginMethod.MANAGER_PIN)));
+        blockDtos.put(LoginMethod.CHANGE_PASSWORD.name(), AccountBlockDto.of(userBlocks.get(LoginMethod.CHANGE_PASSWORD)));
         return new StaffDto(user.getId(), user.getName(), user.getEmail(), user.getRole(), user.isActive(),
-                user.getPassword() != null, user.getPinHash() != null, lockDtos);
+                user.getPassword() != null, user.getPinHash() != null, lockDtos, blockDtos);
     }
 }
