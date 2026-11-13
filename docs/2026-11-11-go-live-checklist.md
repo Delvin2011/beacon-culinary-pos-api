@@ -18,6 +18,9 @@ Paths are relative to the repository root. Java paths are under `src/main/java/c
 | 8 | Public login-tile endpoints list every PIN user | Medium | Open (WS1-1 Phase 2 context) | TBD |
 | 9 | Access tokens ignore deactivation for up to 15 minutes | Medium | Open | TBD |
 | 10 | Production profile not confirmed for Azure | Medium | Open | TBD |
+| 11 | Frontend and API on separate default Azure hostnames (cookies are cross-site) | Blocker | Open (WS1-1b decision K1) | TBD |
+| 12 | No foreign keys on the device audit columns | Low | Waits on item 6 | TBD |
+| 13 | Two error response shapes (`ErrorDto`, `LoginProtectionErrorDto`) | Low | Tidy-up, not in WS1-1b | TBD |
 
 ## 1. Seed accounts
 
@@ -153,3 +156,25 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 **What.** Swagger, cookie security and Flyway behaviour depend on which profile runs. It is not confirmed which profile Azure dev uses, or will use in production.
 
 **Proposed fix.** Production runs with `SPRING_PROFILES_ACTIVE=prod`. Add a startup log line that states the active profiles.
+
+## 11. Custom domains for the frontend and API
+
+**What.** Default Azure hostnames (`*.azurewebsites.net`, `*.azurestaticapps.net`, `*.azurecontainerapps.io`) are on the Public Suffix List, so a frontend and API on them are cross-site. The `refreshToken` cookie and the WS1-1b `deviceToken` cookie are then third-party cookies: dropped in Incognito/InPrivate, in Safari, and wherever third-party cookies are blocked.
+
+**Where.** `auth/AuthController.java` (refresh cookie), the WS1-1b device cookie, and CORS in `auth/SecurityConfig.java`.
+
+**Why it matters.** Till registration and sign-in sessions depend on these cookies.
+
+**Proposed fix.** Serve the frontend and API on custom domains under one registrable domain (for example `pos.<domain>` and `api.<domain>`), set `CORS_ALLOWED_ORIGINS` to the frontend domain, and keep tills on Chrome or Edge in kiosk mode.
+
+## 12. Foreign keys on the device audit columns
+
+**What.** `devices.registered_by`, `devices.revoked_by`, `device_credentials.created_by` and `device_credentials.revoked_by` (WS1-1b) have no foreign key to `users`. Name snapshots are stored instead, because `DELETE /users/{id}` hard-deletes users (item 6).
+
+**Proposed fix.** Add the foreign keys once item 6 turns the delete into a deactivation.
+
+## 13. One error response shape
+
+**What.** 429 responses use `LoginProtectionErrorDto` `{code, message, retryAfterSeconds}`; other errors use `ErrorDto` `{error, code, details?}`.
+
+**Proposed fix.** Unify them into one shape in a later release, together with the frontend. Clients already branch on `code`, so the change is contained.
