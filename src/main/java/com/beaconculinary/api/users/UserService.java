@@ -4,6 +4,7 @@ import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.auth.protection.LoginAttemptService;
 import com.beaconculinary.api.auth.protection.LoginMethod;
 import com.beaconculinary.api.auth.protection.LoginOutcome;
+import com.beaconculinary.api.devices.DeviceGate;
 import lombok.AllArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
@@ -21,6 +22,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final AuthService authService;
     private final LoginAttemptService loginAttempts;
+    private final DeviceGate deviceGate;
 
     public Iterable<UserDto> getAllUsers(String sortBy) {
         if (!Set.of("name", "email").contains(sortBy))
@@ -41,9 +43,16 @@ public class UserService {
     /** The active users who log in by PIN on the given screen. The kitchen screen lists only users
      * with a PIN set (the Head Chef's PIN is optional); the POS list is unchanged. */
     public List<CashierSummaryDto> getLoginTiles(LoginScreen screen) {
+        // WS1-1b: the POS list (also GET /users/cashiers) needs a registered POS till; in required
+        // mode admins are left out of the KITCHEN and BAR lists, because their PIN sign-in needs one.
+        if (screen == LoginScreen.POS) {
+            deviceGate.requireRegisteredTill("POS login tiles");
+        }
+        var hideAdmins = screen != LoginScreen.POS && deviceGate.hidesAdminsOutsidePos();
         return userRepository.findByActiveTrueAndRoleIn(screen.roles())
                 .stream()
                 .filter(user -> !screen.requiresPin() || user.getPinHash() != null)
+                .filter(user -> !hideAdmins || user.getRole() != Role.ADMIN)
                 .map(userMapper::toCashierSummaryDto)
                 .toList();
     }
