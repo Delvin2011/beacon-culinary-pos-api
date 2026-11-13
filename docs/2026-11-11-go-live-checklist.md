@@ -21,6 +21,7 @@ Paths are relative to the repository root. Java paths are under `src/main/java/c
 | 11 | Frontend and API on separate default Azure hostnames (cookies are cross-site) | Blocker | Open (WS1-1b decision K1) | TBD |
 | 12 | No foreign keys on the device audit columns | Low | Waits on item 6 | TBD |
 | 13 | Two error response shapes (`ErrorDto`, `LoginProtectionErrorDto`) | Low | Tidy-up, not in WS1-1b | TBD |
+| 14 | Refresh tokens can't be revoked (logout only clears the cookie) | Medium | Open | TBD |
 
 ## 1. Seed accounts
 
@@ -178,3 +179,11 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 **What.** 429 responses use `LoginProtectionErrorDto` `{code, message, retryAfterSeconds}`; other errors use `ErrorDto` `{error, code, details?}`.
 
 **Proposed fix.** Unify them into one shape in a later release, together with the frontend. Clients already branch on `code`, so the change is contained.
+
+## 14. Refresh tokens can't be revoked
+
+**What.** Refresh tokens are stateless JWTs, valid for 7 days (`jwt.refreshTokenExpiration`). `POST /auth/logout` (WS1-1b follow-up) only deletes the `refreshToken` cookie from the browser: the cookie's path is `/auth/refresh`, so it never reaches `/auth/logout`, and the server keeps no list of issued tokens. Refresh already refuses inactive users and, in enforce mode, locked ones (`auth/AuthService.java`).
+
+**Why it matters.** A refresh token copied from a browser keeps issuing access tokens until it expires, even after the user logs out. Revoking a till doesn't end sessions started on it either (WS1-1c).
+
+**Proposed fix.** Store refresh tokens server-side (an ID claim and a table, or a per-user token version), revoke on logout, and rotate on each refresh. To revoke on logout, the cookie must reach the logout endpoint: widen its path to `/auth`, or move logout under `/auth/refresh`.

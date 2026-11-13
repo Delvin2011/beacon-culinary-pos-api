@@ -45,7 +45,9 @@ Set by the server when a browser is registered (section 6.2) and re-sent while t
 - **Until those domains exist** (default Azure hostnames), the frontend and API are cross-site. The cookie then behaves exactly like the existing `refreshToken` cookie (`SameSite=None; Secure`): it works in Chrome and Edge with their default settings, but not in Incognito/InPrivate or where third-party cookies are blocked.
 - **Till browsers:** Chromium (Chrome or Edge) in kiosk mode, normal (not Incognito) profile.
 
-**Frontend requirement:** every request to the API must include credentials (`fetch(..., { credentials: "include" })`, or `withCredentials: true`). Otherwise the cookie isn't sent and gated requests are refused. Previously only `/auth/refresh` needed the cookie.
+**Frontend requirement:** every request to the API must include credentials (`fetch(..., { credentials: "include" })`, or `withCredentials: true`), **except `/public/**`**. Otherwise the cookie isn't sent and gated requests are refused. Previously only `/auth/refresh` needed the cookie.
+
+**`/public/**` (the public board, `/public/board/**`)** runs on display screens and doesn't need the till cookie, so it may be called with or without credentials. Today one CORS rule covers every path (`auth/SecurityConfig.java`, registered for `/**`): the origins in `CORS_ALLOWED_ORIGINS`, with credentials allowed. So `/public/**` already accepts credentialed requests, but only from those origins, as every other path does.
 
 ## 3. Settings and modes
 
@@ -304,7 +306,36 @@ Requires the recent password sign-in. Body optional: `{"reason": "Browser reinst
 | `GET /users/cashiers` | 403 `DEVICE_NOT_REGISTERED` *(required)* |
 | `GET /users/login-tiles` | `screen=POS`: 403 `DEVICE_NOT_REGISTERED` *(required)*. `KITCHEN` and `BAR`: unchanged, but admins are left out *(required)*. |
 | `POST /admin/authorize`, `/admin/authorize-session` | 403 `DEVICE_NOT_REGISTERED` *(required)*, checked before the PIN |
+| `POST /auth/refresh` | Without the `refreshToken` cookie: **401 with an empty body** (previously 400), the same as an invalid or expired refresh token |
+| `POST /auth/logout` | **New**, see 7.1 |
 | Access tokens (all sign-ins) | New claims (below); existing claims unchanged |
+
+### 7.1 `POST /auth/logout`
+
+Removes the refresh cookie from this browser. In every device-trust mode.
+
+**Request:** no body, no `Authorization` needed. Send credentials as for every request. Public (`permitAll`), so it works without a session and with an expired access token.
+
+**Response:** always **204** with no body. Idempotent: calling it again is harmless.
+
+```http
+HTTP/1.1 204 No Content
+Set-Cookie: refreshToken=; Path=/auth/refresh; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None
+```
+
+**The cookie:**
+- The `Set-Cookie` has exactly the attributes of the issued cookie (same builder, `auth/RefreshCookies.java`): name `refreshToken`, `Path=/auth/refresh`, no `Domain`, `HttpOnly`, `Secure` with `SameSite=None`. In local development (`cookie.secure=false`) it is not `Secure` and `SameSite=Lax`, as when issued.
+- The value is empty and `Max-Age=0`, so the browser deletes it.
+- **The `deviceToken` cookie is not touched**, nor any other cookie: the till stays registered after logout.
+
+**What it can't do:** the browser sends the refresh cookie only to its path, `/auth/refresh`, so it **isn't sent to `/auth/logout`**. The server therefore can't revoke that refresh token; logout only removes it from this browser. A copied refresh token stays valid until it expires (7 days). Server-side revocation is go-live checklist item 14.
+
+**The frontend should:** call it, then drop the access token from memory and go to the sign-in screen. Don't wait on it or retry it: a failed call (network error, 429) only means the cookie may remain until it expires.
+
+**CSRF and CORS:** the same as `/auth/refresh`.
+- CSRF protection is off for the whole API (stateless bearer tokens). Another site could therefore submit a form to `/auth/logout` and sign a user out of this browser. Nothing is exposed and no data changes; this is accepted.
+- CORS: the configured origins, with credentials, as for every path.
+- It is under the per-address burst limit for `/auth/**` (429 `RATE_LIMITED`), like every other `/auth/` request.
 
 **New claims in access tokens:**
 
@@ -329,7 +360,9 @@ Sign-in attempts record the till (`deviceId`) and browser (`credentialId`) when 
 
 ## 9. Frontend checklist
 
-- [ ] Send credentials on **every** API request (section 2).
+- [ ] Send credentials on **every** API request except `/public/**` (section 2).
+- [ ] On sign-out, call `POST /auth/logout` (7.1), then drop the access token. The till stays registered.
+- [ ] Treat 401 from `/auth/refresh` as signed out, including when there is no refresh cookie (previously 400).
 - [ ] Handle 403 `DEVICE_NOT_REGISTERED` on the POS login screen, the cashier tiles and manager-PIN approval: show "This till isn't registered. Ask a manager." Never retry automatically.
 - [ ] Read `GET /admin/devices/config` to adapt the device screens (mode, multi-browser, serial required).
 - [ ] Device registration screen, used **on the till itself**:
@@ -343,3 +376,11 @@ Sign-in attempts record the till (`deviceId`) and browser (`credentialId`) when 
   - show the last-seen time in local time
 - [ ] Branch on `code` everywhere; show `error` (ErrorDto) or `message` (429).
 - [ ] Kitchen and bar screens need no change; admins may disappear from their tiles in `required` mode.
+
+## 10. Backlog
+
+Not planned now; listed so they are not forgotten.
+
+- **This till's own name before sign-in** ("This till: {name}" on the POS login screen). Today only `GET /admin/devices` (ADMIN) returns `thisDevice`. An optional public endpoint could return `{deviceId, name}` for the browser's own valid registration, and 204 or 404 otherwise. Decide whether showing the name before sign-in is acceptable.
+- **Refresh-token revocation** on logout or on revoking a till: see go-live checklist item 14.
+- **Tying cashier sessions to a till** (`/orders/**`, `/shifts/**`): WS1-1c, see section 4.
