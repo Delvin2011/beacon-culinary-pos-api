@@ -205,7 +205,9 @@ No PIN, password or plain email appears in any log line. Emails are logged only 
 
 **Bug found and fixed during testing:** for a user who had been unlocked but had never signed in, the check crashed and failed open, so protection was silently off for exactly those users. Fixed, with a regression test (`afterAnUnlock_failuresAreStillCountedAndRefused`).
 
-**Full suite: not yet completed.** Two runs were stopped because the machine ran low on memory. The last got through 431 tests with 1 failure, `RefundPayoutIntegrationTests`, which had stalled for 2.6 hours mid-test; it passes when rerun on its own (5 of 5).
+**Full suite: passed.** On 2026-11-13, on `feature/ws1-1-phase2-enforcement` against the test database, all **570 tests passed: 0 failures, 0 errors, 0 skipped** (77 test classes, 3 min 18 s). It ran with Maven capped at 384 MB and the test process at 1 GB.
+
+Two earlier attempts had been stopped because the machine ran low on memory. The only failure they showed, `RefundPayoutIntegrationTests`, had stalled for 2.6 hours mid-test; it passes in the full run and on its own.
 
 ## 10. Files
 
@@ -237,8 +239,8 @@ No applied migration (V1–V103) was edited. Flyway `clean` was never run. Histo
 
 ## 12. Open items
 
-1. **Complete one full-suite run**, when memory allows.
-2. **Merge** Phase 1 (`feature/ws1-1-login-protection`), then Phase 2. Push only on the owner's instruction.
+1. ~~Complete one full-suite run~~: done (570 of 570, see section 9).
+2. **Merge:** Phase 1 (`feature/ws1-1-login-protection`), then Phase 2, merged into `main` locally on 2026-11-13. **Push** on the owner's instruction.
 3. **Release order:** deploy the frontend (6-digit PINs) with or before the backend, because the PIN rule applies in every mode.
 4. **Azure switch-on:**
    1. Deploy in monitor mode.
