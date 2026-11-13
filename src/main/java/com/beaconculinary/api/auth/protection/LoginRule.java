@@ -13,7 +13,9 @@ public enum LoginRule {
     /** All callers together: alert only, never blocks. */
     MANAGER_PIN_GLOBAL(LoginMethod.MANAGER_PIN, Effect.ALERT, true),
     /** Per user: wrong old passwords block change-password for a fixed time (login is unaffected). */
-    CHANGE_PASSWORD_USER(LoginMethod.CHANGE_PASSWORD, Effect.BLOCK, false);
+    CHANGE_PASSWORD_USER(LoginMethod.CHANGE_PASSWORD, Effect.BLOCK, false),
+    /** WS1-1b: failed PIN sign-ins on one POS till, across all accounts and browsers. */
+    DEVICE_PIN(LoginMethod.PIN, Effect.BLOCK, false);
 
     public enum Effect {
         /** Temporary block for the rule's key, fixed duration. */

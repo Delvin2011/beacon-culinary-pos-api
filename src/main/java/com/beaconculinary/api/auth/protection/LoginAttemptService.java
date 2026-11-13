@@ -1,7 +1,10 @@
 package com.beaconculinary.api.auth.protection;
 
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.devices.DeviceContext;
+import com.beaconculinary.api.devices.DeviceTrustProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -46,13 +49,22 @@ public class LoginAttemptService {
     private final LoginProtectionStore store;
     private final ClientIpResolver clientIpResolver;
     private final Clock clock;
+    private final DeviceTrustProperties deviceTrust;
 
+    @Autowired
     public LoginAttemptService(LoginProtectionProperties properties, LoginProtectionStore store,
-                               ClientIpResolver clientIpResolver, Clock clock) {
+                               ClientIpResolver clientIpResolver, Clock clock, DeviceTrustProperties deviceTrust) {
         this.properties = properties;
         this.store = store;
         this.clientIpResolver = clientIpResolver;
         this.clock = clock;
+        this.deviceTrust = deviceTrust;
+    }
+
+    /** Without device trust settings (defaults: off), for unit tests. */
+    public LoginAttemptService(LoginProtectionProperties properties, LoginProtectionStore store,
+                               ClientIpResolver clientIpResolver, Clock clock) {
+        this(properties, store, clientIpResolver, clock, new DeviceTrustProperties());
     }
 
     public boolean isActive() {
@@ -85,14 +97,17 @@ public class LoginAttemptService {
             var lastSuccess = store.lastSuccess(userId, method);
             long primary = 0;
             long secondary = 0;
+            long deviceFailures = 0;
             switch (method) {
                 case PASSWORD -> primary = store.countFailuresByIdentifier(method, identifier,
                         since(now, properties.getPasswordAccount().getWindow(), lastSuccess));
                 case PIN -> {
-                    primary = store.countFailuresByIdentifierAndIp(method, identifier, request.clientIp(),
+                    primary = pairFailures(method, identifier, request,
                             since(now, properties.getPinPair().getWindow(), lastSuccess));
                     secondary = store.countFailuresByIdentifier(method, identifier,
                             since(now, properties.getPinAccountCeiling().getWindow(), lastSuccess));
+                    deviceFailures = store.countFailuresByDevice(method, request.deviceId(),
+                            now.minus(deviceTrust.getDevicePin().getWindow()));
                 }
                 case MANAGER_PIN -> {
                     primary = store.countFailuresByUser(method, userId,
@@ -103,6 +118,9 @@ public class LoginAttemptService {
                         since(now, properties.getChangePasswordUser().getWindow(), lastSuccess));
             }
             var evaluation = LoginRuleEvaluator.evaluate(method, primary, secondary, properties);
+            if (evaluation.blocking() == null && deviceFailures >= deviceTrust.getDevicePin().getMaxFailures()) {
+                evaluation = new LoginRuleEvaluator.Evaluation(LoginRule.DEVICE_PIN, evaluation.alert());
+            }
             var decision = decide(method, identifier, evaluation, now, lastSuccess);
             var attempt = new LoginAttempt(true, method, identifier, request, decision);
             logDecision(attempt, userId, primary, secondary);
@@ -126,7 +144,8 @@ public class LoginAttemptService {
                     request.clientIp(), request.remoteAddr(), request.forwardedFor(), request.userAgent(),
                     outcome, outcome != LoginOutcome.VALIDATION && decision.block(),
                     outcome == LoginOutcome.VALIDATION || decision.rule() == null ? null : decision.rule().name(),
-                    attempt.method() == LoginMethod.PIN && outcome == LoginOutcome.SUCCESS ? pinNonStandard : null);
+                    attempt.method() == LoginMethod.PIN && outcome == LoginOutcome.SUCCESS ? pinNonStandard : null)
+                    .withDevice(request.deviceId(), request.deviceCredentialId());
             if (properties.isEnforcing() && outcome.isFailure() && reachesLock(attempt)) {
                 applyAccountLock(attempt, row, userId);
                 return;
@@ -154,6 +173,22 @@ public class LoginAttemptService {
             finish(attempt, LoginOutcome.VALIDATION, userId);
         } catch (RuntimeException e) {
             log.error("Login protection could not record a validation failure; continuing", e);
+        }
+    }
+
+    /**
+     * WS1-1b: records a credential check refused because a registered POS till is required, made
+     * before any rule evaluation (manager-PIN approval). Not evaluated and not a failure.
+     */
+    public void recordDeviceRefusal(LoginMethod method, String identifier, Long userId) {
+        if (!properties.isActive()) {
+            return;
+        }
+        try {
+            var attempt = new LoginAttempt(true, method, identifier, currentRequest(), LoginDecision.ALLOW);
+            finish(attempt, LoginOutcome.DEVICE_NOT_REGISTERED, userId);
+        } catch (RuntimeException e) {
+            log.error("Login protection could not record a device refusal; continuing", e);
         }
     }
 
@@ -246,11 +281,23 @@ public class LoginAttemptService {
                                 latest(now.minus(properties.getPinAccountCeiling().getWindow()), reset, lockStart));
                         lockFailures = secondary;
                         var pairAfter = latest(now.minus(properties.getPinPair().getWindow()), reset, null);
-                        primary = store.countFailuresByIdentifierAndIp(method, identifier, request.clientIp(), pairAfter);
+                        primary = pairFailures(method, identifier, request, pairAfter);
                         if (primary >= properties.getPinPair().getMaxFailures()) {
-                            var oldest = store.failureAtByIdentifierAndIp(method, identifier, request.clientIp(), pairAfter,
-                                    primary - properties.getPinPair().getMaxFailures());
+                            var offset = primary - properties.getPinPair().getMaxFailures();
+                            var oldest = request.deviceId() != null
+                                    ? store.failureAtByIdentifierAndDevice(method, identifier, request.deviceId(), pairAfter, offset)
+                                    : store.failureAtByIdentifierAndIp(method, identifier, request.clientIp(), pairAfter, offset);
                             refusal = blockRefusal(LoginRule.PIN_PAIR, oldest.orElse(null), now);
+                        }
+                        // WS1-1b DEVICE_PIN: failures on this till, across all accounts and browsers.
+                        if (refusal == null && request.deviceId() != null) {
+                            var deviceAfter = now.minus(deviceTrust.getDevicePin().getWindow());
+                            var deviceFailures = store.countFailuresByDevice(method, request.deviceId(), deviceAfter);
+                            if (deviceFailures >= deviceTrust.getDevicePin().getMaxFailures()) {
+                                var oldest = store.failureAtByDevice(method, request.deviceId(), deviceAfter,
+                                        deviceFailures - deviceTrust.getDevicePin().getMaxFailures());
+                                refusal = blockRefusal(LoginRule.DEVICE_PIN, oldest.orElse(null), now);
+                            }
                         }
                     }
                     case MANAGER_PIN -> {
@@ -320,7 +367,8 @@ public class LoginAttemptService {
             store.saveAttempt(new LoginProtectionStore.AttemptRow(
                     UtcTimestamps.nowUtc(clock), attempt.method(), attempt.identifier(), userId,
                     request.clientIp(), request.remoteAddr(), request.forwardedFor(), request.userAgent(),
-                    outcome, true, decision.rule().name(), null), null);
+                    outcome, true, decision.rule().name(), null)
+                    .withDevice(request.deviceId(), request.deviceCredentialId()), null);
             log.info("Login protection: refused {} attempt; rule={} user={} id={} ip={} retryAfter={}",
                     attempt.method(), decision.rule(), userId == null ? "-" : userId, safeIdentifier(attempt),
                     request.clientIp(), decision.retryAfter() == null ? "admin unlock" : decision.retryAfter());
@@ -343,7 +391,8 @@ public class LoginAttemptService {
         var rule = attempt.lockRule();
         var row = new LoginProtectionStore.AttemptRow(failure.attemptedAt(), failure.method(), failure.identifier(), userId,
                 failure.clientIp(), failure.remoteAddr(), failure.forwardedFor(), failure.userAgent(),
-                failure.outcome(), false, rule.name(), null);
+                failure.outcome(), false, rule.name(), null)
+                .withDevice(failure.deviceId(), failure.deviceCredentialId());
         LoginProtectionStore.HistoryLock lock;
         if (userId != null) {
             lock = store.saveAttemptWithAccountLock(row, userId, properties.getEscalationReset(), properties.getLockDurations());
@@ -466,6 +515,8 @@ public class LoginAttemptService {
             case MANAGER_PIN_CALLER -> properties.getManagerPinCaller();
             case MANAGER_PIN_GLOBAL -> properties.getManagerPinGlobal();
             case CHANGE_PASSWORD_USER -> properties.getChangePasswordUser();
+            case DEVICE_PIN -> new LoginProtectionProperties.Threshold(
+                    deviceTrust.getDevicePin().getMaxFailures(), deviceTrust.getDevicePin().getWindow());
         };
     }
 
@@ -512,11 +563,22 @@ public class LoginAttemptService {
         var request = attributes.getRequest();
         var remoteAddr = request.getRemoteAddr();
         var forwardedFor = request.getHeader("X-Forwarded-For");
+        // WS1-1b: the registered POS till and browser, recorded only in device-trust optional and required mode.
+        var device = deviceTrust.isOff() ? DeviceContext.NONE : DeviceContext.current();
         return new LoginRequestInfo(
                 clientIpResolver.resolve(remoteAddr, forwardedFor),
                 LoginRequestInfo.truncate(remoteAddr, ClientIpResolver.MAX_IP_LENGTH),
                 LoginRequestInfo.truncate(forwardedFor, LoginRequestInfo.MAX_FORWARDED_FOR),
-                LoginRequestInfo.truncate(request.getHeader("User-Agent"), LoginRequestInfo.MAX_USER_AGENT));
+                LoginRequestInfo.truncate(request.getHeader("User-Agent"), LoginRequestInfo.MAX_USER_AGENT),
+                device.valid() ? device.deviceId() : null,
+                device.valid() ? device.credentialId() : null);
+    }
+
+    /** PIN_PAIR failures: keyed by cashier + till when a registered till is known, else cashier + address. */
+    private long pairFailures(LoginMethod method, String identifier, LoginRequestInfo request, LocalDateTime after) {
+        return request.deviceId() != null
+                ? store.countFailuresByIdentifierAndDevice(method, identifier, request.deviceId(), after)
+                : store.countFailuresByIdentifierAndIp(method, identifier, request.clientIp(), after);
     }
 
     private static LocalDateTime since(LocalDateTime now, Duration window, LocalDateTime lastSuccess) {
