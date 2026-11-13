@@ -2,7 +2,13 @@
 
 For the system owner. Use it when nobody who can unlock sign-in can sign in: for example every admin is locked at level 3 ("Ask a manager to unlock sign-in"), or a mistake in the thresholds locks everyone out.
 
-**Normal case first:** if any admin can still sign in, use the staff page, or `POST /admin/staff/{id}/unlock`. That is audited, and no database access is needed.
+**Normal case first:** if **another** admin can still sign in, they use the staff page, or `POST /admin/staff/{id}/unlock`. That is audited, and no database access is needed.
+
+**An admin can't unlock themselves.** Unlocking your own row is refused (409 `SELF_UNLOCK`), and setting your own PIN or password doesn't clear your lock. So this runbook is also needed when:
+- the **only** active admin reaches level 3; or
+- every admin who could help is locked or unavailable.
+
+A level-1 or level-2 lock (15 or 60 minutes) can simply be waited out.
 
 ## Option A: switch enforcement off (no SQL, fastest)
 

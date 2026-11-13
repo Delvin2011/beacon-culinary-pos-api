@@ -76,6 +76,11 @@ A Bucket4j token bucket per client IP on `/auth/**`, `/admin/authorize` and `/ad
   - records `unlocked_by` and `unlocked_at`
   - ends window blocks too, because failures before `unlocked_at` no longer count
 - **Credential resets also unlock:** setting a new PIN clears `PIN`; setting a new password clears `PASSWORD` and `CHANGE_PASSWORD`.
+- **No self-unlock:** an admin can't clear their own locks.
+  - Unlocking yourself returns 409 `SELF_UNLOCK`.
+  - Setting your own PIN or password through staff management saves it, but the lock stays.
+  - Another admin must unlock you, or the lock must expire. Otherwise an admin whose password is locked could sign in by PIN and unlock it, so the lock would protect nothing against someone who knows the PIN.
+  - An environment with a single active admin therefore needs the recovery runbook if that admin reaches level 3.
 - **Lock state on the staff page:** `GET /admin/staff` and `/{id}` return `locks.PASSWORD` and `locks.PIN`, each `{locked, lockedUntil, requiresAdminUnlock}`.
 - **Transactions:** unlock writes run in the staff-management transaction, never in a separate one. That transaction has already written the users row, and a separate one would wait on it.
 - **Everyone locked out:** see the recovery runbook.
@@ -90,6 +95,7 @@ WARN lines with the stable marker `LOGIN_PROTECTION_ALERT`, for an Azure log ale
 | `MANAGER_PIN_GLOBAL` | 20+ wrong manager PINs across all tills in 60 min |
 | `ADMIN_UNLOCK_REQUIRED` | A level-3 lock was written (enforce) |
 | `UNLOCK` | Any unlock: `reason=ADMIN_UNLOCK`, `PIN_RESET` or `PASSWORD_RESET`, with `by=` the admin |
+| `SELF_UNLOCK_REFUSED` | An admin tried to unlock themselves, or reset their own PIN or password while locked (`reason=` as above). Worth a look: it may be someone using that admin's PIN. |
 
 The log lines never contain a PIN or password. Emails appear only as `sha256:` plus 12 hex characters.
 

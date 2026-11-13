@@ -205,9 +205,17 @@ Unlocks sign-in for a staff member: ends account locks and short-term blocks.
 | 200 | The staff member (see 2.8), with the updated `locks` | Unlocked (also when nothing was locked) |
 | 400 | `{"scope":"Scope must be one of PASSWORD, PIN, MANAGER_PIN, CHANGE_PASSWORD."}` | Unknown scope |
 | 404 | empty | No such staff member |
+| 409 | `{"error":"You can't unlock your own sign-in. Ask another admin to do it.","code":"SELF_UNLOCK"}` | `{id}` is the signed-in admin |
 | 401 / 403 | empty | Not signed in, or not ADMIN |
 
 This works in every mode. Setting a new PIN (`POST /admin/staff/{id}/pin`, or `PUT /admin/staff/{id}` with a `pin`) also unlocks `PIN`. Setting a new password (`POST /admin/staff/{id}/password`, or `PUT` with a `password`) also unlocks `PASSWORD` and `CHANGE_PASSWORD`.
+
+**No self-unlock.** An admin can't clear their own locks:
+- Unlocking yourself returns the 409 above.
+- Setting your own PIN or password through staff management succeeds (200, the new credential is saved), but **your lock stays**. The response's `locks` still shows it.
+- Another admin can unlock you, or reset your PIN or password, as usual.
+
+Frontend: hide the Unlock button on the signed-in admin's own row, and show the 409 `message` if it ever arrives.
 
 ### 2.8 Staff list and detail: `GET /admin/staff`, `GET /admin/staff/{id}` (ADMIN)
 
@@ -237,7 +245,7 @@ Each staff member gains a `locks` object. Every other field is unchanged.
 
 Only `PASSWORD` and `PIN` appear: they are the methods with account locks. Short-term blocks (PIN per device, manager PIN, change password) end by themselves within 15 minutes and are not listed; an unlock also ends them. The same `locks` object is returned by `POST /admin/staff`, `PUT /admin/staff/{id}`, `POST /admin/staff/{id}/password`, `POST /admin/staff/{id}/pin` and the new unlock endpoint. In `monitor` and `off` mode every lock is `false`.
 
-Suggested UI: a "Locked" badge with the end time or "needs unlock", and an **Unlock** button that calls 2.7.
+Suggested UI: a "Locked" badge with the end time or "needs unlock", and an **Unlock** button that calls 2.7 (not on your own row).
 
 ## 3. Frontend checklist
 
