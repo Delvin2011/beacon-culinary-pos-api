@@ -219,7 +219,7 @@ Frontend: hide the Unlock button on the signed-in admin's own row, and show the 
 
 ### 2.8 Staff list and detail: `GET /admin/staff`, `GET /admin/staff/{id}` (ADMIN)
 
-Each staff member gains a `locks` object. Every other field is unchanged.
+Each staff member gains a `locks` object (account locks) and a `blocks` object (short-term blocks). Every other field is unchanged.
 
 ```json
 {
@@ -233,9 +233,16 @@ Each staff member gains a `locks` object. Every other field is unchanged.
   "locks": {
     "PASSWORD": {"locked": false, "lockedUntil": null, "requiresAdminUnlock": false},
     "PIN": {"locked": true, "lockedUntil": "2026-11-12T09:15:00Z", "requiresAdminUnlock": false}
+  },
+  "blocks": {
+    "PIN": {"blocked": true, "blockedUntil": "2026-11-12T08:41:00Z"},
+    "MANAGER_PIN": {"blocked": false, "blockedUntil": null},
+    "CHANGE_PASSWORD": {"blocked": false, "blockedUntil": null}
   }
 }
 ```
+
+**`locks`: account locks** (the 15-minute, 60-minute and admin-unlock escalation). Only `PASSWORD` and `PIN` appear.
 
 | Field | Meaning |
 |---|---|
@@ -243,9 +250,32 @@ Each staff member gains a `locks` object. Every other field is unchanged.
 | `lockedUntil` | UTC instant the lock ends; `null` when not locked or when `requiresAdminUnlock` is true |
 | `requiresAdminUnlock` | The lock only ends with an unlock (2.7) |
 
-Only `PASSWORD` and `PIN` appear: they are the methods with account locks. Short-term blocks (PIN per device, manager PIN, change password) end by themselves within 15 minutes and are not listed; an unlock also ends them. The same `locks` object is returned by `POST /admin/staff`, `PUT /admin/staff/{id}`, `POST /admin/staff/{id}/password`, `POST /admin/staff/{id}/pin` and the new unlock endpoint. In `monitor` and `off` mode every lock is `false`.
+**`blocks`: short-term blocks.** Too many failures in 15 minutes; a block ends by itself when they age out.
 
-Suggested UI: a "Locked" badge with the end time or "needs unlock", and an **Unlock** button that calls 2.7 (not on your own row).
+| Key | `blocked` is true when |
+|---|---|
+| `PIN` | This person entered 5+ wrong PINs at a till within 15 minutes, on **any** till. The cashier can still sign in at other tills. |
+| `MANAGER_PIN` | This person, as the one entering manager PINs, entered 5+ wrong ones within 15 minutes |
+| `CHANGE_PASSWORD` | This person entered 5+ wrong old passwords within 15 minutes |
+
+| Field | Meaning |
+|---|---|
+| `blocked` | A block is active now |
+| `blockedUntil` | UTC instant the block ends if nothing else happens: for `PIN`, the end of the **last** till block. `null` when not blocked. |
+
+**Ending a block:**
+- an unlock (2.7) for that scope, or with no scope
+- a successful sign-in by that method
+- the 15 minutes passing
+
+A person can have both a PIN block (`blocks.PIN`) and a PIN account lock (`locks.PIN`); show both. Burst-limit refusals belong to a network address, not a person, so they never appear here.
+
+**Where they're returned:** both objects come back from `GET /admin/staff`, `GET /admin/staff/{id}`, `POST /admin/staff`, `PUT /admin/staff/{id}`, `POST /admin/staff/{id}/password`, `POST /admin/staff/{id}/pin` and the unlock endpoint. In `monitor` and `off` mode every lock and block is `false`.
+
+**Suggested UI:**
+- a "Locked" badge for `locks`, with the end time or "needs unlock"
+- a "Blocked" note for `blocks` (for example "PIN blocked at a till until 10:41", in local time)
+- an **Unlock** button (2.7) only on rows with a lock or block, never on your own row
 
 ## 3. Frontend checklist
 

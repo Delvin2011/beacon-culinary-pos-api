@@ -81,7 +81,11 @@ A Bucket4j token bucket per client IP on `/auth/**`, `/admin/authorize` and `/ad
   - Setting your own PIN or password through staff management saves it, but the lock stays.
   - Another admin must unlock you, or the lock must expire. Otherwise an admin whose password is locked could sign in by PIN and unlock it, so the lock would protect nothing against someone who knows the PIN.
   - An environment with a single active admin therefore needs the recovery runbook if that admin reaches level 3.
-- **Lock state on the staff page:** `GET /admin/staff` and `/{id}` return `locks.PASSWORD` and `locks.PIN`, each `{locked, lockedUntil, requiresAdminUnlock}`.
+- **Lock state on the staff page:** `GET /admin/staff` and `/{id}` return:
+  - `locks.PASSWORD` and `locks.PIN`, each `{locked, lockedUntil, requiresAdminUnlock}`: account locks
+  - `blocks.PIN`, `blocks.MANAGER_PIN` and `blocks.CHANGE_PASSWORD`, each `{blocked, blockedUntil}`: short-term window blocks
+
+  `blocks` is worked out from `login_attempts` on each request, with the same counting as the sign-in check (failures in the window, after the last success or unlock). `blocks.PIN` covers a block on any till, and `blockedUntil` is when the last one ends. Both objects are shown in enforce mode only.
 - **Transactions:** unlock writes run in the staff-management transaction, never in a separate one. That transaction has already written the users row, and a separate one would wait on it.
 - **Everyone locked out:** see the recovery runbook.
 
