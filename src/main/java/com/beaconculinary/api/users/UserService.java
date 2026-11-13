@@ -1,6 +1,9 @@
 package com.beaconculinary.api.users;
 
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.auth.protection.LoginAttemptService;
+import com.beaconculinary.api.auth.protection.LoginMethod;
+import com.beaconculinary.api.auth.protection.LoginOutcome;
 import lombok.AllArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
@@ -17,6 +20,7 @@ public class UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final AuthService authService;
+    private final LoginAttemptService loginAttempts;
 
     public Iterable<UserDto> getAllUsers(String sortBy) {
         if (!Set.of("name", "email").contains(sortBy))
@@ -77,11 +81,14 @@ public class UserService {
             throw new NotOwnAccountException("You can only change your own password.");
         }
         var user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+        var attempt = loginAttempts.begin(LoginMethod.CHANGE_PASSWORD, userId.toString(), userId);
 
         if (user.getPassword() == null || request.getOldPassword() == null
                 || !passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+            loginAttempts.finish(attempt, LoginOutcome.BAD_CREDENTIAL, userId);
             throw new AccessDeniedException("Password does not match");
         }
+        loginAttempts.finish(attempt, LoginOutcome.SUCCESS, userId);
         var newPassword = request.getNewPassword();
         if (newPassword == null || newPassword.length() < 6 || newPassword.length() > 25) {
             throw new InvalidPasswordException("Password must be between 6 and 25 characters.");

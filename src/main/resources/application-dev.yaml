@@ -1,14 +1,12 @@
 spring:
   datasource:
-    url: jdbc:sqlserver://localhost:1433;databaseName=Ecommerce;encrypt=false;trustServerCertificate=true
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
-    username: sa
-    password: Delvin2011
+    # url, username and password come from SPRING_DATASOURCE_* (.env), as in application.yaml.
   jpa:
     show-sql: true
   flyway:
     enabled: false
-    locations: classpath:db.migration
+    locations: classpath:db/migration
 
 cookie:
   secure: false

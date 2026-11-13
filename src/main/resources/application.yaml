@@ -22,8 +22,8 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
-  server:
-    port: ${SERVER_PORT:8080}
+server:
+  port: ${SERVER_PORT:8080}
 
 springdoc:
   swagger-ui:
@@ -70,3 +70,12 @@ dashboard:
     signOff: true
     reportDefinitions: true
     accountReports: true
+
+# WS1-1 login protection. Phase 1 is monitor only: attempts are recorded and flagged, never blocked.
+# Settings and defaults: docs/2026-11-11-login-protection.md.
+security:
+  login-protection:
+    mode: ${LOGIN_PROTECTION_MODE:monitor}
+    # Reverse proxies whose X-Forwarded-For is trusted (IPs or CIDRs). Empty until the Azure ingress is confirmed.
+    trusted-proxies: []
+    retention-days: 90

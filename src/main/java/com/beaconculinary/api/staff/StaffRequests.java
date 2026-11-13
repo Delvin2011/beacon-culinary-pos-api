@@ -40,4 +40,10 @@ public final class StaffRequests {
     public static class SetPin {
         private String pin;
     }
+
+    /** POST /admin/staff/{id}/unlock. No body, or no scope, unlocks every scope. */
+    @Data
+    public static class Unlock {
+        private String scope;
+    }
 }
