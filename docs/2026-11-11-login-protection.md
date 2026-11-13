@@ -38,7 +38,8 @@ With a threshold of 5, the 5th failure triggers the rule and the **6th** attempt
 | Rule | Method | Counted per | Default | Effect (enforce) | Code |
 |---|---|---|---|---|---|
 | `PASSWORD_ACCOUNT` | PASSWORD | lower-cased email, including unknown emails | 5 in 15 min | **Lock** 15 min, then 60 min, then until an admin unlocks | `ACCOUNT_LOCKED` |
-| `PIN_PAIR` | PIN | cashierId + client IP | 5 in 15 min | **Block** that pair until the failures drop below 5 in the window | `RATE_LIMITED` |
+| `PIN_PAIR` | PIN | cashierId + registered till (WS1-1b); cashierId + client IP for attempts without a till | 5 in 15 min | **Block** that pair until the failures drop below 5 in the window | `RATE_LIMITED` |
+| `DEVICE_PIN` | PIN | registered till, all accounts and browsers (WS1-1b; only when device trust isn't `off`) | 30 in 15 min | **Block** PIN sign-in on that till (window-based) | `RATE_LIMITED` |
 | `PIN_ACCOUNT_CEILING` | PIN | cashierId, any source | 20 in 60 min | **Lock** the cashier's PIN sign-in (escalating), plus an alert | `ACCOUNT_LOCKED` |
 | `MANAGER_PIN_CALLER` | MANAGER_PIN | calling user (JWT subject) | 5 in 15 min | **Block** that caller (window-based) | `RATE_LIMITED` |
 | `MANAGER_PIN_GLOBAL` | MANAGER_PIN | all callers | 20 in 60 min | Alert only, never blocks | none |
@@ -100,6 +101,14 @@ WARN lines with the stable marker `LOGIN_PROTECTION_ALERT`, for an Azure log ale
 | `ADMIN_UNLOCK_REQUIRED` | A level-3 lock was written (enforce) |
 | `UNLOCK` | Any unlock: `reason=ADMIN_UNLOCK`, `PIN_RESET` or `PASSWORD_RESET`, with `by=` the admin |
 | `SELF_UNLOCK_REFUSED` | An admin tried to unlock themselves, or reset their own PIN or password while locked (`reason=` as above). Worth a look: it may be someone using that admin's PIN. |
+| `DEVICE_REGISTERED` / `DEVICE_JOINED` | A till was registered, or a browser added to one (`device=`, `credential=`, `by=`) |
+| `DEVICE_REVOKED` / `DEVICE_CREDENTIAL_REVOKED` | An admin revoked a till or one browser |
+| `DEVICE_REVOKED_USED` / `DEVICE_EXPIRED_USED` | A revoked or expired browser was used (optional and required mode) |
+| `DEVICE_INVALID_TOKENS` | 5 unknown or malformed till cookies from one address in 10 minutes |
+| `DEVICE_GATE_REFUSED` | A CASHIER or ADMIN PIN sign-in was refused for lack of a registered till (required) |
+| `DEVICE_NOT_REGISTERED_REPEATED` | 5 device refusals from one address in 10 minutes (required) |
+
+Till cookies (`deviceToken`) are never logged; only the till and browser IDs are.
 
 The log lines never contain a PIN or password. Emails appear only as `sha256:` plus 12 hex characters.
 
@@ -148,8 +157,9 @@ All timestamps are UTC, written from the application clock.
 
 **`login_attempts`** (V103, V104): one row per attempt (burst refusals excepted).
 - `method`, `identifier` (lower-cased email, cashierId, or caller/user id), `user_id` (null for unknown users)
-- `client_ip`, `remote_addr`, `forwarded_for`, `user_agent`; `device_id` is unused (D6)
-- `outcome`: `SUCCESS`, `BAD_CREDENTIAL`, `UNKNOWN_USER`, `DISABLED`, `VALIDATION`, and in enforce `LOCKED`, `RATE_LIMITED`
+- `client_ip`, `remote_addr`, `forwarded_for`, `user_agent`
+- `device_id` (the registered till) and `device_credential_id` (its browser, V105): set when device trust isn't `off` and the request came from a registered browser; otherwise null
+- `outcome`: `SUCCESS`, `BAD_CREDENTIAL`, `UNKNOWN_USER`, `DISABLED`, `VALIDATION`, in enforce `LOCKED`, `RATE_LIMITED`, and (required device trust) `DEVICE_NOT_REGISTERED`, which is not a failure
 - `would_block`: monitor, a rule would have refused this attempt; enforce, this attempt **was** refused
 - `rule_triggered`: the rule that refused or flagged it, or (enforce, `would_block = 0`) the LOCK rule this failure triggered
 - `lock_level`, `locked_until` (V104): set on the failure that triggered a lock; for unknown identifiers this is the lock itself
@@ -162,6 +172,30 @@ All timestamps are UTC, written from the application clock.
 - Rows are deleted with their user (`ON DELETE CASCADE`)
 
 Attempt rows and locks are written in their own transaction (`REQUIRES_NEW`), so a failure is kept even when the request rolls back. No sign-in path writes the users row before that write; the transaction tests verify it.
+
+## POS till registration (WS1-1b)
+
+Only registered POS tills may show the POS staff tiles and cashier list, sign cashiers and admins in by PIN, and request manager-PIN approval. Kitchen and bar screens, kitchen, barista and head-chef PIN sign-in, and password sign-in are never gated. The API, cookie, settings and error codes are in the [contract](2026-11-13-device-registration-api-contract.md).
+
+**Modes** (`security.device-trust.mode`, env `SECURITY_DEVICETRUST_MODE`):
+
+| Mode | Gating | Recorded on `login_attempts` | Alerts |
+|---|---|---|---|
+| `off` (default) | none | no till | none. Registered tills still keep their last-seen time fresh, so tills can be registered before switching on. |
+| `optional` | none; requests without a till are logged at INFO | till and browser | yes |
+| `required` | 403 `DEVICE_NOT_REGISTERED` without a registered till | till and browser, and refusals as `DEVICE_NOT_REGISTERED` | yes |
+
+**Tables** (V105): `devices` (one row per till; `device_type = 'POS'`; serial and asset tag unique among active tills) and `device_credentials` (one row per registered browser; only the SHA-256 of its token is stored). Rows are never deleted; revoking sets `status = 'REVOKED'`.
+
+**Unbound till requests:** in optional and required mode, a CASHIER token used on `/orders` or `/shifts` from a browser without a registered till logs `DEVICE_UNBOUND_TILL_REQUEST` at INFO, at most once per user per 5 minutes. Nothing is refused (decision P4).
+
+**Switching it on:**
+1. Deploy with `off`. V105 runs automatically.
+2. Register every till from its own browser (`POST /admin/devices`, by an admin with a password sign-in from the last 30 minutes).
+3. Set `SECURITY_DEVICETRUST_MODE=optional` and restart. Watch the INFO lines and query 7 of the [query pack](2026-11-11-login-protection-monitor-queries.md) until no cashier or admin signs in by PIN without a till.
+4. Set `SECURITY_DEVICETRUST_MODE=required` and restart.
+
+**Rolling back:** set `SECURITY_DEVICETRUST_MODE=off` and restart (runbook, option C). Registrations are kept.
 
 ## Switching enforcement on
 
@@ -188,3 +222,5 @@ The suite runs with protection off (`LoginProtectionTestDefaults`, registered in
 |---|---|
 | `monitor` | `LoginProtectionMonitorIntegrationTests`, `LoginValidationAdviceScopeIntegrationTests` |
 | `enforce` | `LoginProtectionEnforceIntegrationTests`, `LoginUnlockIntegrationTests` (test clock; fail on any protection ERROR), `LoginBurstFilterIntegrationTests` |
+
+Device trust is `off` in the suite (the `application.yaml` default). The WS1-1b tests in `com.beaconculinary.api.devices` opt in: `DeviceRegistrationIntegrationTests`, `DeviceGatingIntegrationTests`, `DeviceResolutionIntegrationTests` (required), `DeviceModesIntegrationTests` (off, optional, multi-browser), `DeviceLoginProtectionIntegrationTests` (required + enforce), plus the unit tests `DeviceTrustPropertiesTest` and `DeviceTokensTest`. They remove every till and staff member they create (names start `WS1b `).

@@ -37,7 +37,7 @@ Set by the server when a browser is registered (section 6.2) and re-sent while t
 
 **How long it lasts:**
 - A browser's registration stays valid until revoked.
-- **An unused registration expires** after `idle-expiry-days` (90 days by default) without the till contacting the server. That browser must then be registered again.
+- **An unused registration expires** after `idle-expiry-days` (90 days by default) without the till contacting the server. That browser must then be registered again. Lists show it as `EXPIRED` (section 6.2, Statuses).
 - **The cookie renews itself:** while the till is in use, the server updates its "last seen" at most every `last-seen-interval` (5 minutes) per browser. Each time, it re-sends the same cookie with a fresh `Max-Age`. A till in regular use never loses its registration.
 
 **Same-site versus cross-site:**
@@ -223,6 +223,13 @@ Content-Type: application/json
 ```
 
 `browserLabel` is suggested by the server from the browser's User-Agent; admins can change it (6.5).
+
+**Statuses.** A till's `status` is `ACTIVE` or `REVOKED`. A browser's `status` is:
+- `ACTIVE`: in use within `idle-expiry-days`.
+- `EXPIRED`: not revoked, but unused for `idle-expiry-days`. Its cookie no longer works (`DEVICE_NOT_REGISTERED`). It counts as **not active**, so registering the till's serial again from any browser attaches to the same till (table above). Show it as "Expired: register this browser again".
+- `REVOKED`: revoked by an admin.
+
+The response also carries `revokedBy` (the admin's name) on tills and browsers, next to `revokedAt` and `revokeReason`.
 
 **Example: 409 serial exists (multi-browser on)**
 
