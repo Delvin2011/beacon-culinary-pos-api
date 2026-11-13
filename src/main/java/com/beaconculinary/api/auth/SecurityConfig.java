@@ -4,6 +4,7 @@ import com.beaconculinary.api.auth.protection.ClientIpResolver;
 import com.beaconculinary.api.auth.protection.LoginBurstFilter;
 import com.beaconculinary.api.auth.protection.LoginProtectionProperties;
 import com.beaconculinary.api.common.SecurityRules;
+import com.beaconculinary.api.devices.DeviceFilters;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -78,7 +79,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http, CorsConfigurationSource corsConfigurationSource,
             LoginProtectionProperties loginProtection, ClientIpResolver clientIpResolver,
-            ObjectMapper objectMapper) throws Exception {
+            ObjectMapper objectMapper, DeviceFilters deviceFilters) throws Exception {
         http
             .cors(c -> c.configurationSource(corsConfigurationSource))
             .sessionManagement(c ->
@@ -95,6 +96,10 @@ public class SecurityConfig {
             // @Component, so it runs only in the security chain.
             .addFilterBefore(new LoginBurstFilter(loginProtection, clientIpResolver, objectMapper),
                     JwtAuthenticationFilter.class)
+            // WS1-1b: recognise the POS till from its deviceToken cookie (after the burst limit,
+            // before JWT), and log cashier order/shift requests without one (after JWT).
+            .addFilterBefore(deviceFilters.resolutionFilter(), JwtAuthenticationFilter.class)
+            .addFilterAfter(deviceFilters.unboundRequestFilter(), JwtAuthenticationFilter.class)
             .exceptionHandling(c -> {
                 c.authenticationEntryPoint(
                     new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED));

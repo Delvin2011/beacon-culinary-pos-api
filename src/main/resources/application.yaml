@@ -79,3 +79,13 @@ security:
     # Reverse proxies whose X-Forwarded-For is trusted (IPs or CIDRs). Empty until the Azure ingress is confirmed.
     trusted-proxies: []
     retention-days: 90
+  # WS1-1b POS till registration. Off by default; "off" is quoted because YAML reads a bare off as false.
+  # Settings and defaults: docs/2026-11-13-device-registration-api-contract.md.
+  device-trust:
+    mode: "off"
+    multi-browser-enabled: false
+    require-serial: true
+    idle-expiry-days: 90
+    cookie-max-age-days: 365
+    last-seen-interval: 5m
+    reauth-max-age: 30m
