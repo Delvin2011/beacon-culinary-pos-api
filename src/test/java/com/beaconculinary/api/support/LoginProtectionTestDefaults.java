@@ -23,7 +23,13 @@ public class LoginProtectionTestDefaults implements EnvironmentPostProcessor {
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        var source = new MapPropertySource(SOURCE_NAME, Map.of("security.login-protection.mode", "off"));
+        // WS1-1b: device trust is also pinned to its defaults, so a local .env (for example
+        // SECURITY_DEVICETRUST_MODE=required for manual testing) doesn't change the suite.
+        var source = new MapPropertySource(SOURCE_NAME, Map.of(
+                "security.login-protection.mode", "off",
+                "security.device-trust.mode", "off",
+                "security.device-trust.multi-browser-enabled", "false",
+                "security.device-trust.require-serial", "true"));
         var sources = environment.getPropertySources();
         if (sources.contains(INLINED_TEST_PROPERTIES)) {
             sources.addAfter(INLINED_TEST_PROPERTIES, source);

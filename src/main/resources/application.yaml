@@ -82,9 +82,11 @@ security:
   # WS1-1b POS till registration. Off by default; "off" is quoted because YAML reads a bare off as false.
   # Settings and defaults: docs/2026-11-13-device-registration-api-contract.md.
   device-trust:
-    mode: "off"
-    multi-browser-enabled: false
-    require-serial: true
+    # Placeholders so the .env file (spring-dotenv) can set these locally; on Azure, real environment
+    # variables work either way. The quotes keep a bare off from being read as false.
+    mode: "${SECURITY_DEVICETRUST_MODE:off}"
+    multi-browser-enabled: ${SECURITY_DEVICETRUST_MULTIBROWSERENABLED:false}
+    require-serial: ${SECURITY_DEVICETRUST_REQUIRESERIAL:true}
     idle-expiry-days: 90
     cookie-max-age-days: 365
     last-seen-interval: 5m
