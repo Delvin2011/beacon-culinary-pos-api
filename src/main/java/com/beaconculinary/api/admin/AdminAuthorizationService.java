@@ -3,6 +3,8 @@ package com.beaconculinary.api.admin;
 import com.beaconculinary.api.auth.protection.LoginAttemptService;
 import com.beaconculinary.api.auth.protection.LoginMethod;
 import com.beaconculinary.api.auth.protection.LoginOutcome;
+import com.beaconculinary.api.devices.DeviceException;
+import com.beaconculinary.api.devices.DeviceGate;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import com.beaconculinary.api.users.UserRepository;
@@ -37,6 +39,7 @@ public class AdminAuthorizationService {
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
     private final LoginAttemptService loginAttempts;
+    private final DeviceGate deviceGate;
 
     @Transactional
     public AuthorizeResponse authorize(AuthorizeRequest request) {
@@ -146,7 +149,15 @@ public class AdminAuthorizationService {
 
     private User matchAdmin(String pin) {
         var callerId = currentCallerId();
-        var attempt = loginAttempts.begin(LoginMethod.MANAGER_PIN, callerId == null ? null : callerId.toString(), callerId);
+        var identifier = callerId == null ? null : callerId.toString();
+        // WS1-1b: manager-PIN approval needs a registered POS till (required mode), checked first.
+        try {
+            deviceGate.requireRegisteredTill("manager-PIN approval");
+        } catch (DeviceException refused) {
+            loginAttempts.recordDeviceRefusal(LoginMethod.MANAGER_PIN, identifier, callerId);
+            throw refused;
+        }
+        var attempt = loginAttempts.begin(LoginMethod.MANAGER_PIN, identifier, callerId);
         var activeAdmins = userRepository.findByActiveTrueAndRoleIn(List.of(Role.ADMIN));
 
         var matched = activeAdmins.stream()

@@ -14,7 +14,9 @@ public enum LoginOutcome {
     /** Refused by a rate limit. Enforce mode only (Phase 2). */
     RATE_LIMITED,
     /** The request failed validation before any credential check. */
-    VALIDATION;
+    VALIDATION,
+    /** WS1-1b: refused because a registered POS till is required (no credential check). */
+    DEVICE_NOT_REGISTERED;
 
     /** Whether this outcome counts towards the failure thresholds. */
     public boolean isFailure() {

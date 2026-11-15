@@ -3,6 +3,8 @@ package com.beaconculinary.api.auth;
 import com.beaconculinary.api.auth.protection.LoginAttemptService;
 import com.beaconculinary.api.auth.protection.LoginMethod;
 import com.beaconculinary.api.auth.protection.LoginOutcome;
+import com.beaconculinary.api.devices.DeviceException;
+import com.beaconculinary.api.devices.DeviceGate;
 import com.beaconculinary.api.users.User;
 import com.beaconculinary.api.users.UserRepository;
 import lombok.AllArgsConstructor;
@@ -14,6 +16,8 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import java.time.Clock;
 
 @AllArgsConstructor
 @Service
@@ -28,6 +32,8 @@ public class AuthService {
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
     private final LoginAttemptService loginAttempts;
+    private final DeviceGate deviceGate;
+    private final Clock clock;
 
     public User getCurrentUser() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -67,8 +73,9 @@ public class AuthService {
         }
 
         var user = userRepository.findByEmail(request.getEmail()).orElseThrow();
-        var accessToken = jwtService.generateAccessToken(user);
-        var refreshToken = jwtService.generateRefreshToken(user);
+        var signIn = SignIn.password(clock);
+        var accessToken = jwtService.generateAccessToken(user, signIn);
+        var refreshToken = jwtService.generateRefreshToken(user, signIn);
         loginAttempts.finish(attempt, LoginOutcome.SUCCESS, user.getId());
 
         return new LoginResponse(accessToken, refreshToken);
@@ -80,6 +87,12 @@ public class AuthService {
         var user = userRepository.findById(request.getCashierId()).orElse(null);
         var attempt = loginAttempts.begin(LoginMethod.PIN, String.valueOf(request.getCashierId()),
                 user == null ? null : user.getId());
+        // WS1-1b: after the lock/block check, cashier, admin and unknown IDs need a registered POS
+        // till (required mode). Refused before the PIN check: no BCrypt, not a failed sign-in.
+        if (deviceGate.refusesPinLogin(user)) {
+            loginAttempts.finish(attempt, LoginOutcome.DEVICE_NOT_REGISTERED, user == null ? null : user.getId());
+            throw DeviceException.notRegistered();
+        }
         var hashToCheck = user != null && user.getPinHash() != null ? user.getPinHash() : DUMMY_PIN_HASH;
         var matches = passwordEncoder.matches(request.getPin(), hashToCheck);
 
@@ -88,8 +101,9 @@ public class AuthService {
             throw new BadCredentialsException("Invalid cashier ID or PIN");
         }
 
-        var accessToken = jwtService.generateAccessToken(user);
-        var refreshToken = jwtService.generateRefreshToken(user);
+        var signIn = SignIn.pin(clock, deviceGate.deviceIdForToken());
+        var accessToken = jwtService.generateAccessToken(user, signIn);
+        var refreshToken = jwtService.generateRefreshToken(user, signIn);
         // D4 evidence only: whether the PIN is not 6 digits. The PIN itself is never stored or logged.
         loginAttempts.finish(attempt, LoginOutcome.SUCCESS, user.getId(), request.getPin().length() != 6);
 
@@ -123,6 +137,7 @@ public class AuthService {
         if (!user.isActive() || loginAttempts.isAccountLocked(user.getId())) {
             throw new BadCredentialsException("Invalid refresh token");
         }
-        return jwtService.generateAccessToken(user);
+        // Keeps how and when the person signed in (amr, auth_time, dev); refresh isn't tied to the till yet.
+        return jwtService.generateAccessToken(user, jwt.getSignIn());
     }
 }

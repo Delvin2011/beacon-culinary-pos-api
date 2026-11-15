@@ -143,3 +143,68 @@ SELECT [scope], COUNT(*) AS [rows], SUM(CASE WHEN [locked_until] IS NOT NULL THE
 FROM [user_auth_state]
 GROUP BY [scope];
 ```
+
+## 7. POS tills (WS1-1b)
+
+Read-only. Till and browser IDs aren't secret; token hashes are never selected.
+
+```sql
+-- 7a. Active tills and their browsers (EXPIRED: unused for 90 days, idle-expiry-days).
+SELECT d.[id] AS [device_id], d.[name], d.[serial_number], d.[asset_tag], d.[registered_at],
+       c.[id] AS [credential_id], c.[browser_label], c.[status], c.[last_seen_at], c.[last_seen_ip],
+       CASE WHEN c.[status] = 'ACTIVE'
+                 AND COALESCE(c.[last_seen_at], c.[created_at]) < DATEADD(DAY, -90, SYSUTCDATETIME())
+            THEN 'EXPIRED' ELSE c.[status] END AS [effective_status]
+FROM [devices] d
+LEFT JOIN [device_credentials] c ON c.[device_id] = d.[id]
+WHERE d.[status] = 'ACTIVE'
+ORDER BY d.[name], c.[created_at];
+
+-- 7b. Cashier and admin PIN sign-ins without a registered till, last 7 days.
+-- Before switching to required this should list nobody (device trust optional or required;
+-- in off mode device_id is never recorded, so every row appears).
+SELECT u.[id], u.[name], u.[role], a.[client_ip], COUNT(*) AS [sign_ins], MAX(a.[attempted_at]) AS [last_utc]
+FROM [login_attempts] a
+JOIN [users] u ON u.[id] = a.[user_id]
+WHERE a.[method] = 'PIN' AND a.[outcome] = 'SUCCESS' AND a.[device_id] IS NULL
+  AND u.[role] IN ('CASHIER', 'ADMIN')
+  AND a.[attempted_at] >= DATEADD(DAY, -7, SYSUTCDATETIME())
+GROUP BY u.[id], u.[name], u.[role], a.[client_ip]
+ORDER BY [last_utc] DESC;
+
+-- 7c. Refusals for lack of a registered till (required mode), by method and address, last 7 days.
+SELECT a.[method], a.[client_ip], COUNT(*) AS [refusals], MAX(a.[attempted_at]) AS [last_utc]
+FROM [login_attempts] a
+WHERE a.[outcome] = 'DEVICE_NOT_REGISTERED'
+  AND a.[attempted_at] >= DATEADD(DAY, -7, SYSUTCDATETIME())
+GROUP BY a.[method], a.[client_ip]
+ORDER BY [refusals] DESC;
+
+-- 7d. Tills with more than one active browser.
+SELECT d.[id], d.[name], d.[serial_number], COUNT(*) AS [active_browsers]
+FROM [devices] d
+JOIN [device_credentials] c ON c.[device_id] = d.[id] AND c.[status] = 'ACTIVE'
+WHERE d.[status] = 'ACTIVE'
+GROUP BY d.[id], d.[name], d.[serial_number]
+HAVING COUNT(*) > 1;
+
+-- 7e. PIN failures per till in the last 15 minutes (DEVICE_PIN refuses at 30).
+SELECT a.[device_id], d.[name], COUNT(*) AS [failures]
+FROM [login_attempts] a
+LEFT JOIN [devices] d ON d.[id] = TRY_CAST(a.[device_id] AS UNIQUEIDENTIFIER)
+WHERE a.[method] = 'PIN' AND a.[device_id] IS NOT NULL
+  AND a.[outcome] IN ('BAD_CREDENTIAL', 'UNKNOWN_USER', 'DISABLED')
+  AND a.[attempted_at] >= DATEADD(MINUTE, -15, SYSUTCDATETIME())
+GROUP BY a.[device_id], d.[name]
+ORDER BY [failures] DESC;
+```
+
+**Cashier tokens used from browsers without a till** (decision P4, log only). In Azure Application Insights (KQL):
+
+```kusto
+traces
+| where message has "DEVICE_UNBOUND_TILL_REQUEST"
+| parse message with * "user=" user " method=" method " path=" path " status=" status
+| summarize requests = count(), last = max(timestamp) by user, path, status
+| order by requests desc
+```

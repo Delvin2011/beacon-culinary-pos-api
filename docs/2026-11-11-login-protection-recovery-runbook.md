@@ -60,6 +60,18 @@ To unlock one person only, replace the `WHERE` clause with `WHERE s.[user_id] = 
 
 **What it does:** the same as the app's unlock. The lock ends, and failures and short-term blocks before `unlocked_at` no longer count. The next lock starts again at level 1 (15 minutes).
 
+## Option C: tills refused as "not registered" (WS1-1b)
+
+Use this when POS tills show "This till isn't registered" (403 `DEVICE_NOT_REGISTERED`) and can't be registered again quickly: for example the cookies were cleared on every till, or a till was revoked by mistake.
+
+1. In the Azure app settings, set `SECURITY_DEVICETRUST_MODE=off`.
+2. Restart the app.
+3. Every till works again with no registration. Existing registrations and revocations are kept.
+4. Register the affected tills again from their own browsers (an admin with a password sign-in from the last 30 minutes).
+5. Set `SECURITY_DEVICETRUST_MODE=required` (or `optional`) again and restart.
+
+No SQL is needed. Device trust and login protection are switched separately: option A doesn't affect tills, and this option doesn't affect locks.
+
 ## Locked unknown identifiers
 
 An email or cashier ID that doesn't belong to anyone can also reach level 3. That lock exists only in `login_attempts` (the `lock_level` and `locked_until` columns) and affects nobody real. It ages out after 90 days with the rest of `login_attempts`; there's nothing to unlock. If a real account is later created with that email, it isn't affected: real accounts use `user_auth_state`.

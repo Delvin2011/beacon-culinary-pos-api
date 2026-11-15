@@ -13,6 +13,8 @@ public class AuthSecurityRules implements SecurityRules {
         registry
             .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
             .requestMatchers(HttpMethod.POST, "/auth/pin-login").permitAll()
-            .requestMatchers(HttpMethod.POST, "/auth/refresh").permitAll();
+            .requestMatchers(HttpMethod.POST, "/auth/refresh").permitAll()
+            // Idempotent and public, so it works with an expired access token (it only clears the refresh cookie).
+            .requestMatchers(HttpMethod.POST, "/auth/logout").permitAll();
     }
 }

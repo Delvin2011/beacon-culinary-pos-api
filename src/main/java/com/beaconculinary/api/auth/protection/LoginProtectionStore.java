@@ -33,19 +33,35 @@ public class LoginProtectionStore {
     public record AttemptRow(LocalDateTime attemptedAt, LoginMethod method, String identifier, Long userId,
                              String clientIp, String remoteAddr, String forwardedFor, String userAgent,
                              LoginOutcome outcome, boolean wouldBlock, String ruleTriggered, Boolean pinNonStandard,
-                             Integer lockLevel, LocalDateTime lockedUntil) {
+                             Integer lockLevel, LocalDateTime lockedUntil,
+                             String deviceId, String deviceCredentialId) {
+
+        /** A row with no till recorded. */
+        public AttemptRow(LocalDateTime attemptedAt, LoginMethod method, String identifier, Long userId,
+                          String clientIp, String remoteAddr, String forwardedFor, String userAgent,
+                          LoginOutcome outcome, boolean wouldBlock, String ruleTriggered, Boolean pinNonStandard,
+                          Integer lockLevel, LocalDateTime lockedUntil) {
+            this(attemptedAt, method, identifier, userId, clientIp, remoteAddr, forwardedFor, userAgent,
+                    outcome, wouldBlock, ruleTriggered, pinNonStandard, lockLevel, lockedUntil, null, null);
+        }
 
         /** A row that triggered no lock. */
         public AttemptRow(LocalDateTime attemptedAt, LoginMethod method, String identifier, Long userId,
                           String clientIp, String remoteAddr, String forwardedFor, String userAgent,
                           LoginOutcome outcome, boolean wouldBlock, String ruleTriggered, Boolean pinNonStandard) {
             this(attemptedAt, method, identifier, userId, clientIp, remoteAddr, forwardedFor, userAgent,
-                    outcome, wouldBlock, ruleTriggered, pinNonStandard, null, null);
+                    outcome, wouldBlock, ruleTriggered, pinNonStandard, null, null, null, null);
         }
 
         AttemptRow withLock(int level, LocalDateTime until) {
             return new AttemptRow(attemptedAt, method, identifier, userId, clientIp, remoteAddr, forwardedFor, userAgent,
-                    outcome, wouldBlock, ruleTriggered, pinNonStandard, level, until);
+                    outcome, wouldBlock, ruleTriggered, pinNonStandard, level, until, deviceId, deviceCredentialId);
+        }
+
+        /** The same row with the POS till (machine) and browser recorded (WS1-1b). */
+        AttemptRow withDevice(String device, String credential) {
+            return new AttemptRow(attemptedAt, method, identifier, userId, clientIp, remoteAddr, forwardedFor, userAgent,
+                    outcome, wouldBlock, ruleTriggered, pinNonStandard, lockLevel, lockedUntil, device, credential);
         }
     }
 
@@ -78,16 +94,57 @@ public class LoginProtectionStore {
                 method.name(), identifier, after);
     }
 
+    /**
+     * PIN_PAIR keyed by cashier + address, for attempts without a registered till. Attempts from a
+     * registered till are counted by {@link #countFailuresByIdentifierAndDevice} instead (WS1-1b).
+     */
     public long countFailuresByIdentifierAndIp(LoginMethod method, String identifier, String clientIp, LocalDateTime after) {
         if (identifier == null) {
             return 0;
         }
         if (clientIp == null) {
-            return count("SELECT COUNT(*) FROM [login_attempts] WHERE [method] = ? AND [identifier] = ? AND [client_ip] IS NULL AND [attempted_at] > ? AND " + FAILURE,
+            return count("SELECT COUNT(*) FROM [login_attempts] WHERE [method] = ? AND [identifier] = ? AND [client_ip] IS NULL AND [device_id] IS NULL AND [attempted_at] > ? AND " + FAILURE,
                     method.name(), identifier, after);
         }
-        return count("SELECT COUNT(*) FROM [login_attempts] WHERE [method] = ? AND [identifier] = ? AND [client_ip] = ? AND [attempted_at] > ? AND " + FAILURE,
+        return count("SELECT COUNT(*) FROM [login_attempts] WHERE [method] = ? AND [identifier] = ? AND [client_ip] = ? AND [device_id] IS NULL AND [attempted_at] > ? AND " + FAILURE,
                 method.name(), identifier, clientIp, after);
+    }
+
+    /** PIN_PAIR keyed by cashier + POS till (WS1-1b). */
+    public long countFailuresByIdentifierAndDevice(LoginMethod method, String identifier, String deviceId, LocalDateTime after) {
+        if (identifier == null || deviceId == null) {
+            return 0;
+        }
+        return count("SELECT COUNT(*) FROM [login_attempts] WHERE [method] = ? AND [identifier] = ? AND [device_id] = ? AND [attempted_at] > ? AND " + FAILURE,
+                method.name(), identifier, deviceId, after);
+    }
+
+    /** DEVICE_PIN: failures on one POS till, across all accounts and browsers (WS1-1b). */
+    public long countFailuresByDevice(LoginMethod method, String deviceId, LocalDateTime after) {
+        if (deviceId == null) {
+            return 0;
+        }
+        return count("SELECT COUNT(*) FROM [login_attempts] WHERE [method] = ? AND [device_id] = ? AND [attempted_at] > ? AND " + FAILURE,
+                method.name(), deviceId, after);
+    }
+
+    /** As {@link #failureAtByIdentifierAndIp}, keyed by cashier + till. */
+    public Optional<LocalDateTime> failureAtByIdentifierAndDevice(LoginMethod method, String identifier, String deviceId,
+                                                                  LocalDateTime after, long offset) {
+        if (identifier == null || deviceId == null) {
+            return Optional.empty();
+        }
+        return firstTime("SELECT [attempted_at] FROM [login_attempts] WHERE [method] = ? AND [identifier] = ? AND [device_id] = ? AND [attempted_at] > ? AND "
+                + FAILURE + " ORDER BY [attempted_at], [id] OFFSET ? ROWS FETCH NEXT 1 ROWS ONLY", method.name(), identifier, deviceId, after, offset);
+    }
+
+    /** As {@link #failureAtByIdentifierAndIp}, keyed by till (DEVICE_PIN). */
+    public Optional<LocalDateTime> failureAtByDevice(LoginMethod method, String deviceId, LocalDateTime after, long offset) {
+        if (deviceId == null) {
+            return Optional.empty();
+        }
+        return firstTime("SELECT [attempted_at] FROM [login_attempts] WHERE [method] = ? AND [device_id] = ? AND [attempted_at] > ? AND "
+                + FAILURE + " ORDER BY [attempted_at], [id] OFFSET ? ROWS FETCH NEXT 1 ROWS ONLY", method.name(), deviceId, after, offset);
     }
 
     public long countFailuresByUser(LoginMethod method, Long userId, LocalDateTime after) {
@@ -114,10 +171,10 @@ public class LoginProtectionStore {
             return Optional.empty();
         }
         if (clientIp == null) {
-            return firstTime("SELECT [attempted_at] FROM [login_attempts] WHERE [method] = ? AND [identifier] = ? AND [client_ip] IS NULL AND [attempted_at] > ? AND "
+            return firstTime("SELECT [attempted_at] FROM [login_attempts] WHERE [method] = ? AND [identifier] = ? AND [client_ip] IS NULL AND [device_id] IS NULL AND [attempted_at] > ? AND "
                     + FAILURE + " ORDER BY [attempted_at], [id] OFFSET ? ROWS FETCH NEXT 1 ROWS ONLY", method.name(), identifier, after, offset);
         }
-        return firstTime("SELECT [attempted_at] FROM [login_attempts] WHERE [method] = ? AND [identifier] = ? AND [client_ip] = ? AND [attempted_at] > ? AND "
+        return firstTime("SELECT [attempted_at] FROM [login_attempts] WHERE [method] = ? AND [identifier] = ? AND [client_ip] = ? AND [device_id] IS NULL AND [attempted_at] > ? AND "
                 + FAILURE + " ORDER BY [attempted_at], [id] OFFSET ? ROWS FETCH NEXT 1 ROWS ONLY", method.name(), identifier, clientIp, after, offset);
     }
 
@@ -239,7 +296,7 @@ public class LoginProtectionStore {
         var sql = perClientIp ? """
                 WITH f AS (
                     SELECT u.[id] AS [uid], a.[attempted_at] AS [at],
-                           ROW_NUMBER() OVER (PARTITION BY u.[id], a.[client_ip] ORDER BY a.[attempted_at] DESC, a.[id] DESC) AS [rn]
+                           ROW_NUMBER() OVER (PARTITION BY u.[id], COALESCE(a.[device_id], a.[client_ip]) ORDER BY a.[attempted_at] DESC, a.[id] DESC) AS [rn]
                     FROM [login_attempts] a
                     JOIN [users] u ON a.[identifier] = CAST(u.[id] AS NVARCHAR(255))
                     LEFT JOIN [user_auth_state] s ON s.[user_id] = u.[id] AND s.[scope] = ?
@@ -386,13 +443,13 @@ public class LoginProtectionStore {
     private void insert(AttemptRow row) {
         jdbc.update("""
                 INSERT INTO [login_attempts] ([attempted_at], [method], [identifier], [user_id], [client_ip], [remote_addr],
-                    [forwarded_for], [user_agent], [device_id], [outcome], [would_block], [rule_triggered], [pin_non_standard],
-                    [lock_level], [locked_until])
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+                    [forwarded_for], [user_agent], [device_id], [device_credential_id], [outcome], [would_block], [rule_triggered],
+                    [pin_non_standard], [lock_level], [locked_until])
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 row.attemptedAt(), row.method().name(), row.identifier(), row.userId(), row.clientIp(), row.remoteAddr(),
-                row.forwardedFor(), row.userAgent(), row.outcome().name(), row.wouldBlock(), row.ruleTriggered(),
-                row.pinNonStandard(), row.lockLevel(), row.lockedUntil());
+                row.forwardedFor(), row.userAgent(), row.deviceId(), row.deviceCredentialId(), row.outcome().name(),
+                row.wouldBlock(), row.ruleTriggered(), row.pinNonStandard(), row.lockLevel(), row.lockedUntil());
     }
 
     private Optional<LocalDateTime> firstTime(String sql, Object... args) {

@@ -4,10 +4,7 @@ import com.beaconculinary.api.users.UserDto;
 import com.beaconculinary.api.users.UserMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
@@ -21,17 +18,17 @@ public class AuthController {
     private final JwtConfig jwtConfig;
     private final UserMapper userMapper;
     private final AuthService authService;
-    private final boolean cookieSecure;
+    private final RefreshCookies refreshCookies;
 
     public AuthController(
         JwtConfig jwtConfig,
         UserMapper userMapper,
         AuthService authService,
-        @Value("${cookie.secure:true}") boolean cookieSecure) {
+        RefreshCookies refreshCookies) {
         this.jwtConfig = jwtConfig;
         this.userMapper = userMapper;
         this.authService = authService;
-        this.cookieSecure = cookieSecure;
+        this.refreshCookies = refreshCookies;
     }
 
     @PostMapping("/login")
@@ -57,18 +54,27 @@ public class AuthController {
     }
 
     private void addRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
-        var cookie = ResponseCookie.from("refreshToken", refreshToken)
-            .httpOnly(true)
-            .secure(cookieSecure)
-            .sameSite(cookieSecure ? "None" : "Lax")
-            .path("/auth/refresh")
-            .maxAge(Duration.ofSeconds(jwtConfig.getRefreshTokenExpiration()))
-            .build();
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        refreshCookies.issue(response, refreshToken, Duration.ofSeconds(jwtConfig.getRefreshTokenExpiration()));
     }
 
+    /**
+     * Removes the refresh cookie from this browser. Public and idempotent: works without a session or
+     * with an expired access token, and always returns 204. The browser never sends the refresh cookie
+     * here (its path is /auth/refresh), so the token itself isn't revoked. The deviceToken cookie is
+     * left alone.
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletResponse response) {
+        refreshCookies.clear(response);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** A missing cookie gets the same empty 401 as an invalid one (previously 400). */
     @PostMapping("/refresh")
-    public JwtResponse refresh(@CookieValue(value = "refreshToken") String refreshToken) {
+    public JwtResponse refresh(@CookieValue(value = RefreshCookies.NAME, required = false) String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new BadCredentialsException("Missing refresh token");
+        }
         var accessToken = authService.refreshAccessToken(refreshToken);
         return new JwtResponse(accessToken.toString());
     }
