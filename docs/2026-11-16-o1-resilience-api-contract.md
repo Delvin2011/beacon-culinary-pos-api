@@ -1,6 +1,6 @@
 # O1 resilience: API contract
 
-Status: **sales and adjustments idempotency are built** (branch `feature/o1-resilience`, commit `f274c9e`). The order-number, `createdAt` and `/health` sections describe what Steps 2, 4 and 5 deliver; they are marked as such until those steps are committed.
+Status: **idempotency (sections 1–3) and order numbers (section 4) are built** on branch `feature/o1-resilience`. The `createdAt` and `/health` sections describe what Steps 4 and 5 deliver; they are marked as such until those steps are committed.
 
 Audience: the POS till frontend. Everything here is additive: a till that sends none of the new fields behaves exactly as before.
 
@@ -100,9 +100,15 @@ Server setting `pos.require-client-order-id` (environment variable `POS_REQUIRE_
 
 ---
 
-## 4. Order numbers (Step 2, in progress)
+## 4. Order numbers
 
-`orderNumber` stays a per-day integer starting at 1, with no gaps. Concurrent sales from two tills never clash. In the unlikely case of a clash with old data, the server retries once and then answers **409 `ORDER_NUMBER_CONFLICT`**, never 500. That is safe to retry with the same `clientOrderId`.
+`orderNumber` stays a per-day integer starting at 1, with no gaps. Concurrent sales from two tills never clash.
+
+If the server can't number a sale, it answers **409 `ORDER_NUMBER_CONFLICT`**, never 500. That happens if the day's number lock isn't granted within 15 seconds, or if a number clashes twice with old or hand-entered data. Nothing was saved, so retry with the same body and the same `clientOrderId`.
+
+```json
+{ "error": "The order couldn't be numbered right now. Nothing was saved; please try again.", "code": "ORDER_NUMBER_CONFLICT" }
+```
 
 ---
 

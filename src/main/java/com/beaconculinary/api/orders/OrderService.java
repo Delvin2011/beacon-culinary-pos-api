@@ -41,6 +41,7 @@ public class OrderService {
     private final LightMealStockService lightMealStockService;
     private final AppLock appLock;
     private final PosSettings posSettings;
+    private final OrderNumberAllocator orderNumberAllocator;
     private final Clock clock;
 
     static final int IDEMPOTENCY_LOCK_TIMEOUT_MILLIS = 15_000;
@@ -198,8 +199,8 @@ public class OrderService {
             attachPayments(order, request.getPayments(), originalTotal);
         }
 
-        var orderNumber = orderRepository.findMaxOrderNumberForDate(today) + 1;
-        order.setOrderNumber(orderNumber);
+        // O1: MAX+1 under a per-day lock held to commit, so concurrent sales can't share a number.
+        order.setOrderNumber(orderNumberAllocator.next(today));
         order.setOrderKind(complimentary == null ? OrderKind.SALE : OrderKind.COMPLIMENTARY);
         order.setSubtotal(subtotal);
         order.setPreDiscountTotal(preDiscountTotal);

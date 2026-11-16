@@ -19,11 +19,32 @@ import org.springframework.stereotype.Service;
 public class OrderSubmissionService {
     static final String CLIENT_ORDER_ID_INDEX = "UX_orders_client_order_id";
     static final String CLIENT_REQUEST_ID_INDEX = "UX_order_adjustments_client_request_id";
+    static final String ORDER_NUMBER_INDEX = "IX_orders_date_number";
 
     private final OrderService orderService;
     private final OrderAdjustmentService orderAdjustmentService;
 
     public OrderResult submitOrder(CreateOrderRequest request) {
+        try {
+            return createOrReplay(request);
+        } catch (DataIntegrityViolationException e) {
+            // Only reachable if an order was written outside OrderService (old data, a manual
+            // insert): the whole sale rolled back, so one clean retry is safe.
+            if (!violates(e, ORDER_NUMBER_INDEX)) {
+                throw e;
+            }
+        }
+        try {
+            return createOrReplay(request);
+        } catch (DataIntegrityViolationException e) {
+            if (violates(e, ORDER_NUMBER_INDEX)) {
+                throw new OrderNumberConflictException();
+            }
+            throw e;
+        }
+    }
+
+    private OrderResult createOrReplay(CreateOrderRequest request) {
         try {
             return orderService.createOrder(request);
         } catch (DataIntegrityViolationException e) {

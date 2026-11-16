@@ -32,7 +32,14 @@ public class AppLock {
                 .setParameter("timeout", timeoutMillis)
                 .getSingleResult()).intValue();
         if (result < 0) {
-            throw new IllegalStateException("Couldn't take lock " + resource + " (sp_getapplock " + result + ").");
+            throw new LockTimeoutException("Couldn't take lock " + resource + " (sp_getapplock " + result + ").");
+        }
+    }
+
+    /** sp_getapplock didn't grant the lock (timeout -1, cancelled -2, deadlock victim -3, error -999). */
+    public static class LockTimeoutException extends IllegalStateException {
+        public LockTimeoutException(String message) {
+            super(message);
         }
     }
 }

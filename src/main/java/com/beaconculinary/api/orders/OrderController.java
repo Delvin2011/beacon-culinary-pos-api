@@ -64,6 +64,11 @@ public class OrderController {
                 : ResponseEntity.status(HttpStatus.CREATED).body(result.order());
     }
 
+    @ExceptionHandler(OrderNumberConflictException.class)
+    public ResponseEntity<ErrorDto> handleOrderNumberConflict(OrderNumberConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage(), "ORDER_NUMBER_CONFLICT"));
+    }
+
     @ExceptionHandler(IdempotencyConflictException.class)
     public ResponseEntity<ErrorDto> handleIdempotencyConflict(IdempotencyConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage(), "IDEMPOTENCY_CONFLICT"));
