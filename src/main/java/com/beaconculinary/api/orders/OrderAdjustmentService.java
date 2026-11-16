@@ -46,6 +46,7 @@ public class OrderAdjustmentService {
     private final OrderStatusEventPublisher orderStatusEventPublisher;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final OrderAdjustmentRepository orderAdjustmentRepository;
+    private final StationViews stationViews;
     private final AppLock appLock;
     private final PosSettings posSettings;
     private final Clock clock;
@@ -253,7 +254,7 @@ public class OrderAdjustmentService {
 
         if (order.getStatus() == OrderStatus.PENDING || order.getStatus() == OrderStatus.IN_PROGRESS) {
             // Each station display that has this order gets its own view (kitchen and/or bar).
-            applicationEventPublisher.publishEvent(new StationViewChangedEvent(order, OrderEventType.ORDER_UPDATED));
+            applicationEventPublisher.publishEvent(StationViewChangedEvent.of(order, OrderEventType.ORDER_UPDATED, stationViews));
         }
 
         return amount;

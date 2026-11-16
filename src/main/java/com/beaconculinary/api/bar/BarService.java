@@ -9,9 +9,10 @@ import com.beaconculinary.api.orders.OrderSummaryDto;
 import com.beaconculinary.api.orders.StationViewChangedEvent;
 import com.beaconculinary.api.orders.StationViews;
 import lombok.AllArgsConstructor;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Clock;
@@ -48,10 +49,13 @@ public class BarService {
     }
 
     // Sends the bar's view of any order that has a bar part — never the kitchen's lines.
-    @EventListener
+    // O1: only after the transaction commits, so a rolled-back sale or status change never
+    // reaches the display. With no transaction (none today) it sends at once.
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onStationViewChanged(StationViewChangedEvent event) {
-        if (stationViews.has(event.order(), Station.BAR)) {
-            barEventBroadcaster.broadcast(new OrderStatusStreamEvent(event.eventType(), stationViews.view(event.order(), Station.BAR)));
+        var view = event.viewFor(Station.BAR);
+        if (view != null) {
+            barEventBroadcaster.broadcast(new OrderStatusStreamEvent(event.eventType(), view));
         }
     }
 }

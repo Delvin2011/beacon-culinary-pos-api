@@ -25,6 +25,7 @@ public class OrderStatusEventPublisher {
     private final OrderSummaryMapper orderSummaryMapper;
     private final AuthService authService;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final StationViews stationViews;
     private final Clock clock;
 
     @Transactional
@@ -40,7 +41,7 @@ public class OrderStatusEventPublisher {
 
         var eventType = fromStatus == null ? OrderEventType.ORDER_CREATED : OrderEventType.STATUS_CHANGED;
         applicationEventPublisher.publishEvent(new OrderStatusStreamEvent(eventType, orderSummaryMapper.toDto(order), changedAt));
-        applicationEventPublisher.publishEvent(new StationViewChangedEvent(order, eventType));
+        applicationEventPublisher.publishEvent(StationViewChangedEvent.of(order, eventType, stationViews));
     }
 
     /** A station's own status change (KITCHEN or BAR): the audit row, with its station. The
