@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -75,6 +76,14 @@ public class Order {
 
     @Column(name = "print_failed")
     private boolean printFailed = false;
+
+    // O1: the till's idempotency key and the SHA-256 of its normalised request
+    // (RequestFingerprint); both null when the sale was sent without a key.
+    @Column(name = "client_order_id")
+    private UUID clientOrderId;
+
+    @Column(name = "client_request_hash")
+    private byte[] clientRequestHash;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderLine> lines = new ArrayList<>();

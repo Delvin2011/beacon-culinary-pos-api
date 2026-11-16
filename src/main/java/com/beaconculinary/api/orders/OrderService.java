@@ -3,6 +3,7 @@ package com.beaconculinary.api.orders;
 import com.beaconculinary.api.accounts.AccountRepository;
 import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.inventory.LightMealStockService;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
@@ -38,11 +39,32 @@ public class OrderService {
     private final AdminAuthorizationService adminAuthorizationService;
     private final OrderStationService orderStationService;
     private final LightMealStockService lightMealStockService;
+    private final AppLock appLock;
+    private final PosSettings posSettings;
     private final Clock clock;
 
+    static final int IDEMPOTENCY_LOCK_TIMEOUT_MILLIS = 15_000;
+
     @Transactional
-    public OrderDto createOrder(CreateOrderRequest request) {
+    public OrderResult createOrder(CreateOrderRequest request) {
         var currentUser = authService.getCurrentUser();
+        // O1: the idempotency key is checked before anything else (shift, stock, tokens), so a
+        // retry returns the original sale even after the shift has closed and never needs a new
+        // manager PIN. The lock makes a concurrent duplicate wait here until the first commits.
+        var clientOrderId = request.getClientOrderId();
+        byte[] requestHash = null;
+        if (clientOrderId == null) {
+            if (posSettings.requireClientOrderId()) {
+                throw OrderRuleException.clientOrderIdRequired();
+            }
+        } else {
+            requestHash = RequestFingerprint.ofOrder(request);
+            appLock.lock("client-order:" + clientOrderId, IDEMPOTENCY_LOCK_TIMEOUT_MILLIS);
+            var existing = orderRepository.findByClientOrderId(clientOrderId);
+            if (existing.isPresent()) {
+                return OrderResult.replayed(replay(existing.get(), requestHash, currentUser));
+            }
+        }
         // POS Oversight B1: sell on the till's single open shift (the drawer), which the caller
         // must own unless they're an ADMIN; cashier_id below still records who rang it up. The
         // shared lock serialises this against a concurrent close (B3).
@@ -59,6 +81,8 @@ public class OrderService {
         order.setShift(shift);
         order.setCashier(currentUser);
         order.setOrderDate(today);
+        order.setClientOrderId(clientOrderId);
+        order.setClientRequestHash(requestHash);
 
         var subtotal = BigDecimal.ZERO;
         var total = BigDecimal.ZERO;
@@ -203,7 +227,27 @@ public class OrderService {
         // the instant it's paid, with no polling needed on the kitchen side.
         orderStatusEventPublisher.publish(order, null);
 
-        return orderMapper.toDto(order);
+        return OrderResult.created(orderMapper.toDto(order));
+    }
+
+    /** O1 backstop (OrderSubmissionService): the unique index refused a concurrent duplicate, so
+     * read back the sale the first request created. */
+    @Transactional(readOnly = true)
+    public OrderResult replayOrder(CreateOrderRequest request) {
+        var existing = orderRepository.findByClientOrderId(request.getClientOrderId())
+                .orElseThrow(() -> new IllegalStateException("clientOrderId was refused as a duplicate but no order has it."));
+        return OrderResult.replayed(replay(existing, RequestFingerprint.ofOrder(request), authService.getCurrentUser()));
+    }
+
+    /** Same key and same payload, and the caller rang it up or is an ADMIN. */
+    private OrderDto replay(Order existing, byte[] requestHash, User caller) {
+        if (!RequestFingerprint.matches(existing.getClientRequestHash(), requestHash)) {
+            throw new IdempotencyConflictException("clientOrderId was already used for a different sale.");
+        }
+        if (!existing.getCashier().getId().equals(caller.getId()) && caller.getRole() != Role.ADMIN) {
+            throw new IdempotencyConflictException("clientOrderId was already used by another cashier.");
+        }
+        return orderMapper.toDto(existing);
     }
 
     @Transactional(readOnly = true)

@@ -38,6 +38,11 @@ cors:
 board:
   done-display-minutes: ${BOARD_DONE_DISPLAY_MINUTES:10}
 
+# O1: when true, POST /orders needs clientOrderId and POST /orders/{id}/adjustments needs
+# clientRequestId (400 otherwise). Off until every till sends them.
+pos:
+  require-client-order-id: ${POS_REQUIRE_CLIENT_ORDER_ID:false}
+
 # GRV VAT handling: the standard VAT rate, snapshotted onto every GRV line.
 vat:
   standard-rate: 0.15

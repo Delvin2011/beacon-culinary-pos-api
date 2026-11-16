@@ -40,6 +40,14 @@ public class OrderRuleException extends RuntimeException {
         return new OrderRuleException("ACCOUNT_PAYMENT_INVALID", message);
     }
 
+    static OrderRuleException clientOrderIdRequired() {
+        return new OrderRuleException("CLIENT_ORDER_ID_REQUIRED", "clientOrderId is required.");
+    }
+
+    static OrderRuleException clientRequestIdRequired() {
+        return new OrderRuleException("CLIENT_REQUEST_ID_REQUIRED", "clientRequestId is required.");
+    }
+
     static OrderRuleException complimentaryNotRefundable() {
         return new OrderRuleException("COMPLIMENTARY_ORDER_NOT_REFUNDABLE",
                 "Complimentary orders can't be refunded or have extras removed: nothing was paid. Void it while it's still pending.");

@@ -2,10 +2,12 @@ package com.beaconculinary.api.orders;
 
 import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.inventory.LightMealStockService;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
+import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import lombok.AllArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -43,16 +45,36 @@ public class OrderAdjustmentService {
     private final OrderMapper orderMapper;
     private final OrderStatusEventPublisher orderStatusEventPublisher;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final OrderAdjustmentRepository orderAdjustmentRepository;
+    private final AppLock appLock;
+    private final PosSettings posSettings;
     private final Clock clock;
 
     @Transactional
-    public OrderDto adjustOrder(Long orderId, CreateOrderAdjustmentRequest request) {
+    public OrderResult adjustOrder(Long orderId, CreateOrderAdjustmentRequest request) {
         // Step 0, before any token is consumed or anything is written: discounts are now given
         // at checkout (POST /orders), so the after-payment discount is retired. Old DISCOUNT rows
         // stay readable; only creating new ones is refused.
         if (request.getRequestedAction() == OrderAdjustmentRequestedAction.DISCOUNT) {
             throw new OrderRuleException("DISCOUNT_AFTER_PAYMENT_RETIRED",
                     "Discounts after payment are no longer available. Give the discount at checkout instead.");
+        }
+        // O1: before the refusal checks, the token and "already adjusted", so a retried void
+        // returns 200 instead of 409/401. The lock matters here because consumeToken commits on
+        // its own: without it a concurrent duplicate would burn the token and get 401.
+        var clientRequestId = request.getClientRequestId();
+        byte[] requestHash = null;
+        if (clientRequestId == null) {
+            if (posSettings.requireClientOrderId()) {
+                throw OrderRuleException.clientRequestIdRequired();
+            }
+        } else {
+            requestHash = RequestFingerprint.ofAdjustment(orderId, request);
+            appLock.lock("adjustment-request:" + clientRequestId, OrderService.IDEMPOTENCY_LOCK_TIMEOUT_MILLIS);
+            var existing = orderAdjustmentRepository.findByClientRequestId(clientRequestId);
+            if (existing.isPresent()) {
+                return OrderResult.replayed(replay(existing.get(), orderId, requestHash, authService.getCurrentUser()));
+            }
         }
         rejectRefundOfDiscountedOrder(orderId, request);
         rejectRefundOfComplimentaryOrder(orderId, request);
@@ -95,6 +117,8 @@ public class OrderAdjustmentService {
         adjustment.setNote(request.getNote());
         adjustment.setRequestedBy(cashier);
         adjustment.setAuthorizedBy(admin);
+        adjustment.setClientRequestId(clientRequestId);
+        adjustment.setClientRequestHash(requestHash);
 
         if (request.getScope() == null) {
             throw new InvalidOrderRequestException("scope is required.");
@@ -123,7 +147,31 @@ public class OrderAdjustmentService {
 
         order.getAdjustments().add(adjustment);
         orderRepository.save(order);
-        return orderMapper.toDto(order);
+        return OrderResult.created(orderMapper.toDto(order));
+    }
+
+    /** O1 backstop (OrderSubmissionService): the unique index refused a concurrent duplicate, so
+     * read back the order the first request adjusted. */
+    @Transactional(readOnly = true)
+    public OrderResult replayAdjustment(Long orderId, CreateOrderAdjustmentRequest request) {
+        var existing = orderAdjustmentRepository.findByClientRequestId(request.getClientRequestId())
+                .orElseThrow(() -> new IllegalStateException("clientRequestId was refused as a duplicate but no adjustment has it."));
+        return OrderResult.replayed(replay(existing, orderId, RequestFingerprint.ofAdjustment(orderId, request),
+                authService.getCurrentUser()));
+    }
+
+    /** Same key, same order and payload, and the caller requested it or is an ADMIN. */
+    private OrderDto replay(OrderAdjustment existing, Long orderId, byte[] requestHash, User caller) {
+        if (!existing.getOrder().getId().equals(orderId)) {
+            throw new IdempotencyConflictException("clientRequestId was already used for a different order.");
+        }
+        if (!RequestFingerprint.matches(existing.getClientRequestHash(), requestHash)) {
+            throw new IdempotencyConflictException("clientRequestId was already used for a different adjustment.");
+        }
+        if (!existing.getRequestedBy().getId().equals(caller.getId()) && caller.getRole() != Role.ADMIN) {
+            throw new IdempotencyConflictException("clientRequestId was already used by another cashier.");
+        }
+        return orderMapper.toDto(existing.getOrder());
     }
 
     private User resolveAuthorization(CreateOrderAdjustmentRequest request) {

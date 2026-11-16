@@ -7,8 +7,13 @@ import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 public interface OrderAdjustmentRepository extends JpaRepository<OrderAdjustment, Long> {
+    /** O1: the adjustment an earlier request with this idempotency key created. */
+    Optional<OrderAdjustment> findByClientRequestId(UUID clientRequestId);
+
     /** Stage 2.5/4 expected-cash formula's subtraction term — adjustments are attributed to the
      * shift open when they were authorized, which may differ from the order's own shift.
      * Stage 4 Part D narrows this to CASH-payout adjustments only: an ACCOUNT_BALANCE-refunded

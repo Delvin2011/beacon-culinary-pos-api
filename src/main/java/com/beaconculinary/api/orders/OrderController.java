@@ -16,8 +16,11 @@ import java.util.List;
 @RestController
 @RequestMapping("/orders")
 public class OrderController {
+    /** O1: set to "true" on a 200 that replayed an earlier request with the same idempotency key. */
+    public static final String IDEMPOTENT_REPLAY_HEADER = "Idempotent-Replay";
+
     private final OrderService orderService;
-    private final OrderAdjustmentService orderAdjustmentService;
+    private final OrderSubmissionService orderSubmissionService;
     private final AlwaysOnMenuService alwaysOnMenuService;
 
     @PostMapping
@@ -27,10 +30,13 @@ public class OrderController {
         // Defensive: today's always-on options normally exist from the till's menu request. Done
         // here, outside the order's transaction, so it never holds two connections at once.
         alwaysOnMenuService.ensureAlwaysOnOptionsToday();
-        var order = orderService.createOrder(request);
-        var uri = uriBuilder.path("/orders/{id}").buildAndExpand(order.getId()).toUri();
+        var result = orderSubmissionService.submitOrder(request);
+        var uri = uriBuilder.path("/orders/{id}").buildAndExpand(result.order().getId()).toUri();
 
-        return ResponseEntity.created(uri).body(order);
+        // O1: 201 when this call created the sale; 200 when it replayed an earlier one.
+        return result.replayed()
+                ? ResponseEntity.ok().location(uri).header(IDEMPOTENT_REPLAY_HEADER, "true").body(result.order())
+                : ResponseEntity.created(uri).body(result.order());
     }
 
     @GetMapping("/today")
@@ -52,8 +58,15 @@ public class OrderController {
     public ResponseEntity<OrderDto> adjustOrder(
             @PathVariable Long id,
             @Valid @RequestBody CreateOrderAdjustmentRequest request) {
-        var order = orderAdjustmentService.adjustOrder(id, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(order);
+        var result = orderSubmissionService.submitAdjustment(id, request);
+        return result.replayed()
+                ? ResponseEntity.ok().header(IDEMPOTENT_REPLAY_HEADER, "true").body(result.order())
+                : ResponseEntity.status(HttpStatus.CREATED).body(result.order());
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    public ResponseEntity<ErrorDto> handleIdempotencyConflict(IdempotencyConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage(), "IDEMPOTENCY_CONFLICT"));
     }
 
     @ExceptionHandler(OrderNotFoundException.class)
