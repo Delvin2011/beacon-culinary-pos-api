@@ -168,6 +168,21 @@ class OrderIdempotencyIntegrationTests {
     }
 
     @Test
+    void createdAt_isInThe201_equalsTheStoredValue_andTheReplayReturnsTheSame() throws Exception {
+        pos.openShift(cashierToken, "500.00");
+        var key = UUID.randomUUID();
+
+        var created = PosFlowHelper.json(post(cashierToken, sale(key, 2, 130)).andExpect(status().isCreated()));
+        assertThat(created.hasNonNull("createdAt")).as("createdAt in the 201").isTrue();
+        var stored = jdbcTemplate.queryForObject("SELECT created_at FROM orders WHERE id = ?",
+                java.time.LocalDateTime.class, created.get("id").asLong());
+        assertThat(java.time.LocalDateTime.parse(created.get("createdAt").asText())).isEqualTo(stored);
+
+        var replayed = PosFlowHelper.json(post(cashierToken, sale(key, 2, 130)).andExpect(status().isOk()));
+        assertThat(replayed.get("createdAt").asText()).isEqualTo(created.get("createdAt").asText());
+    }
+
+    @Test
     void replay_matchesWhateverTheNumbersAreWrittenAs() throws Exception {
         pos.openShift(cashierToken, "500.00");
         var key = UUID.randomUUID();

@@ -1,6 +1,6 @@
 # O1 resilience: API contract
 
-Status: **idempotency (sections 1–3) and order numbers (section 4) are built** on branch `feature/o1-resilience`. The `createdAt` and `/health` sections describe what Steps 4 and 5 deliver; they are marked as such until those steps are committed.
+Status: **sections 1–5 are built** on branch `feature/o1-resilience`. The `/health` section describes what Step 5 delivers and is marked as such until that step is committed.
 
 Audience: the POS till frontend. Everything here is additive: a till that sends none of the new fields behaves exactly as before.
 
@@ -112,9 +112,9 @@ If the server can't number a sale, it answers **409 `ORDER_NUMBER_CONFLICT`**, n
 
 ---
 
-## 5. `createdAt` on `POST /orders` (Step 4, in progress)
+## 5. `createdAt` on `POST /orders`
 
-`createdAt` will be filled in the 201 response; today it can be null there. The format is unchanged: a UTC date-time **without** a zone suffix, e.g. `"2026-11-16T10:31:07.123"`. Read it as UTC.
+`createdAt` is filled in the 201 response; it used to be null there. It equals the stored value, and a 200 replay returns the same value. The format is unchanged: a UTC date-time **without** a zone suffix, e.g. `"2026-11-16T10:31:07.123"`. Read it as UTC.
 
 ---
 
