@@ -61,8 +61,11 @@ The order of **lines** does matter. Resend the stored request body unchanged.
 
 ### Rules for the till
 
-1. Create the `clientOrderId` **once**, when the cashier presses Pay, and store it with the pending sale.
-2. Resend the **same body with the same id** after a timeout, network error, 5xx or app restart, until you get 201 or 200.
+1. Create the `clientOrderId` **once**, when the cashier presses Confirm and the request body is final, and store the id
+   together with that exact body as the pending sale (in storage that survives a tab close or browser restart).
+2. Resend the **same body with the same id** after a timeout, network error, 5xx, 409 `ORDER_NUMBER_CONFLICT` or app
+   restart, until you get 201 or 200. While the outcome is unknown, don't let the cashier edit the sale or start a new
+   one: an edited sale under a new id would be recorded as a second sale.
 3. Create a **new** id only for a different sale. If the cashier changes the basket or the payment, it's a new sale, so it needs a new id.
 4. Treat **409 `IDEMPOTENCY_CONFLICT`** as a bug or a reused id, never as "retry". Show it and keep the pending sale for a supervisor.
 5. Other errors keep their meaning: 409 `NO_OPEN_SHIFT` / `TILL_IN_USE` / stock, 400 validation, 401 `AUTHORIZATION_INVALID`. Nothing was created, so the same id can be reused once the problem is fixed, as long as the payload is unchanged. If the payload must change, use a new id.
