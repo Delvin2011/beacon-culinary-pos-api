@@ -1,6 +1,6 @@
 # O1 resilience: API contract
 
-Status: **sections 1–5 are built** on branch `feature/o1-resilience`. The `/health` section describes what Step 5 delivers and is marked as such until that step is committed.
+Status: **all sections are built** on branch `feature/o1-resilience` (not yet merged).
 
 Audience: the POS till frontend. Everything here is additive: a till that sends none of the new fields behaves exactly as before.
 
@@ -118,9 +118,9 @@ If the server can't number a sale, it answers **409 `ORDER_NUMBER_CONFLICT`**, n
 
 ---
 
-## 6. `GET /health` (Step 5, in progress)
+## 6. `GET /health`
 
-Public. No token, no device registration, no login protection. Meant for the till's online/offline detection and clock check.
+Public. No token, no device registration, no login protection, and it isn't request-logged. A bearer token or `deviceToken` cookie sent with it is ignored, even if invalid. Meant for the till's online/offline detection and clock check. The response carries `Cache-Control: no-store`.
 
 ```json
 { "status": "UP", "serverTimeUtc": "2026-11-16T10:31:07.123Z" }
@@ -131,4 +131,8 @@ Public. No token, no device registration, no login protection. Meant for the til
 | API and database reachable | **200** | `"UP"` |
 | Database unreachable or slower than 2 s | **503** | `"DOWN"` (`serverTimeUtc` still present) |
 
-The database check is cached for 5 seconds, so polling every few seconds is cheap. To estimate clock drift, compare `serverTimeUtc` with the till's clock, allowing for half the round-trip time.
+The database check is cached for 5 seconds, so polling every few seconds is cheap. A `DOWN` can therefore last up to 5 seconds after the database recovers.
+
+To estimate clock drift, compare `serverTimeUtc` with the till's clock, allowing for half the round-trip time.
+
+A network error or timeout (no response at all) means the till is offline. A 503 means the API is reachable but can't record sales.
