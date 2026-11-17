@@ -50,6 +50,8 @@ TASKS
    - VAT line, only when showVatLine is true AND vatIncludedAmount isn't null (it's null on
      orders from before O2b): "Incl. VAT {vatRate × 100}%: R x.xx" using the server's
      vatIncludedAmount. Never hard-code 15% or work VAT out yourself.
+     Print it on one line under the total. Show the rate without trailing zeros (0.1500 → 15,
+     0.1550 → 15.5), and keep the wording in one constant: the accountant may change it.
    - Payments: method, amount, amountTendered and changeDue (cash), cardReference (card),
      and for ACCOUNT payments the account's name looked up from GET /accounts by accountId
      (there is no account number on the order).
@@ -85,6 +87,18 @@ TASKS
      or "Mark Print Failed").
    - Clearing the browser data resets the auto-print switches (and the till registration).
 
+6. Admin Receipt settings screen
+   - Where: the back-office admin area, ADMIN only (hidden for other roles).
+   - Load with GET /admin/receipt-settings. Save with PUT /admin/receipt-settings, sending
+     every field: start from what GET returned and change only what the admin edited. A
+     field left out is saved as null (contract 2.4).
+   - Fields: receiptTitle, businessName, addressLines (up to 4 inputs), phone, vatNumber,
+     footerText (multi-line), showVatLine (checkbox). Mirror the limits in contract 2.1 and
+     handoff section 7.
+   - Show "Last saved by {updatedBy} at {updatedAt}" (updatedAt is an ISO instant with Z;
+     show local time). Hide the line when both are null.
+   - Show each 400 message under its field; one response can hold several fields.
+
 TESTS
 - The print queue runs the receipt, then the kitchen ticket, including when afterprint never
   fires (the timeout).
@@ -100,6 +114,9 @@ TESTS
   lines.
 - Reprint buttons: local reprint marked "COPY" with no number; buttons gone once the next
   sale starts.
+- VAT rate shown without trailing zeros (0.1500 → 15%).
+- Settings screen: load and save; field errors shown under their fields; receiptTitle kept
+  when not edited; screen hidden for non-ADMIN.
 - Layout snapshot at 72 mm.
 
 FIRST REPLY: the plan only.

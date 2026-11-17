@@ -103,8 +103,9 @@ ADMIN only. No password re-sign-in needed (unlike till management). Replaces all
 | Situation | Response |
 |---|---|
 | Saved | 200, the full shape (2.1) |
-| A value too long, or more than 4 address lines | 400 field map, e.g. `{"addressLines": "At most 4 address lines."}`, `{"vatNumber": "VAT number must be 20 characters or fewer."}` |
+| A value too long, or more than 4 address lines | 400 field map, e.g. `{"addressLines": "At most 4 address lines."}`, `{"vatNumber": "VAT number must be 20 characters or fewer."}`, `{"receiptTitle": "Receipt title must be 50 characters or fewer."}`. One response can hold several fields. |
 | `showVatLine` missing | 400 `{"showVatLine": "showVatLine is required."}` |
+| Not signed in | 401 |
 | Not an ADMIN | 403 |
 
 Settings changes apply to the next receipt printed. Receipts already printed aren't affected; reprints use the settings current at the time of the reprint.
