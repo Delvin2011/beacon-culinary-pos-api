@@ -7,6 +7,7 @@ import com.beaconculinary.api.inventory.LightMealStockService;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
+import com.beaconculinary.api.tills.CurrentTill;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import lombok.AllArgsConstructor;
@@ -50,6 +51,7 @@ public class OrderAdjustmentService {
     private final AppLock appLock;
     private final PosSettings posSettings;
     private final Clock clock;
+    private final CurrentTill currentTill;
 
     @Transactional
     public OrderResult adjustOrder(Long orderId, CreateOrderAdjustmentRequest request) {
@@ -77,6 +79,20 @@ public class OrderAdjustmentService {
                 return OrderResult.replayed(replay(existing.get(), orderId, requestHash, authService.getCurrentUser()));
             }
         }
+        // O2 (contract 4.4): the till checks come before the refund rules and the manager approval, so a
+        // refusal here never burns a single-use token. The cash-out books to the open shift of the till
+        // processing it (R14; it may be a later shift, or another till, than the sale's), which only its
+        // owner or an ADMIN may use (C1). Shared lock as for order creation (POS Oversight B3): a
+        // cash-out must never land on a shift whose close snapshot was computed without it.
+        currentTill.requireRegisteredForPos();
+        var cashier = authService.getCurrentUser();
+        var openShift = shiftRepository.findOpenOnTillWithSharedLock(currentTill.deviceId())
+                .orElseThrow(NoOpenShiftException::new);
+        var owner = openShift.getCashier();
+        if (!owner.getId().equals(cashier.getId()) && cashier.getRole() != Role.ADMIN) {
+            throw new TillInUseException(owner.getName());
+        }
+
         rejectRefundOfDiscountedOrder(orderId, request);
         rejectRefundOfComplimentaryOrder(orderId, request);
 
@@ -100,16 +116,6 @@ public class OrderAdjustmentService {
         if (order.getStatus() == OrderStatus.VOIDED || order.getStatus() == OrderStatus.REFUNDED) {
             throw new OrderAlreadyAdjustedException();
         }
-
-        // Stage 2.5: attribute the cash-out to whichever shift is open right now — may be a
-        // different, later shift than order.shift when the sale and the adjustment happen in
-        // different shifts. Requires an open shift the same way placing an order does. Shared
-        // lock for the same reason as order creation (POS Oversight B3): a cash-out must never
-        // land on a shift whose close snapshot has already been computed without it.
-        var openShift = shiftRepository.findOpenShiftWithSharedLock()
-                .orElseThrow(NoOpenShiftException::new);
-
-        var cashier = authService.getCurrentUser();
 
         var adjustment = new OrderAdjustment();
         adjustment.setOrder(order);

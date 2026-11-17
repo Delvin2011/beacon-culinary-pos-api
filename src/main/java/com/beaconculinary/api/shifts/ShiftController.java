@@ -54,14 +54,9 @@ public class ShiftController {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(com.beaconculinary.api.endofday.EndOfDayErrorDto.of(ex));
     }
 
-    @ExceptionHandler(ShiftAlreadyOpenException.class)
-    public ResponseEntity<ErrorDto> handleShiftAlreadyOpen(ShiftAlreadyOpenException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage()));
-    }
-
     @ExceptionHandler(ShiftAlreadyClosedException.class)
     public ResponseEntity<ErrorDto> handleShiftAlreadyClosed(ShiftAlreadyClosedException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage()));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorDto(ex.getMessage(), "SHIFT_ALREADY_CLOSED"));
     }
 
     @ExceptionHandler(ShiftNotFoundException.class)

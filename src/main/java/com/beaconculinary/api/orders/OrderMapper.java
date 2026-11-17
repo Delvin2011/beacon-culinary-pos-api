@@ -28,6 +28,7 @@ public interface OrderMapper {
     OrderPaymentDto toDto(OrderPayment payment);
 
     @Mapping(target = "shiftId", source = "shift.id")
+    @Mapping(target = "tillCode", source = "shift.tillCode")
     @Mapping(target = "cashierId", source = "cashier.id")
     @Mapping(target = "stations", expression = "java(toStationDtos(order))")
     OrderDto toDto(Order order);

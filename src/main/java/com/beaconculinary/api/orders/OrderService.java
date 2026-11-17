@@ -11,6 +11,7 @@ import com.beaconculinary.api.menu.AlwaysOnMenuService;
 import com.beaconculinary.api.menu.Availability;
 import com.beaconculinary.api.menu.DailyPlanItemStatus;
 import com.beaconculinary.api.shifts.ShiftRepository;
+import com.beaconculinary.api.tills.CurrentTill;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import lombok.AllArgsConstructor;
@@ -43,6 +44,7 @@ public class OrderService {
     private final PosSettings posSettings;
     private final OrderNumberAllocator orderNumberAllocator;
     private final Clock clock;
+    private final CurrentTill currentTill;
 
     static final int IDEMPOTENCY_LOCK_TIMEOUT_MILLIS = 15_000;
 
@@ -66,10 +68,12 @@ public class OrderService {
                 return OrderResult.replayed(replay(existing.get(), requestHash, currentUser));
             }
         }
-        // POS Oversight B1: sell on the till's single open shift (the drawer), which the caller
-        // must own unless they're an ADMIN; cashier_id below still records who rang it up. The
-        // shared lock serialises this against a concurrent close (B3).
-        var shift = shiftRepository.findOpenShiftWithSharedLock().orElseThrow(NoOpenShiftException::new);
+        // O2 R4/R5: sell on the open shift of the till making the request (the unregistered till when
+        // there is no valid till cookie), which the caller must own unless they're an ADMIN (POS
+        // Oversight B1); cashier_id below still records who rang it up. The shared lock serialises
+        // this against a concurrent close (B3).
+        currentTill.requireRegisteredForPos();
+        var shift = shiftRepository.findOpenOnTillWithSharedLock(currentTill.deviceId()).orElseThrow(NoOpenShiftException::new);
         var owner = shift.getCashier();
         if (!owner.getId().equals(currentUser.getId()) && currentUser.getRole() != Role.ADMIN) {
             throw new TillInUseException(owner.getName());
@@ -80,6 +84,7 @@ public class OrderService {
 
         var order = new Order();
         order.setShift(shift);
+        order.setDeviceId(shift.getDeviceId());
         order.setCashier(currentUser);
         order.setOrderDate(today);
         order.setClientOrderId(clientOrderId);

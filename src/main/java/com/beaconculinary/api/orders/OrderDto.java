@@ -13,6 +13,8 @@ public class OrderDto {
     private Integer orderNumber;
     private LocalDate orderDate;
     private Long shiftId;
+    // O2: the till the sale was rung up on (its shift's code); null for the unregistered till and sales before O2.
+    private String tillCode;
     private Long cashierId;
     private OrderStatus status;
     private OrderKind orderKind;
