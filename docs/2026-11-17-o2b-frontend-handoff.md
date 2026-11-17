@@ -34,7 +34,8 @@ Receipt 20261118-0037       Order 37        <- receiptNumber, orderNumber
 Cashier: Thandi Mokoena                     <- cashierName
 ----------------------------------------
 1 x Beef stew                      50.00    <- lines[].name, quantity, lineTotal
-    + Extra beef                   15.00    <- extras[].componentName (skip adjusted)
+    + Extra beef                   15.00    <- extras[].componentName: every extra as sold,
+                                               adjusted ones too, so lines add up to the total
 1 x Still water 500 ml             20.00
 ----------------------------------------
 Discount                          -10.00    <- saleDiscount (skip when 0)
@@ -57,10 +58,26 @@ VAT (15%) included                  9.78       is true and vatIncludedAmount isn
 | `tillCode`, `tillName` | `null` on the unregistered till. Print no till line then. | 4 |
 | `lines[].name`, `extras[].componentName` | The names at sale. Print them as they come. | 4 |
 | `originalTotal` | The amount to print as the total, also on reprints. `total` drops after a void or refund, so don't print it as the receipt's total. | 6 |
+| `extras[].adjusted` | Print adjusted extras like any other: the receipt is a copy of the sale, and its lines must add up to `originalTotal`. To show what was removed later, list `adjustments` separately. | 6 |
+| `payments[].accountId` | The only account detail on an order. Print the account's name from `GET /accounts` (cashiers can read it). There is no account number. | — |
 | Complimentary orders | `orderKind: "COMPLIMENTARY"`: totals and VAT are 0.00. Print the complimentary reason from `complimentary`. | 7 |
 | Reprints | Cashier and till are the original sale's. The person reprinting is in `reprint.reprintedBy`. Business details come from the current settings. | 6 |
 
-## 5. Admin settings screen: validation to mirror
+## 5. Kitchen ticket
+
+- **When to print:** only when at least one line has `station: "KITCHEN"`. Lines with `NONE` (cold drinks and the like) are handed over at payment and never go on a ticket.
+- **What it lists:** the `KITCHEN` lines only, with their extras and quantities. No prices.
+- **Bar items:** `BAR` lines stay on the bar's display screen and get no paper ticket (recommended; change it here if the bar wants paper too).
+- **Header:** a very large `orderNumber`, the local time from `createdAt`, and `tillCode` (when not null).
+- **Notes:** orders and lines have no notes field, so there are none to print.
+
+## 6. Printing again from the till
+
+- **"Print receipt again" and "Print kitchen ticket again"** reprint from the order already on screen, without a server call. They aren't recorded anywhere.
+- **To keep that in check:** offer them only on the completion screen, until the next sale starts, and mark the receipt `COPY` with no number.
+- **Numbered, recorded copies** (`COPY n`) come only from the admin reprint flow (`POST /admin/orders/{id}/reprint-receipt`), which returns `reprint.copyNumber`.
+
+## 7. Admin settings screen: validation to mirror
 
 The backend checks the same rules, and returns a 400 map of field name to message (contract 2.4). Show each message under its field.
 
@@ -76,11 +93,11 @@ The backend checks the same rules, and returns a 400 map of field name to messag
 
 Values are trimmed, and blank means "none".
 
-## 6. Still to confirm (not frontend work)
+## 8. Still to confirm (not frontend work)
 
 The accountant still has to confirm the receipt title ("Tax Invoice" or other) and the `receiptNumber` format. Neither needs a frontend change if they're adjusted: the title is a setting, and the number arrives ready to print.
 
-## 7. Checks before release
+## 9. Checks before release
 
 - [ ] A sale prints with every settings field empty (fresh install).
 - [ ] A sale prints with every field filled, including a 4-line address and a multi-line footer.
@@ -90,3 +107,6 @@ The accountant still has to confirm the receipt title ("Tax Invoice" or other) a
 - [ ] The receipt time is local time, not UTC.
 - [ ] Saving the admin screen without touching `receiptTitle` keeps it.
 - [ ] A 400 from the settings PUT shows the message under the right field.
+- [ ] Adjusted extras still print on a reprint, and the lines add up to `originalTotal`.
+- [ ] No kitchen ticket prints for an order of `NONE` lines only; a mixed order's ticket lists only its `KITCHEN` lines.
+- [ ] A local "Print receipt again" says `COPY` with no number, and the buttons are gone once the next sale starts.
