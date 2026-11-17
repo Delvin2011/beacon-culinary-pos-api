@@ -5,6 +5,7 @@ import com.beaconculinary.api.orders.OrderKind;
 import com.beaconculinary.api.orders.OrderStatus;
 import com.beaconculinary.api.orders.PaymentMethod;
 import com.beaconculinary.api.orders.RefundMethod;
+import com.beaconculinary.api.shifts.ShiftCashCount;
 import com.beaconculinary.api.shifts.ShiftVarianceReasonCode;
 import com.beaconculinary.api.users.UserRefDto;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -37,7 +38,12 @@ public record ShiftActivityDto(
             UserRefDto closedBy,
             ShiftVarianceReasonCode varianceReasonCode,
             String varianceNote,
-            UserRefDto varianceAuthorizedBy) {
+            UserRefDto varianceAuthorizedBy,
+            // O2: the till as it was when the shift opened (null code = the unregistered till).
+            String tillCode,
+            String tillName,
+            boolean forceClosed,
+            ShiftCashCount cashCount) {
     }
 
     /** openingFloat + cashSales - cashRefundsProcessed = expectedCash, always. "Refunds" here is

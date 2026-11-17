@@ -40,19 +40,20 @@ public class DayCloseRules {
     }
 
     /** A shift that opened on a trading day, with its owner. */
-    public record DayShift(long shiftId, String status, String ownerName, String cashCount) {
+    public record DayShift(long shiftId, String status, String ownerName, String cashCount, String tillCode) {
         public boolean open() {
             return "OPEN".equals(status);
         }
 
         public String label() {
-            return "Shift #" + shiftId + " (" + ownerName + ")";
+            // O2: "Shift #412 (Thandi Mokoena, T1)"; shifts on the unregistered till (and before O2) as before.
+            return "Shift #" + shiftId + " (" + ownerName + (tillCode == null ? "" : ", " + tillCode) + ")";
         }
     }
 
     public List<DayShift> shifts(LocalDate tradingDay) {
         return jdbc.query("""
-                SELECT sf.shift_id, s.status, u.name AS owner_name, s.cash_count
+                SELECT sf.shift_id, s.status, u.name AS owner_name, s.cash_count, s.till_code
                 FROM v_shift_facts sf
                 JOIN shifts s ON s.id = sf.shift_id
                 JOIN users u ON u.id = s.cashier_id
@@ -60,7 +61,7 @@ public class DayCloseRules {
                 ORDER BY sf.opened_at_utc, sf.shift_id""",
                 new MapSqlParameterSource("day", java.sql.Date.valueOf(tradingDay)),
                 (rs, i) -> new DayShift(rs.getLong("shift_id"), rs.getString("status"), rs.getString("owner_name"),
-                        rs.getString("cash_count")));
+                        rs.getString("cash_count"), rs.getString("till_code")));
     }
 
     public List<Blocker> blockers(LocalDate tradingDay) {

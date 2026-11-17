@@ -21,6 +21,7 @@ import com.beaconculinary.api.shifts.ShiftCashCalculator;
 import com.beaconculinary.api.shifts.ShiftNotFoundException;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.shifts.ShiftStatus;
+import com.beaconculinary.api.tills.Till;
 import com.beaconculinary.api.users.UserRefDto;
 import lombok.AllArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -125,7 +126,8 @@ public class ShiftActivityService {
         var detail = new ShiftDetail(row.shiftId(), row.owner(), row.displayStatus(), row.openedAt(), row.closedAt(),
                 row.openingFloat(), row.closingCash(), row.expectedCash(), row.variance(), row.orderCount(),
                 UserRefDto.of(shift.getClosedBy()), shift.getVarianceReasonCode(), shift.getVarianceNote(),
-                UserRefDto.of(shift.getVarianceAuthorizedBy()));
+                UserRefDto.of(shift.getVarianceAuthorizedBy()), row.tillCode(), row.tillName(), row.forceClosed(),
+                row.cashCount());
 
         return new ShiftActivityDto(
                 detail,
@@ -152,7 +154,11 @@ public class ShiftActivityService {
                 open ? null : shift.getClosingCash(),
                 expectedCash,
                 open ? null : shift.getVariance(),
-                orderCount);
+                orderCount,
+                shift.getTillCode(),
+                Till.displayName(shift.getDeviceId(), shift.getTillName()),
+                shift.isForceClosed(),
+                shift.getCashCount());
     }
 
     private ShiftDisplayStatus displayStatus(Shift shift, LocalDate today) {

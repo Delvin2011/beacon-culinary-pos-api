@@ -1,5 +1,6 @@
 package com.beaconculinary.api.oversight;
 
+import com.beaconculinary.api.shifts.ShiftCashCount;
 import com.beaconculinary.api.users.UserRefDto;
 
 import java.math.BigDecimal;
@@ -17,5 +18,10 @@ public record ShiftListRowDto(
         BigDecimal closingCash,
         BigDecimal expectedCash,
         BigDecimal variance,
-        long orderCount) {
+        long orderCount,
+        // O2: the till as it was when the shift opened (null code = the unregistered till).
+        String tillCode,
+        String tillName,
+        boolean forceClosed,
+        ShiftCashCount cashCount) {
 }

@@ -1,5 +1,6 @@
 package com.beaconculinary.api.reports;
 
+import com.beaconculinary.api.tills.Till;
 import lombok.AllArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -70,9 +71,20 @@ public class ReportFacts {
                              LocalDateTime openedAtUtc, LocalDateTime closedAtUtc, String ownerName,
                              BigDecimal closingCash, BigDecimal expectedCash, BigDecimal variance,
                              String varianceReasonCode, String varianceAuthorizedByName, String closedByName,
-                             BigDecimal cashSalesAtClose, BigDecimal cashRefundsAtClose) {
+                             BigDecimal cashSalesAtClose, BigDecimal cashRefundsAtClose,
+                             String deviceId, String tillCode, String tillName, String cashCount, boolean forceClosed) {
         public boolean open() {
             return "OPEN".equals(status);
+        }
+
+        /** O2: "T1 · Till 1 (front)", or "Unregistered till", as the till was when the shift opened. */
+        public String tillLabel() {
+            return deviceId == null ? Till.UNREGISTERED_NAME : tillCode + " · " + tillName;
+        }
+
+        /** O2: the drawer was counted (null cash_count can't occur after V107, but reads as counted). */
+        public boolean counted() {
+            return cashCount == null || "COUNTED".equals(cashCount) || "COUNTED_LATE".equals(cashCount);
         }
 
         /** Closed before the V82 snapshot columns existed. */
@@ -192,7 +204,8 @@ public class ReportFacts {
             SELECT sf.shift_id, sf.trading_day, s.status, s.opening_float, s.opened_at, s.closed_at,
                    ou.name AS owner_name, s.closing_cash, s.expected_cash, s.variance, s.variance_reason_code,
                    au.name AS authorized_by_name, cu.name AS closed_by_name,
-                   s.cash_sales_at_close, s.cash_refunds_at_close
+                   s.cash_sales_at_close, s.cash_refunds_at_close,
+                   s.device_id, s.till_code, s.till_name, s.cash_count, s.force_closed
             FROM v_shift_facts sf
             JOIN shifts s ON s.id = sf.shift_id
             JOIN users ou ON ou.id = s.cashier_id
@@ -241,7 +254,32 @@ public class ReportFacts {
                 rs.getString("authorized_by_name"),
                 rs.getString("closed_by_name"),
                 rs.getBigDecimal("cash_sales_at_close"),
-                rs.getBigDecimal("cash_refunds_at_close"));
+                rs.getBigDecimal("cash_refunds_at_close"),
+                rs.getString("device_id"),
+                rs.getString("till_code"),
+                rs.getString("till_name"),
+                rs.getString("cash_count"),
+                rs.getBoolean("force_closed"));
+    }
+
+    /** O2 R14: per shift opened in the range, the cash refunds processed in it on orders sold on another
+     * till (the unregistered till counts as one till). A part of the shift's cash refunds, never extra. */
+    public Map<Long, BigDecimal> cashRefundsOfOtherTills(ReportRange range) {
+        var result = new HashMap<Long, BigDecimal>();
+        jdbc.query("""
+                SELECT a.shift_id, COALESCE(SUM(a.amount), 0) AS amount
+                FROM order_adjustments a
+                JOIN v_shift_facts sf ON sf.shift_id = a.shift_id
+                JOIN shifts s ON s.id = a.shift_id
+                JOIN orders o ON o.id = a.order_id
+                WHERE sf.opened_at_utc >= :from AND sf.opened_at_utc < :to
+                  AND a.refund_method = 'CASH'
+                  AND NOT (o.device_id = s.device_id OR (o.device_id IS NULL AND s.device_id IS NULL))
+                GROUP BY a.shift_id""", rangeParams(range),
+                rs -> {
+                    result.put(rs.getLong("shift_id"), rs.getBigDecimal("amount"));
+                });
+        return result;
     }
 
     private static MapSqlParameterSource rangeParams(ReportRange range) {

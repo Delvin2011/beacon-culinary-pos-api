@@ -477,7 +477,7 @@ class EndOfDayIntegrationTests {
         signOff(fixture.s2);
         run("cash-up-variance", "from=" + MON + "&to=" + TUE + "&signoff=UNSIGNED").andExpect(jsonPath("$.rows").isEmpty());
         run("cash-up-variance", "from=" + MON + "&to=" + TUE)
-                .andExpect(jsonPath("$.meta.definitionVersion").value(4))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(5))
                 .andExpect(jsonPath("$.rows[*].signedOffBy", contains("Canteen Admin", "Canteen Admin", null)))
                 .andExpect(jsonPath("$.rows[0].signedOffAt").isString())
                 .andExpect(jsonPath("$.rows[0]._actions[*].key", contains("OPEN_READING")))

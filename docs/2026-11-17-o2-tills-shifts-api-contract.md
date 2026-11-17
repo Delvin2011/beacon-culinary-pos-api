@@ -565,11 +565,13 @@ Blocker messages now name the till, e.g. `"Shift #412 (Thandi Mokoena, T1) is st
 
 | Report | Change |
 |---|---|
-| Cash-up & Variance | New column `till`; "Not counted" for `UNCOUNTED` and `NO_COUNT_CONFIRMED` shifts; their variance is left out of the totals, with a note saying how many |
-| Cashier reading (shift reading) | Header line "Till" |
+| Cash-up & Variance | New column `till`; for `UNCOUNTED` and `NO_COUNT_CONFIRMED` shifts the `reason` column reads "Not counted" or "Not counted (confirmed)", counted cash and variance are blank and left out of the totals (a report note says so) |
+| Cashier reading (shift reading) | Header line "Till"; a "Cash count" line ("Not counted", "Not counted (confirmed)" or "Counted after close") when it wasn't counted at close |
 | X reading (today, live) | `till` column in the Shifts table; new **Tills** table (below) |
 | Z reading (new Zs only) | `till` column in the Shifts table; new **Tills** table (below) |
 | `GET /admin/shifts`, activity | `tillCode`, `tillName` (8.7) |
+
+**Blank, not 0.00:** wherever counted cash or variance is shown, an uncounted shift shows them empty (`null`), never `0.00`.
 
 **New Z snapshot shape (Z definition version 2).**
 - Zs closed before O2 keep version 1 and are returned exactly as stored (insert-only). The frontend must accept both versions.

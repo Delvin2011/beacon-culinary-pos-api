@@ -229,14 +229,16 @@ class ReportsIntegrationTests {
     void cashUpVariance_matchesFixture() throws Exception {
         run("cash-up-variance", RANGE).andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.category").value("DAILY_STATEMENTS"))
-                .andExpect(jsonPath("$.columns[10].type").value("VARIANCE"))
-                .andExpect(jsonPath("$.meta.definitionVersion").value(4))
-                .andExpect(jsonPath("$.columns[14].key").value("complimentaryMeals"))
-                .andExpect(jsonPath("$.columns[15].key").value("complimentaryValue"))
-                .andExpect(jsonPath("$.columns[16].key").value("signedOffBy"))
-                .andExpect(jsonPath("$.columns[17].key").value("signedOffAt"))
-                .andExpect(jsonPath("$.columns[18].type").value("STATUS"))
-                .andExpect(jsonPath("$.columns[18].statusTones.OVERDUE").value("negative"))
+                // O2: a Till column follows Owner, so the later columns move one place.
+                .andExpect(jsonPath("$.columns[3].key").value("till"))
+                .andExpect(jsonPath("$.columns[11].type").value("VARIANCE"))
+                .andExpect(jsonPath("$.meta.definitionVersion").value(5))
+                .andExpect(jsonPath("$.columns[15].key").value("complimentaryMeals"))
+                .andExpect(jsonPath("$.columns[16].key").value("complimentaryValue"))
+                .andExpect(jsonPath("$.columns[17].key").value("signedOffBy"))
+                .andExpect(jsonPath("$.columns[18].key").value("signedOffAt"))
+                .andExpect(jsonPath("$.columns[19].type").value("STATUS"))
+                .andExpect(jsonPath("$.columns[19].statusTones.OVERDUE").value("negative"))
                 // O10 was rung in S2; cash figures are unchanged.
                 .andExpect(jsonPath("$.rows[*].complimentaryMeals", contains(0, 1, 0)))
                 .andExpect(jsonPath("$.rows[*].complimentaryValue", contains(0.0, 45.0, 0.0)))
@@ -516,13 +518,14 @@ class ReportsIntegrationTests {
             assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("Cash-up & Variance");
             assertThat(sheet.getRow(3).getCell(0).getStringCellValue()).isEqualTo("Amounts include VAT");
             assertThat(sheet.getRow(5).getCell(0).getStringCellValue()).isEqualTo("Trading day");
-            // Data starts on row 6; S2's expected cash (col 8) and variance (col 10) are numeric cells.
-            assertThat(sheet.getRow(7).getCell(8).getNumericCellValue()).isEqualTo(270.0);
-            assertThat(sheet.getRow(7).getCell(10).getNumericCellValue()).isEqualTo(-10.0);
+            // Data starts on row 6; S2's expected cash (col 9) and variance (col 11) are numeric cells
+            // (O2: the Till column is col 3).
+            assertThat(sheet.getRow(7).getCell(9).getNumericCellValue()).isEqualTo(270.0);
+            assertThat(sheet.getRow(7).getCell(11).getNumericCellValue()).isEqualTo(-10.0);
             assertThat(sheet.getRow(6).getCell(0).getLocalDateTimeCellValue().toLocalDate()).isEqualTo(MONDAY);
             // Totals row follows the three data rows.
             assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("Total");
-            assertThat(sheet.getRow(9).getCell(8).getNumericCellValue()).isEqualTo(850.0);
+            assertThat(sheet.getRow(9).getCell(9).getNumericCellValue()).isEqualTo(850.0);
 
             var checks = workbook.getSheet("Checks");
             assertThat(checks).isNotNull();
