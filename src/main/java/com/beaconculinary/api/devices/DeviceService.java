@@ -3,7 +3,10 @@ package com.beaconculinary.api.devices;
 import com.beaconculinary.api.auth.JwtService;
 import com.beaconculinary.api.auth.SignIn;
 import com.beaconculinary.api.auth.protection.ClientIpResolver;
+import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.tills.TillCodes;
+import com.beaconculinary.api.tills.TillProperties;
 import com.beaconculinary.api.users.User;
 import com.beaconculinary.api.users.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,10 +31,18 @@ import java.util.stream.Collectors;
 /**
  * POS till registration (WS1-1b, 3-B). Registering, editing and revoking need an ADMIN signed in
  * with a password within reauth-max-age (decision K2); see the device registration API contract.
+ * O2: a new till gets the lowest free till code and must fit under pos.tills.max-active; an admin can
+ * edit the code (docs/2026-11-17-o2-tills-shifts-api-contract.md, 8.1).
  */
 @Service
 public class DeviceService {
+    /** O2: serialises new-till registration and till-code edits, so two can't take one code or both pass the limit. */
+    static final String TILL_CODES_LOCK = "till-codes";
+    private static final int TILL_CODES_LOCK_TIMEOUT_MILLIS = 15_000;
+
     private final DeviceTrustProperties properties;
+    private final TillProperties tillProperties;
+    private final AppLock appLock;
     private final DeviceStore store;
     private final DeviceCookies cookies;
     private final DeviceAlerts alerts;
@@ -40,9 +51,12 @@ public class DeviceService {
     private final ClientIpResolver clientIpResolver;
     private final Clock clock;
 
-    public DeviceService(DeviceTrustProperties properties, DeviceStore store, DeviceCookies cookies, DeviceAlerts alerts,
+    public DeviceService(DeviceTrustProperties properties, TillProperties tillProperties, AppLock appLock,
+                         DeviceStore store, DeviceCookies cookies, DeviceAlerts alerts,
                          UserRepository userRepository, JwtService jwtService, ClientIpResolver clientIpResolver, Clock clock) {
         this.properties = properties;
+        this.tillProperties = tillProperties;
+        this.appLock = appLock;
         this.store = store;
         this.cookies = cookies;
         this.alerts = alerts;
@@ -54,7 +68,8 @@ public class DeviceService {
 
     public DeviceDtos.Config config() {
         return new DeviceDtos.Config(properties.getMode().name().toLowerCase(Locale.ROOT),
-                properties.isMultiBrowserEnabled(), properties.isRequireSerial());
+                properties.isMultiBrowserEnabled(), properties.isRequireSerial(),
+                tillProperties.getTills().getMaxActive(), tillProperties.getTills().isRequireRegistered());
     }
 
     /** Registers the browser making the request (B9, P1, P2). The token goes only into the cookie. */
@@ -102,8 +117,16 @@ public class DeviceService {
             store.findActiveByAssetTag(assetTag).ifPresent(other -> {
                 throw DeviceException.assetTagInUse(other);
             });
+            // O2 R1/R2: a new till (never a join) must fit under the limit, and gets the lowest free code.
+            appLock.lock(TILL_CODES_LOCK, TILL_CODES_LOCK_TIMEOUT_MILLIS);
+            var maxActive = tillProperties.getTills().getMaxActive();
+            var active = store.countActiveDevices();
+            if (active >= maxActive) {
+                throw DeviceException.tillLimitReached(maxActive, active);
+            }
+            var tillCode = TillCodes.lowestFree(store.activeTillCodes());
             try {
-                deviceId = store.insertDevice(name, serial, assetTag, admin.getId(), admin.getName(), now);
+                deviceId = store.insertDevice(name, serial, assetTag, tillCode, admin.getId(), admin.getName(), now);
             } catch (DuplicateKeyException race) {
                 throw new DeviceException(HttpStatus.CONFLICT, "DEVICE_SERIAL_IN_USE",
                         "This serial number or asset tag was just registered to another till.");
@@ -144,6 +167,7 @@ public class DeviceService {
         var name = requireName(request.getName(), errors);
         var serial = checkSerial(request.getSerialNumber(), errors);
         var assetTag = checkAssetTag(request.getAssetTag(), errors);
+        var tillCode = checkTillCode(request.getTillCode(), errors);
         if (!errors.isEmpty()) {
             throw new DeviceValidationException(errors);
         }
@@ -153,7 +177,13 @@ public class DeviceService {
         store.findActiveByAssetTag(assetTag).filter(other -> !other.id().equals(device.id())).ifPresent(other -> {
             throw DeviceException.assetTagInUse(other);
         });
-        store.updateDevice(device.id(), name, serial, assetTag);
+        if (tillCode != null && !tillCode.equals(device.tillCode())) {
+            appLock.lock(TILL_CODES_LOCK, TILL_CODES_LOCK_TIMEOUT_MILLIS);
+            store.findActiveByTillCode(tillCode).filter(other -> !other.id().equals(device.id())).ifPresent(other -> {
+                throw DeviceException.tillCodeInUse(other);
+            });
+        }
+        store.updateDevice(device.id(), name, serial, assetTag, tillCode != null ? tillCode : device.tillCode());
         return current(device.id());
     }
 
@@ -248,7 +278,7 @@ public class DeviceService {
                 c.createdByName(), UtcTimestamps.toInstant(c.createdAt()), UtcTimestamps.toInstant(c.lastSeenAt()),
                 c.lastSeenIp(), c.revokedByName(), UtcTimestamps.toInstant(c.revokedAt()), c.revokeReason(),
                 c.id().equals(context.credentialId()) && context.valid())).toList();
-        return new DeviceDtos.Device(device.id(), device.name(), device.type(), device.serialNumber(), device.assetTag(),
+        return new DeviceDtos.Device(device.id(), device.name(), device.tillCode(), device.type(), device.serialNumber(), device.assetTag(),
                 device.status(), device.registeredByName(), UtcTimestamps.toInstant(device.registeredAt()),
                 device.revokedByName(), UtcTimestamps.toInstant(device.revokedAt()), device.revokeReason(),
                 device.id().equals(context.deviceId()) && context.valid(), credentialDtos);
@@ -294,6 +324,18 @@ public class DeviceService {
             errors.put("assetTag", "Asset tag must be 100 characters or fewer.");
         }
         return tag;
+    }
+
+    /** O2 R1: null (field omitted) keeps the code; anything else must be a valid code once trimmed and upper-cased. */
+    private static String checkTillCode(String raw, Map<String, String> errors) {
+        if (raw == null) {
+            return null;
+        }
+        var code = TillCodes.normalise(raw);
+        if (!TillCodes.isValid(code)) {
+            errors.put("tillCode", "Till code must be 1–10 characters: letters A–Z, digits and hyphens.");
+        }
+        return code;
     }
 
     private static String reason(DeviceRequests.Revoke request) {

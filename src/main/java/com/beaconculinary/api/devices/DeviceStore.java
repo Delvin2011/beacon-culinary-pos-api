@@ -23,7 +23,7 @@ public class DeviceStore {
         this.jdbc = jdbc;
     }
 
-    public record DeviceRow(String id, String name, String type, String serialNumber, String assetTag, String status,
+    public record DeviceRow(String id, String name, String tillCode, String type, String serialNumber, String assetTag, String status,
                             String registeredByName, LocalDateTime registeredAt, String revokedByName,
                             LocalDateTime revokedAt, String revokeReason) {
         public boolean active() {
@@ -50,7 +50,7 @@ public class DeviceStore {
     }
 
     private static final RowMapper<DeviceRow> DEVICE = (rs, i) -> new DeviceRow(
-            id(rs.getString("id")), rs.getString("name"), rs.getString("device_type"), rs.getString("serial_number"),
+            id(rs.getString("id")), rs.getString("name"), rs.getString("till_code"), rs.getString("device_type"), rs.getString("serial_number"),
             rs.getString("asset_tag"), rs.getString("status"), rs.getString("registered_by_name"),
             rs.getObject("registered_at", LocalDateTime.class), rs.getString("revoked_by_name"),
             rs.getObject("revoked_at", LocalDateTime.class), rs.getString("revoke_reason"));
@@ -61,7 +61,7 @@ public class DeviceStore {
             rs.getObject("last_seen_at", LocalDateTime.class), rs.getString("last_seen_ip"),
             rs.getString("revoked_by_name"), rs.getObject("revoked_at", LocalDateTime.class), rs.getString("revoke_reason"));
 
-    private static final String DEVICE_COLUMNS = "[id], [name], [device_type], [serial_number], [asset_tag], [status], "
+    private static final String DEVICE_COLUMNS = "[id], [name], [till_code], [device_type], [serial_number], [asset_tag], [status], "
             + "[registered_by_name], [registered_at], [revoked_by_name], [revoked_at], [revoke_reason]";
     private static final String CREDENTIAL_COLUMNS = "[id], [device_id], [browser_label], [status], [created_by_name], "
             + "[created_at], [last_seen_at], [last_seen_ip], [revoked_by_name], [revoked_at], [revoke_reason]";
@@ -102,6 +102,26 @@ public class DeviceStore {
                 DEVICE, assetTag).stream().findFirst();
     }
 
+    public Optional<DeviceRow> findActiveByTillCode(String tillCode) {
+        if (tillCode == null) {
+            return Optional.empty();
+        }
+        return jdbc.query("SELECT " + DEVICE_COLUMNS + " FROM [devices] WHERE [status] = 'ACTIVE' AND [till_code] = ?",
+                DEVICE, tillCode).stream().findFirst();
+    }
+
+    /** O2 R2: active tills, with or without a browser. */
+    public int countActiveDevices() {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM [devices] WHERE [status] = 'ACTIVE'", Integer.class);
+        return count == null ? 0 : count;
+    }
+
+    /** O2 R1: the codes active tills hold. */
+    public List<String> activeTillCodes() {
+        return jdbc.queryForList("SELECT [till_code] FROM [devices] WHERE [status] = 'ACTIVE' AND [till_code] IS NOT NULL",
+                String.class);
+    }
+
     public List<DeviceRow> listDevices() {
         return jdbc.query("SELECT " + DEVICE_COLUMNS + " FROM [devices] ORDER BY [registered_at] DESC, [name]", DEVICE);
     }
@@ -131,13 +151,14 @@ public class DeviceStore {
 
     // ---- writes ----
 
-    public String insertDevice(String name, String serial, String assetTag, long by, String byName, LocalDateTime now) {
+    public String insertDevice(String name, String serial, String assetTag, String tillCode, long by, String byName,
+                               LocalDateTime now) {
         var id = UUID.randomUUID().toString();
         jdbc.update("""
-                INSERT INTO [devices] ([id], [name], [device_type], [serial_number], [asset_tag], [status],
+                INSERT INTO [devices] ([id], [name], [till_code], [device_type], [serial_number], [asset_tag], [status],
                     [registered_by], [registered_by_name], [registered_at])
-                VALUES (?, ?, 'POS', ?, ?, 'ACTIVE', ?, ?, ?)
-                """, id, name, serial, assetTag, by, byName, now);
+                VALUES (?, ?, ?, 'POS', ?, ?, 'ACTIVE', ?, ?, ?)
+                """, id, name, tillCode, serial, assetTag, by, byName, now);
         return id;
     }
 
@@ -163,9 +184,9 @@ public class DeviceStore {
                 """, now, ip, credentialId, notSeenSince) > 0;
     }
 
-    public void updateDevice(String id, String name, String serial, String assetTag) {
-        jdbc.update("UPDATE [devices] SET [name] = ?, [serial_number] = ?, [asset_tag] = ? WHERE [id] = ?",
-                name, serial, assetTag, id);
+    public void updateDevice(String id, String name, String serial, String assetTag, String tillCode) {
+        jdbc.update("UPDATE [devices] SET [name] = ?, [serial_number] = ?, [asset_tag] = ?, [till_code] = ? WHERE [id] = ?",
+                name, serial, assetTag, tillCode, id);
     }
 
     public void updateBrowserLabel(String credentialId, String label) {

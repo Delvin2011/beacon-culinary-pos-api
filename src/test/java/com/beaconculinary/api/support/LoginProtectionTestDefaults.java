@@ -29,7 +29,11 @@ public class LoginProtectionTestDefaults implements EnvironmentPostProcessor {
                 "security.login-protection.mode", "off",
                 "security.device-trust.mode", "off",
                 "security.device-trust.multi-browser-enabled", "false",
-                "security.device-trust.require-serial", "true"));
+                "security.device-trust.require-serial", "true",
+                // O2: tests share one database and register tills freely, so the active-till limit is
+                // pinned high; O2TillCodeIntegrationTests sets it back to 3. require-registered stays off.
+                "pos.tills.max-active", "1000",
+                "pos.tills.require-registered", "false"));
         var sources = environment.getPropertySources();
         if (sources.contains(INLINED_TEST_PROPERTIES)) {
             sources.addAfter(INLINED_TEST_PROPERTIES, source);

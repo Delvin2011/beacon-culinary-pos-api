@@ -21,6 +21,8 @@ public final class DeviceRequests {
         private String name;
         private String serialNumber;
         private String assetTag;
+        /** O2: optional; null keeps the till's code. */
+        private String tillCode;
     }
 
     @Data
