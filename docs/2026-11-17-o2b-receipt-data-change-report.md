@@ -70,7 +70,8 @@ These fields appear wherever an order is returned: in the 201 from `POST /orders
 - `src/test/java/com/beaconculinary/api/orders/O2bOrderReceiptIntegrationTests.java`
 - `src/test/java/com/beaconculinary/api/receipts/O2bReceiptSettingsIntegrationTests.java`
 
-**Modified (4)**
+**Modified (5)**
+- `docs/2026-11-17-o2-tills-shifts-api-contract.md` (a pointer to the O2b contract)
 - `src/main/java/com/beaconculinary/api/orders/Order.java`
 - `src/main/java/com/beaconculinary/api/orders/OrderDto.java`
 - `src/main/java/com/beaconculinary/api/orders/OrderMapper.java`
