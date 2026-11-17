@@ -10,6 +10,8 @@ All three still apply except where this document changes them.
 
 **Status:** the contract to build against. Nothing here is implemented yet.
 
+**See also:** `docs/2026-11-17-o2b-receipt-data-api-contract.md` (O2b): receipt settings, plus `vatRate`, `vatIncludedAmount`, `cashierName` and `tillName` on orders.
+
 **The goal:**
 - Up to three registered tills (T1, T2, T3) trade at once, each with its own shift, float and drawer.
 - A cashier has one open shift, on one till, and one active POS session.
