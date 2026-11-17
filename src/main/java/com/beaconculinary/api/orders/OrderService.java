@@ -3,13 +3,17 @@ package com.beaconculinary.api.orders;
 import com.beaconculinary.api.accounts.AccountRepository;
 import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.inventory.LightMealStockService;
+import com.beaconculinary.api.inventory.VatSettings;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.AlwaysOnMenuService;
 import com.beaconculinary.api.menu.Availability;
 import com.beaconculinary.api.menu.DailyPlanItemStatus;
 import com.beaconculinary.api.shifts.ShiftRepository;
+import com.beaconculinary.api.sessions.SessionGuard;
+import com.beaconculinary.api.tills.CurrentTill;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import lombok.AllArgsConstructor;
@@ -38,15 +42,44 @@ public class OrderService {
     private final AdminAuthorizationService adminAuthorizationService;
     private final OrderStationService orderStationService;
     private final LightMealStockService lightMealStockService;
+    private final AppLock appLock;
+    private final PosSettings posSettings;
+    private final OrderNumberAllocator orderNumberAllocator;
     private final Clock clock;
+    private final CurrentTill currentTill;
+    private final SessionGuard sessionGuard;
+    private final VatSettings vatSettings;
+
+    static final int IDEMPOTENCY_LOCK_TIMEOUT_MILLIS = 15_000;
 
     @Transactional
-    public OrderDto createOrder(CreateOrderRequest request) {
+    public OrderResult createOrder(CreateOrderRequest request) {
         var currentUser = authService.getCurrentUser();
-        // POS Oversight B1: sell on the till's single open shift (the drawer), which the caller
-        // must own unless they're an ADMIN; cashier_id below still records who rang it up. The
-        // shared lock serialises this against a concurrent close (B3).
-        var shift = shiftRepository.findOpenShiftWithSharedLock().orElseThrow(NoOpenShiftException::new);
+        // O1: the idempotency key is checked before anything else (shift, stock, tokens), so a
+        // retry returns the original sale even after the shift has closed and never needs a new
+        // manager PIN. The lock makes a concurrent duplicate wait here until the first commits.
+        var clientOrderId = request.getClientOrderId();
+        byte[] requestHash = null;
+        if (clientOrderId == null) {
+            if (posSettings.requireClientOrderId()) {
+                throw OrderRuleException.clientOrderIdRequired();
+            }
+        } else {
+            requestHash = RequestFingerprint.ofOrder(request);
+            appLock.lock("client-order:" + clientOrderId, IDEMPOTENCY_LOCK_TIMEOUT_MILLIS);
+            var existing = orderRepository.findByClientOrderId(clientOrderId);
+            if (existing.isPresent()) {
+                return OrderResult.replayed(replay(existing.get(), requestHash, currentUser));
+            }
+        }
+        // O2 R7: after the replay lookup (an ended session can still collect its sale), before anything new.
+        sessionGuard.requireActive();
+        // O2 R4/R5: sell on the open shift of the till making the request (the unregistered till when
+        // there is no valid till cookie), which the caller must own unless they're an ADMIN (POS
+        // Oversight B1); cashier_id below still records who rang it up. The shared lock serialises
+        // this against a concurrent close (B3).
+        currentTill.requireRegisteredForPos();
+        var shift = shiftRepository.findOpenOnTillWithSharedLock(currentTill.deviceId()).orElseThrow(NoOpenShiftException::new);
         var owner = shift.getCashier();
         if (!owner.getId().equals(currentUser.getId()) && currentUser.getRole() != Role.ADMIN) {
             throw new TillInUseException(owner.getName());
@@ -57,8 +90,11 @@ public class OrderService {
 
         var order = new Order();
         order.setShift(shift);
+        order.setDeviceId(shift.getDeviceId());
         order.setCashier(currentUser);
         order.setOrderDate(today);
+        order.setClientOrderId(clientOrderId);
+        order.setClientRequestHash(requestHash);
 
         var subtotal = BigDecimal.ZERO;
         var total = BigDecimal.ZERO;
@@ -95,6 +131,7 @@ public class OrderService {
             var line = new OrderLine();
             line.setOrder(order);
             line.setDailyMealOption(option);
+            line.setName(option.getName());
             line.setStation(meal.getStation());
             line.setUnitPrice(option.getPrice());
             line.setQuantity(lineRequest.getQuantity());
@@ -122,6 +159,7 @@ public class OrderService {
                 var extra = new OrderLineExtra();
                 extra.setOrderLine(line);
                 extra.setDailyComponentStock(stock);
+                extra.setComponentName(stock.getComponentCatalog().getName());
                 extra.setPriceDelta(stock.getExtraPrice());
                 extra.setQuantity(extraRequest.getQuantity());
                 var extraLineTotal = stock.getExtraPrice().multiply(BigDecimal.valueOf(extraRequest.getQuantity()));
@@ -174,14 +212,19 @@ public class OrderService {
             attachPayments(order, request.getPayments(), originalTotal);
         }
 
-        var orderNumber = orderRepository.findMaxOrderNumberForDate(today) + 1;
-        order.setOrderNumber(orderNumber);
+        // O1: MAX+1 under a per-day lock held to commit, so concurrent sales can't share a number.
+        order.setOrderNumber(orderNumberAllocator.next(today));
         order.setOrderKind(complimentary == null ? OrderKind.SALE : OrderKind.COMPLIMENTARY);
         order.setSubtotal(subtotal);
         order.setPreDiscountTotal(preDiscountTotal);
         order.setSaleDiscount(saleDiscount);
         order.setOriginalTotal(originalTotal);
         order.setTotal(originalTotal);
+        // O2b: the VAT included in the sale as rung (after a discount at sale, 0 for complimentary),
+        // stored once and never recomputed (VatRule; the offline till uses the same rule).
+        var vatRate = vatSettings.standardRate();
+        order.setVatRate(VatRule.storedRate(vatRate));
+        order.setVatIncludedAmount(VatRule.includedVat(originalTotal, vatRate));
         if (discount != null) {
             discount.setOrder(order);
             order.setDiscount(discount);
@@ -203,7 +246,27 @@ public class OrderService {
         // the instant it's paid, with no polling needed on the kitchen side.
         orderStatusEventPublisher.publish(order, null);
 
-        return orderMapper.toDto(order);
+        return OrderResult.created(orderMapper.toDto(order));
+    }
+
+    /** O1 backstop (OrderSubmissionService): the unique index refused a concurrent duplicate, so
+     * read back the sale the first request created. */
+    @Transactional(readOnly = true)
+    public OrderResult replayOrder(CreateOrderRequest request) {
+        var existing = orderRepository.findByClientOrderId(request.getClientOrderId())
+                .orElseThrow(() -> new IllegalStateException("clientOrderId was refused as a duplicate but no order has it."));
+        return OrderResult.replayed(replay(existing, RequestFingerprint.ofOrder(request), authService.getCurrentUser()));
+    }
+
+    /** Same key and same payload, and the caller rang it up or is an ADMIN. */
+    private OrderDto replay(Order existing, byte[] requestHash, User caller) {
+        if (!RequestFingerprint.matches(existing.getClientRequestHash(), requestHash)) {
+            throw new IdempotencyConflictException("clientOrderId was already used for a different sale.");
+        }
+        if (!existing.getCashier().getId().equals(caller.getId()) && caller.getRole() != Role.ADMIN) {
+            throw new IdempotencyConflictException("clientOrderId was already used by another cashier.");
+        }
+        return orderMapper.toDto(existing);
     }
 
     @Transactional(readOnly = true)
@@ -221,6 +284,7 @@ public class OrderService {
 
     @Transactional
     public OrderDto markPrintFailed(Long id) {
+        sessionGuard.requireActive();
         var order = orderRepository.findById(id).orElseThrow(OrderNotFoundException::new);
         order.setPrintFailed(true);
         orderRepository.save(order);

@@ -85,6 +85,21 @@ public class DeviceException extends RuntimeException {
         return new DeviceException(HttpStatus.CONFLICT, "DEVICE_REVOKED", "This till or browser has been revoked.");
     }
 
+    /** O2 R2: a new till beyond pos.tills.max-active. */
+    public static DeviceException tillLimitReached(int maxActive, int activeCount) {
+        var details = new LinkedHashMap<String, Object>();
+        details.put("maxActive", maxActive);
+        details.put("activeCount", activeCount);
+        return new DeviceException(HttpStatus.CONFLICT, "TILL_LIMIT_REACHED", "This site already has " + activeCount
+                + " active tills, the most allowed. Revoke one before registering another.", details);
+    }
+
+    /** O2 R1: another active till has this code. */
+    public static DeviceException tillCodeInUse(DeviceStore.DeviceRow device) {
+        return new DeviceException(HttpStatus.CONFLICT, "TILL_CODE_IN_USE",
+                "Another active till already uses " + device.tillCode() + ".", deviceDetails(device));
+    }
+
     private static Map<String, Object> deviceDetails(DeviceStore.DeviceRow device) {
         var details = new LinkedHashMap<String, Object>();
         details.put("deviceId", device.id());

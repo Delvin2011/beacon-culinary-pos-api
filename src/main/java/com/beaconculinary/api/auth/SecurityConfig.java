@@ -66,8 +66,9 @@ public class SecurityConfig {
         cors.setAllowedOrigins(allowedOrigins);
         cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cors.setAllowedHeaders(List.of("*"));
-        // WS1-1: lets the cross-origin frontend read Retry-After on a 429.
-        cors.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER));
+        // WS1-1: lets the cross-origin frontend read Retry-After on a 429. O1: and the
+        // Idempotent-Replay header on a 200 that replayed an earlier sale or adjustment.
+        cors.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER, "Idempotent-Replay"));
         cors.setAllowCredentials(true);
 
         var source = new UrlBasedCorsConfigurationSource();

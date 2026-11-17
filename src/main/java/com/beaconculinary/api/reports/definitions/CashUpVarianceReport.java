@@ -7,6 +7,7 @@ import com.beaconculinary.api.endofday.ShiftSignoffs;
 import com.beaconculinary.api.reports.CheckStatus;
 import com.beaconculinary.api.reports.ColumnTotal;
 import com.beaconculinary.api.reports.ColumnType;
+import com.beaconculinary.api.reports.EndOfDayStatements;
 import com.beaconculinary.api.reports.ParamType;
 import com.beaconculinary.api.reports.ReportCategory;
 import com.beaconculinary.api.reports.ReportCheck;
@@ -87,7 +88,8 @@ public class CashUpVarianceReport implements ReportDefinition {
      * open the shift's Cashier Reading). */
     @Override
     public int definitionVersion() {
-        return 4;
+        // 5 (O2): a Till column after Owner; "Not counted" reasons for shifts closed without a count.
+        return 5;
     }
 
     @Override
@@ -101,6 +103,8 @@ public class CashUpVarianceReport implements ReportDefinition {
                         + "changes as it trades. Overdue means a shift is still open from an earlier day.",
                 "Variance is counted cash minus expected cash: negative means the drawer was short, positive means over.",
                 "Counted cash and variance totals cover closed shifts only.",
+                "A shift force-closed without a cash count shows \"Not counted\": its counted cash and variance are "
+                        + "blank and left out of the totals.",
                 "Complimentary meals are counted in the shift they were rung in.",
                 SalesSummaryReport.COMPLIMENTARY_NOTE);
     }
@@ -124,6 +128,7 @@ public class CashUpVarianceReport implements ReportDefinition {
                 ReportColumn.of("tradingDay", "Trading day", ColumnType.DATE, ColumnTotal.LABEL),
                 ReportColumn.of("shiftId", "Shift #", ColumnType.INT, ColumnTotal.NONE),
                 ReportColumn.of("owner", "Owner", ColumnType.TEXT, ColumnTotal.LABEL),
+                ReportColumn.of("till", "Till", ColumnType.TEXT, ColumnTotal.NONE),
                 ReportColumn.of("openedAt", "Opened", ColumnType.DATETIME, ColumnTotal.NONE),
                 ReportColumn.of("closedAt", "Closed", ColumnType.DATETIME, ColumnTotal.NONE),
                 ReportColumn.of("openingFloat", "Opening float", ColumnType.MONEY, ColumnTotal.SUM),
@@ -163,15 +168,18 @@ public class CashUpVarianceReport implements ReportDefinition {
             row.put("tradingDay", shift.tradingDay());
             row.put("shiftId", shift.shiftId());
             row.put("owner", shift.ownerName());
+            row.put("till", shift.tillLabel());
             row.put("openedAt", UtcTimestamps.toInstant(shift.openedAtUtc()));
             row.put("closedAt", open ? null : UtcTimestamps.toInstant(shift.closedAtUtc()));
             row.put("openingFloat", ReportValues.money(shift.openingFloat()));
             row.put("cashSales", ReportValues.money(cash.cashSales()));
             row.put("cashRefunds", ReportValues.money(cash.cashRefunds()));
             row.put("expectedCash", ReportValues.money(cash.expectedCash()));
-            row.put("countedCash", open ? null : ReportValues.money(shift.closingCash()));
-            row.put("variance", open ? null : ReportValues.money(shift.variance()));
-            row.put("reason", ShiftVarianceReasonCode.labelOf(shift.varianceReasonCode()));
+            row.put("countedCash", open ? null : ReportValues.moneyOrNull(shift.closingCash()));
+            row.put("variance", open ? null : ReportValues.moneyOrNull(shift.variance()));
+            // O2: a shift force-closed without a count says so instead of a variance reason.
+            row.put("reason", !open && !shift.counted() ? EndOfDayStatements.cashCountLabel(shift.cashCount())
+                    : ShiftVarianceReasonCode.labelOf(shift.varianceReasonCode()));
             row.put("authorisedBy", shift.varianceAuthorizedByName());
             row.put("closedBy", open ? null : shift.closedByName());
             var complimentary = complimentaryByShift.getOrDefault(shift.shiftId(), ReportFacts.ComplimentaryFacts.none(null));

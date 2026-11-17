@@ -381,6 +381,6 @@ Sign-in attempts record the till (`deviceId`) and browser (`credentialId`) when 
 
 Not planned now; listed so they are not forgotten.
 
-- **This till's own name before sign-in** ("This till: {name}" on the POS login screen). Today only `GET /admin/devices` (ADMIN) returns `thisDevice`. An optional public endpoint could return `{deviceId, name}` for the browser's own valid registration, and 204 or 404 otherwise. Decide whether showing the name before sign-in is acceptable.
+- **This till's own name before sign-in** ("This till: {name}" on the POS login screen). **Delivered in O2:** `GET /pos/till-status` (public) returns this till's code and name; see `docs/2026-11-17-o2-tills-shifts-api-contract.md`, section 7.1. Original note: today only `GET /admin/devices` (ADMIN) returns `thisDevice`. An optional public endpoint could return `{deviceId, name}` for the browser's own valid registration, and 204 or 404 otherwise. Decide whether showing the name before sign-in is acceptable.
 - **Refresh-token revocation** on logout or on revoking a till: see go-live checklist item 14.
-- **Tying cashier sessions to a till** (`/orders/**`, `/shifts/**`): WS1-1c, see section 4.
+- **Tying cashier sessions to a till** (`/orders/**`, `/shifts/**`): WS1-1c, see section 4. **Delivered in O2:** per-till shifts and server-side sessions (O2 contract, sections 4 and 8.5).

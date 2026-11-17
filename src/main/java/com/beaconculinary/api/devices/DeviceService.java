@@ -1,17 +1,19 @@
 package com.beaconculinary.api.devices;
 
-import com.beaconculinary.api.auth.JwtService;
-import com.beaconculinary.api.auth.SignIn;
+import com.beaconculinary.api.auth.RecentPasswordCheck;
 import com.beaconculinary.api.auth.protection.ClientIpResolver;
+import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.sessions.SessionEndReason;
+import com.beaconculinary.api.sessions.SessionStore;
+import com.beaconculinary.api.tills.TillCodes;
+import com.beaconculinary.api.tills.TillProperties;
 import com.beaconculinary.api.users.User;
-import com.beaconculinary.api.users.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,38 +25,51 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
  * POS till registration (WS1-1b, 3-B). Registering, editing and revoking need an ADMIN signed in
  * with a password within reauth-max-age (decision K2); see the device registration API contract.
+ * O2: a new till gets the lowest free till code and must fit under pos.tills.max-active; an admin can
+ * edit the code (docs/2026-11-17-o2-tills-shifts-api-contract.md, 8.1).
  */
 @Service
 public class DeviceService {
+    /** O2: serialises new-till registration and till-code edits, so two can't take one code or both pass the limit. */
+    static final String TILL_CODES_LOCK = "till-codes";
+    private static final int TILL_CODES_LOCK_TIMEOUT_MILLIS = 15_000;
+
     private final DeviceTrustProperties properties;
+    private final TillProperties tillProperties;
+    private final AppLock appLock;
+    private final SessionStore sessionStore;
     private final DeviceStore store;
     private final DeviceCookies cookies;
     private final DeviceAlerts alerts;
-    private final UserRepository userRepository;
-    private final JwtService jwtService;
+    private final RecentPasswordCheck recentPasswordCheck;
     private final ClientIpResolver clientIpResolver;
     private final Clock clock;
 
-    public DeviceService(DeviceTrustProperties properties, DeviceStore store, DeviceCookies cookies, DeviceAlerts alerts,
-                         UserRepository userRepository, JwtService jwtService, ClientIpResolver clientIpResolver, Clock clock) {
+    public DeviceService(DeviceTrustProperties properties, TillProperties tillProperties, AppLock appLock,
+                         SessionStore sessionStore, DeviceStore store, DeviceCookies cookies, DeviceAlerts alerts,
+                         RecentPasswordCheck recentPasswordCheck, ClientIpResolver clientIpResolver, Clock clock) {
         this.properties = properties;
+        this.tillProperties = tillProperties;
+        this.appLock = appLock;
+        this.sessionStore = sessionStore;
         this.store = store;
         this.cookies = cookies;
         this.alerts = alerts;
-        this.userRepository = userRepository;
-        this.jwtService = jwtService;
+        this.recentPasswordCheck = recentPasswordCheck;
         this.clientIpResolver = clientIpResolver;
         this.clock = clock;
     }
 
     public DeviceDtos.Config config() {
         return new DeviceDtos.Config(properties.getMode().name().toLowerCase(Locale.ROOT),
-                properties.isMultiBrowserEnabled(), properties.isRequireSerial());
+                properties.isMultiBrowserEnabled(), properties.isRequireSerial(),
+                tillProperties.getTills().getMaxActive(), tillProperties.getTills().isRequireRegistered());
     }
 
     /** Registers the browser making the request (B9, P1, P2). The token goes only into the cookie. */
@@ -102,8 +117,16 @@ public class DeviceService {
             store.findActiveByAssetTag(assetTag).ifPresent(other -> {
                 throw DeviceException.assetTagInUse(other);
             });
+            // O2 R1/R2: a new till (never a join) must fit under the limit, and gets the lowest free code.
+            appLock.lock(TILL_CODES_LOCK, TILL_CODES_LOCK_TIMEOUT_MILLIS);
+            var maxActive = tillProperties.getTills().getMaxActive();
+            var active = store.countActiveDevices();
+            if (active >= maxActive) {
+                throw DeviceException.tillLimitReached(maxActive, active);
+            }
+            var tillCode = TillCodes.lowestFree(store.activeTillCodes());
             try {
-                deviceId = store.insertDevice(name, serial, assetTag, admin.getId(), admin.getName(), now);
+                deviceId = store.insertDevice(name, serial, assetTag, tillCode, admin.getId(), admin.getName(), now);
             } catch (DuplicateKeyException race) {
                 throw new DeviceException(HttpStatus.CONFLICT, "DEVICE_SERIAL_IN_USE",
                         "This serial number or asset tag was just registered to another till.");
@@ -144,6 +167,7 @@ public class DeviceService {
         var name = requireName(request.getName(), errors);
         var serial = checkSerial(request.getSerialNumber(), errors);
         var assetTag = checkAssetTag(request.getAssetTag(), errors);
+        var tillCode = checkTillCode(request.getTillCode(), errors);
         if (!errors.isEmpty()) {
             throw new DeviceValidationException(errors);
         }
@@ -153,7 +177,13 @@ public class DeviceService {
         store.findActiveByAssetTag(assetTag).filter(other -> !other.id().equals(device.id())).ifPresent(other -> {
             throw DeviceException.assetTagInUse(other);
         });
-        store.updateDevice(device.id(), name, serial, assetTag);
+        if (tillCode != null && !tillCode.equals(device.tillCode())) {
+            appLock.lock(TILL_CODES_LOCK, TILL_CODES_LOCK_TIMEOUT_MILLIS);
+            store.findActiveByTillCode(tillCode).filter(other -> !other.id().equals(device.id())).ifPresent(other -> {
+                throw DeviceException.tillCodeInUse(other);
+            });
+        }
+        store.updateDevice(device.id(), name, serial, assetTag, tillCode != null ? tillCode : device.tillCode());
         return current(device.id());
     }
 
@@ -179,7 +209,10 @@ public class DeviceService {
         var admin = requireRecentPassword(http);
         var device = loadDevice(id);
         var reason = reason(request);
-        if (store.revokeDevice(device.id(), admin.getId(), admin.getName(), reason, UtcTimestamps.nowUtc(clock))) {
+        var now = UtcTimestamps.nowUtc(clock);
+        if (store.revokeDevice(device.id(), admin.getId(), admin.getName(), reason, now)) {
+            // O2: every session on the till ends at once (ADMIN); a shift open there stays open.
+            sessionStore.endActiveOnDevice(UUID.fromString(device.id()), SessionEndReason.ADMIN, now);
             alerts.alert("DEVICE_REVOKED", "device=" + device.id() + " by=" + admin.getId());
         }
         return current(device.id());
@@ -193,7 +226,9 @@ public class DeviceService {
         var device = loadDevice(id);
         var credential = loadCredential(device.id(), credentialId);
         var reason = reason(request);
-        if (store.revokeCredential(credential.id(), admin.getId(), admin.getName(), reason, UtcTimestamps.nowUtc(clock))) {
+        var now = UtcTimestamps.nowUtc(clock);
+        if (store.revokeCredential(credential.id(), admin.getId(), admin.getName(), reason, now)) {
+            sessionStore.endActiveOnCredential(UUID.fromString(credential.id()), SessionEndReason.ADMIN, now);
             alerts.alert("DEVICE_CREDENTIAL_REVOKED", "device=" + device.id() + " credential=" + credential.id() + " by=" + admin.getId());
         }
         return current(device.id());
@@ -203,17 +238,7 @@ public class DeviceService {
 
     /** K2: an ADMIN session from a password sign-in no older than reauth-max-age. */
     private User requireRecentPassword(HttpServletRequest http) {
-        var header = http.getHeader(HttpHeaders.AUTHORIZATION);
-        var jwt = header != null && header.startsWith("Bearer ") ? jwtService.parseToken(header.substring(7)) : null;
-        var authTime = jwt == null ? null : jwt.getAuthTime();
-        var fresh = jwt != null && SignIn.PASSWORD.equals(jwt.getAmr()) && authTime != null
-                && clock.instant().getEpochSecond() - authTime <= properties.getReauthMaxAge().toSeconds();
-        if (!fresh) {
-            throw DeviceException.reauthRequired();
-        }
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        var userId = authentication != null && authentication.getPrincipal() instanceof Long id ? id : jwt.getUserId();
-        return userRepository.findById(userId).orElseThrow(DeviceException::reauthRequired);
+        return recentPasswordCheck.require(http, "manage tills");
     }
 
     private DeviceStore.DeviceRow loadDevice(String id) {
@@ -248,7 +273,7 @@ public class DeviceService {
                 c.createdByName(), UtcTimestamps.toInstant(c.createdAt()), UtcTimestamps.toInstant(c.lastSeenAt()),
                 c.lastSeenIp(), c.revokedByName(), UtcTimestamps.toInstant(c.revokedAt()), c.revokeReason(),
                 c.id().equals(context.credentialId()) && context.valid())).toList();
-        return new DeviceDtos.Device(device.id(), device.name(), device.type(), device.serialNumber(), device.assetTag(),
+        return new DeviceDtos.Device(device.id(), device.name(), device.tillCode(), device.type(), device.serialNumber(), device.assetTag(),
                 device.status(), device.registeredByName(), UtcTimestamps.toInstant(device.registeredAt()),
                 device.revokedByName(), UtcTimestamps.toInstant(device.revokedAt()), device.revokeReason(),
                 device.id().equals(context.deviceId()) && context.valid(), credentialDtos);
@@ -294,6 +319,18 @@ public class DeviceService {
             errors.put("assetTag", "Asset tag must be 100 characters or fewer.");
         }
         return tag;
+    }
+
+    /** O2 R1: null (field omitted) keeps the code; anything else must be a valid code once trimmed and upper-cased. */
+    private static String checkTillCode(String raw, Map<String, String> errors) {
+        if (raw == null) {
+            return null;
+        }
+        var code = TillCodes.normalise(raw);
+        if (!TillCodes.isValid(code)) {
+            errors.put("tillCode", "Till code must be 1–10 characters: letters A–Z, digits and hyphens.");
+        }
+        return code;
     }
 
     private static String reason(DeviceRequests.Revoke request) {

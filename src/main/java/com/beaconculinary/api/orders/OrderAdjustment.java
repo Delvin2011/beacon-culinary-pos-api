@@ -9,6 +9,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -80,4 +81,12 @@ public class OrderAdjustment {
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    // O1: the till's idempotency key and the SHA-256 of its normalised request
+    // (RequestFingerprint); both null when the adjustment was sent without a key.
+    @Column(name = "client_request_id")
+    private UUID clientRequestId;
+
+    @Column(name = "client_request_hash")
+    private byte[] clientRequestHash;
 }

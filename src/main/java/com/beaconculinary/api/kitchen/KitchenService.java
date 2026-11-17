@@ -3,9 +3,10 @@ package com.beaconculinary.api.kitchen;
 import com.beaconculinary.api.menu.Station;
 import com.beaconculinary.api.orders.*;
 import lombok.AllArgsConstructor;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Clock;
@@ -47,10 +48,13 @@ public class KitchenService {
 
     // Sends the kitchen's view of any order that has a kitchen part — never a bar-only or
     // cold-only order, and never the bar's lines.
-    @EventListener
+    // O1: only after the transaction commits, so a rolled-back sale or status change never
+    // reaches the display. With no transaction (none today) it sends at once.
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onStationViewChanged(StationViewChangedEvent event) {
-        if (stationViews.has(event.order(), Station.KITCHEN)) {
-            orderEventBroadcaster.broadcast(new OrderStatusStreamEvent(event.eventType(), stationViews.view(event.order(), Station.KITCHEN)));
+        var view = event.viewFor(Station.KITCHEN);
+        if (view != null) {
+            orderEventBroadcaster.broadcast(new OrderStatusStreamEvent(event.eventType(), view));
         }
     }
 }

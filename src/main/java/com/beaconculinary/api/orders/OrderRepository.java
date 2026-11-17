@@ -11,8 +11,12 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
+    /** O1: the sale an earlier request with this idempotency key created. */
+    Optional<Order> findByClientOrderId(UUID clientOrderId);
+
     /** Locks the order row: the status engine reads every station of it, so two stations moving
      * the same order at once must take turns. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

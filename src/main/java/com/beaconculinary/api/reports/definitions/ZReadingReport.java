@@ -36,8 +36,9 @@ import java.util.Set;
 @Component
 @AllArgsConstructor
 public class ZReadingReport implements ReportDefinition {
-    /** Stored with each Z; bump when the snapshot's shape changes. */
-    public static final int Z_DEFINITION_VERSION = 1;
+    /** Stored with each Z; bump when the snapshot's shape changes. 2 (O2): a Till column in the Shifts
+     * table and a Tills section. Zs stored with version 1 are returned exactly as stored. */
+    public static final int Z_DEFINITION_VERSION = 2;
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.ENGLISH);
 
     private final ZReadings zReadings;

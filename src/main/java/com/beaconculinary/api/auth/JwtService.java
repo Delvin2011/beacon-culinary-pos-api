@@ -2,6 +2,7 @@ package com.beaconculinary.api.auth;
 
 import com.beaconculinary.api.users.User;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import lombok.AllArgsConstructor;
@@ -48,6 +49,9 @@ public class JwtService {
         if (signIn.deviceId() != null) {
             builder.add(SignIn.DEVICE_CLAIM, signIn.deviceId());
         }
+        if (signIn.sessionId() != null) {
+            builder.add(SignIn.SESSION_CLAIM, signIn.sessionId());
+        }
         return new Jwt(builder.build(), jwtConfig.getSecretKey());
     }
 
@@ -56,6 +60,17 @@ public class JwtService {
             var claims = getClaims(token);
             return new Jwt(claims, jwtConfig.getSecretKey());
         } catch (JwtException e) {
+            return null;
+        }
+    }
+
+    /** O2 logout: a correctly signed token's claims even when it has expired; null when the signature or format is wrong. */
+    public Jwt parseTokenAllowingExpired(String token) {
+        try {
+            return new Jwt(getClaims(token), jwtConfig.getSecretKey());
+        } catch (ExpiredJwtException e) {
+            return new Jwt(e.getClaims(), jwtConfig.getSecretKey());
+        } catch (JwtException | IllegalArgumentException e) {
             return null;
         }
     }

@@ -1,16 +1,23 @@
 package com.beaconculinary.api.endofday;
 
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.auth.RecentPasswordCheck;
 import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.shifts.ShiftCashCount;
+import com.beaconculinary.api.shifts.ShiftCashCountEvents;
 import com.beaconculinary.api.shifts.ShiftNotFoundException;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.shifts.ShiftStatus;
+import com.beaconculinary.api.tills.TillException;
 import lombok.AllArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Map;
 
 /**
  * Reports R3 §3: the manager signs off each closed shift before Close Day. Separate from the
@@ -27,12 +34,15 @@ public class ShiftSignoffService {
     private final TradingDayLock tradingDayLock;
     private final AuthService authService;
     private final CloseDaySettings closeDaySettings;
+    private final RecentPasswordCheck recentPasswordCheck;
+    private final ShiftCashCountEvents cashCountEvents;
+    private final Clock clock;
 
     public record SignoffDto(long shiftId, boolean signedOff, String by, java.time.Instant at, String note) {
     }
 
     @Transactional
-    public SignoffDto signOff(long shiftId, String note) {
+    public SignoffDto signOff(long shiftId, String note, boolean confirmNoCount) {
         var shift = shiftRepository.findById(shiftId).orElseThrow(ShiftNotFoundException::new);
         var day = tradingDay(shift.getOpenedAt());
         tradingDayLock.lock(day);
@@ -45,6 +55,23 @@ public class ShiftSignoffService {
         }
         if (signoffs.isSignedOff(shiftId)) {
             throw new EndOfDayConflictException("ALREADY_SIGNED_OFF", "This shift is already signed off.");
+        }
+        // O2: a shift force-closed without a count needs a late count first, or a confirmed "no count"
+        // with a reason (which this sign-off records); either way it's audited.
+        if (shift.getCashCount() == ShiftCashCount.UNCOUNTED) {
+            if (!confirmNoCount) {
+                throw new TillException(HttpStatus.CONFLICT, "SHIFT_UNCOUNTED", "Shift #" + shiftId
+                        + " was force-closed without a cash count. Record the count or confirm there is no count.",
+                        Map.of("shiftId", shiftId));
+            }
+            if (note == null || note.isBlank()) {
+                throw new InvalidEndOfDayRequestException("note is required to confirm there is no count.");
+            }
+            var admin = recentPasswordCheck.require("confirm there is no cash count");
+            shift.setCashCount(ShiftCashCount.NO_COUNT_CONFIRMED);
+            shiftRepository.save(shift);
+            cashCountEvents.record(shiftId, ShiftCashCountEvents.Action.NO_COUNT_CONFIRMED, null, shift.getExpectedCash(),
+                    null, null, note.trim(), admin, UtcTimestamps.nowUtc(clock));
         }
         signoffs.record(shiftId, "SIGNED_OFF", authService.getCurrentUser().getId(), blankToNull(note));
         return state(shiftId);

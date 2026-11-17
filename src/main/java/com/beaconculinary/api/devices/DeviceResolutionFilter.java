@@ -48,6 +48,13 @@ public class DeviceResolutionFilter extends OncePerRequestFilter {
         this.clock = clock;
     }
 
+    // O1: GET /health is outside device trust: no token lookup, no last-seen write, no cookie
+    // renewal and no invalid-token alert for a till polling its connection.
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return "/health".equals(request.getRequestURI().substring(request.getContextPath().length()));
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {

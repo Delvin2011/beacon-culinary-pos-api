@@ -7,9 +7,10 @@ import com.beaconculinary.api.orders.OrderStatus;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
 import com.beaconculinary.api.orders.OrderStatusStreamEvent;
 import lombok.AllArgsConstructor;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Clock;
@@ -61,7 +62,8 @@ public class PublicBoardService {
     // Reduces the shared full-detail event down to the public-safe shape before broadcasting —
     // the same source Stage 2.1's kitchen stream reacts to, just a different, minimal view of it.
     // A DONE event carries doneAt/removeAt, so open boards can time the order's removal.
-    @EventListener
+    // O1: only after the transaction commits, so a rolled-back sale never reaches the board.
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onOrderStatusChanged(OrderStatusStreamEvent event) {
         var summary = event.getOrder();
         // A cold-only order is created COLLECTED (handed over at payment): it never appears.

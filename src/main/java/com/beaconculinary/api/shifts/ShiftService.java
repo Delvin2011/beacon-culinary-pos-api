@@ -7,6 +7,9 @@ import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.endofday.EndOfDayConflictException;
 import com.beaconculinary.api.endofday.TradingDayLock;
 import com.beaconculinary.api.endofday.ZReadings;
+import com.beaconculinary.api.sessions.SessionGuard;
+import com.beaconculinary.api.tills.CurrentTill;
+import com.beaconculinary.api.tills.Till;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.UserRefDto;
 import lombok.AllArgsConstructor;
@@ -30,10 +33,18 @@ public class ShiftService {
     private final Clock clock;
     private final TradingDayLock tradingDayLock;
     private final ZReadings zReadings;
+    private final CurrentTill currentTill;
+    private final OpenShiftConflicts openShiftConflicts;
+    private final SessionGuard sessionGuard;
 
     @Transactional
     public ShiftDto openShift(OpenShiftRequest request) {
         var currentUser = authService.getCurrentUser();
+        // O2 R7: an active session.
+        sessionGuard.requireActive();
+        // O2 R4: a registered till when pos.tills.require-registered is on.
+        currentTill.requireRegisteredForPos();
+        var till = currentTill.resolve();
 
         // Reports R3: a shift opens on today's trading day, which may already be closed by a Z.
         // The trading-day lock serialises this with Close Day, so a shift can't slip in while the
@@ -46,19 +57,26 @@ public class ShiftService {
                     + closed.get().reference() + "). No more shifts can open today.", null, closed.get().zNumber());
         }
 
+        // O2 R3/R6: one open shift per till (the unregistered till counts as one) and one per cashier,
+        // ADMIN included: SHIFT_OPEN_ON_OTHER_TILL or SHIFT_ALREADY_OPEN. The trading-day lock above
+        // serialises opens, so this check sees every committed shift.
+        openShiftConflicts.refuseOpen(currentUser.getId(), till);
+
         var shift = new Shift();
         shift.setCashier(currentUser);
         shift.setOpeningFloat(request.getOpeningFloat());
         shift.setStatus(ShiftStatus.OPEN);
+        shift.setDeviceId(till.deviceId());
+        shift.setTillCode(till.code());
+        shift.setTillName(till.registered() ? till.name() : null);
 
-        // Stage 2.5: the till can only have one open shift system-wide, enforced by
-        // idx_shifts_single_open (a filtered unique index on status = 'OPEN') rather than an
-        // app-level check — flush immediately so a violation surfaces here, not at the
-        // transaction's eventual commit-time flush, and translate it into a clean 409.
+        // The unique indexes UX_shifts_open_device and UX_shifts_open_cashier (V107) are the backstop;
+        // flush now so a violation surfaces here, not at commit, and explain it the same way.
         try {
             shiftRepository.saveAndFlush(shift);
         } catch (DataIntegrityViolationException e) {
-            throw new ShiftAlreadyOpenException();
+            openShiftConflicts.refuseOpen(currentUser.getId(), till);
+            throw e;
         }
 
         return shiftMapper.toDto(shift);
@@ -89,9 +107,10 @@ public class ShiftService {
 
     @Transactional
     public ShiftDto closeShift(Long id, CloseShiftRequest request) {
+        sessionGuard.requireActive();
         // POS Oversight B3: exclusive row lock before anything is read or computed, so an order
         // or adjustment can't attach to this shift between the expected-cash calculation and
-        // the close being written (see ShiftRepository.findOpenShiftWithSharedLock). Taken
+        // the close being written (see ShiftRepository.findOpenOnTillWithSharedLock). Taken
         // before the load so the status check below sees any concurrent close.
         shiftRepository.lockForClose(id).orElseThrow(ShiftNotFoundException::new);
         var shift = loadShiftForCaller(id);
@@ -123,15 +142,10 @@ public class ShiftService {
             shift.setVarianceAuthorizedBy(admin);
         }
 
-        shift.setClosingCash(request.getCountedCash());
-        shift.setExpectedCash(breakdown.expectedCash());
-        shift.setCashSalesAtClose(breakdown.cashSales());
-        shift.setCashRefundsAtClose(breakdown.cashRefunds());
-        shift.setVariance(variance);
-        shift.setStatus(ShiftStatus.CLOSED);
-        shift.setClosedBy(authService.getCurrentUser());
-        // UTC, matching opened_at's SYSUTCDATETIME() default (V84 corrected older rows).
-        shift.setClosedAt(UtcTimestamps.nowUtc(clock));
+        // UTC, matching opened_at's SYSUTCDATETIME() default (V84 corrected older rows). Shared with the
+        // admin force close (O2), so both snapshot the same figures.
+        ShiftCloses.record(shift, breakdown, request.getCountedCash(), variance, authService.getCurrentUser(),
+                UtcTimestamps.nowUtc(clock));
         shiftRepository.save(shift);
 
         return shiftMapper.toDto(shift);
@@ -145,16 +159,17 @@ public class ShiftService {
         return shiftMapper.toDto(shift);
     }
 
-    /** POS Oversight B2: the till's open shift whoever owns it — unlike getCurrentShift, which
-     * only finds the caller's own. */
+    /** POS Oversight B2, per till since O2: this till's open shift whoever owns it, unlike
+     * getCurrentShift, which finds the caller's own on any till. */
     @Transactional(readOnly = true)
     public OpenShiftDto getOpenShift() {
         var currentUser = authService.getCurrentUser();
-        var shift = shiftRepository.findFirstByStatus(ShiftStatus.OPEN).orElseThrow(ShiftNotFoundException::new);
+        var shift = shiftRepository.findOpenOnTill(currentTill.deviceId()).orElseThrow(ShiftNotFoundException::new);
         var owner = shift.getCashier();
 
         return new OpenShiftDto(shift.getId(), UserRefDto.withRole(owner), owner.getId().equals(currentUser.getId()),
-                UtcTimestamps.toInstant(shift.getOpenedAt()), shift.getOpeningFloat());
+                UtcTimestamps.toInstant(shift.getOpenedAt()), shift.getOpeningFloat(),
+                shift.getTillCode(), Till.displayName(shift.getDeviceId(), shift.getTillName()));
     }
 
     private Shift loadShiftForCaller(Long id) {

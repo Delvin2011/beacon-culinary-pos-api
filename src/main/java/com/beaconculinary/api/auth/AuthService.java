@@ -1,10 +1,14 @@
 package com.beaconculinary.api.auth;
 
+import com.beaconculinary.api.auth.protection.LoginAttempt;
 import com.beaconculinary.api.auth.protection.LoginAttemptService;
 import com.beaconculinary.api.auth.protection.LoginMethod;
 import com.beaconculinary.api.auth.protection.LoginOutcome;
 import com.beaconculinary.api.devices.DeviceException;
 import com.beaconculinary.api.devices.DeviceGate;
+import com.beaconculinary.api.sessions.SessionEndReason;
+import com.beaconculinary.api.sessions.SessionService;
+import com.beaconculinary.api.tills.TillException;
 import com.beaconculinary.api.users.User;
 import com.beaconculinary.api.users.UserRepository;
 import lombok.AllArgsConstructor;
@@ -18,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.util.UUID;
 
 @AllArgsConstructor
 @Service
@@ -34,6 +39,7 @@ public class AuthService {
     private final LoginAttemptService loginAttempts;
     private final DeviceGate deviceGate;
     private final Clock clock;
+    private final SessionService sessionService;
 
     public User getCurrentUser() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -73,7 +79,8 @@ public class AuthService {
         }
 
         var user = userRepository.findByEmail(request.getEmail()).orElseThrow();
-        var signIn = SignIn.password(clock);
+        // O2: the session starts after the credential check; on a till it can still be refused (409).
+        var signIn = SignIn.password(clock).withSession(startSession(user, SignIn.PASSWORD, attempt));
         var accessToken = jwtService.generateAccessToken(user, signIn);
         var refreshToken = jwtService.generateRefreshToken(user, signIn);
         loginAttempts.finish(attempt, LoginOutcome.SUCCESS, user.getId());
@@ -101,7 +108,7 @@ public class AuthService {
             throw new BadCredentialsException("Invalid cashier ID or PIN");
         }
 
-        var signIn = SignIn.pin(clock, deviceGate.deviceIdForToken());
+        var signIn = SignIn.pin(clock, deviceGate.deviceIdForToken()).withSession(startSession(user, SignIn.PIN, attempt));
         var accessToken = jwtService.generateAccessToken(user, signIn);
         var refreshToken = jwtService.generateRefreshToken(user, signIn);
         // D4 evidence only: whether the PIN is not 6 digits. The PIN itself is never stored or logged.
@@ -137,7 +144,29 @@ public class AuthService {
         if (!user.isActive() || loginAttempts.isAccountLocked(user.getId())) {
             throw new BadCredentialsException("Invalid refresh token");
         }
-        // Keeps how and when the person signed in (amr, auth_time, dev); refresh isn't tied to the till yet.
+        // O2: the session must still be active (401 SESSION_ENDED with its reason otherwise).
+        sessionService.requireActive(jwt.getSessionId());
+        // Keeps how and when the person signed in (amr, auth_time, dev) and the session (sid).
         return jwtService.generateAccessToken(user, jwt.getSignIn());
+    }
+
+    /** O2: ends the session named by an access token (expired accepted, signature checked). */
+    public void logout(String accessToken) {
+        var jwt = jwtService.parseTokenAllowingExpired(accessToken);
+        if (jwt != null) {
+            sessionService.end(jwt.getSessionId(), SessionEndReason.LOGOUT);
+        }
+    }
+
+    /** O2: starts the session after a correct credential. A till-rule refusal is recorded (never a
+     * failure for lockout) and rethrown as its 409. */
+    private UUID startSession(User user, String method, LoginAttempt attempt) {
+        try {
+            return sessionService.start(user, method);
+        } catch (TillException e) {
+            var outcome = "TILL_LOCKED".equals(e.getCode()) ? LoginOutcome.TILL_LOCKED : LoginOutcome.SHIFT_OPEN_ON_OTHER_TILL;
+            loginAttempts.finish(attempt, outcome, user.getId());
+            throw e;
+        }
     }
 }

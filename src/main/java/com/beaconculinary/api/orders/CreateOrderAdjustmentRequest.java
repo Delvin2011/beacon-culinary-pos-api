@@ -4,9 +4,14 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Data
 public class CreateOrderAdjustmentRequest {
+    // O1: optional client-generated idempotency key for this void/refund; same rules as
+    // CreateOrderRequest.clientOrderId (code CLIENT_REQUEST_ID_REQUIRED when required).
+    private UUID clientRequestId;
+
     // Missing or CANCEL -> Stage 2.6 behavior, unchanged (auto-derives VOID/REFUND from order
     // status, per scope). DISCOUNT triggers the Stage 3.2 discount path below.
     private OrderAdjustmentRequestedAction requestedAction;

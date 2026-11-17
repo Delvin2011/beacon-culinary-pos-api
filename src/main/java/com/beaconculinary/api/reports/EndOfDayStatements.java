@@ -10,7 +10,7 @@ import com.beaconculinary.api.reports.definitions.SalesSummaryReport;
 import com.beaconculinary.api.reports.definitions.TenderSummaryReport;
 import com.beaconculinary.api.shifts.ShiftVarianceReasonCode;
 import com.beaconculinary.api.common.UtcTimestamps;
-import org.springframework.beans.factory.annotation.Value;
+import com.beaconculinary.api.receipts.BusinessName;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -51,14 +51,13 @@ public class EndOfDayStatements {
     private final TenderSummaryReport tenderSummary;
     private final CashUpVarianceReport cashUp;
     private final Clock clock;
-    private final String businessName;
+    private final BusinessName businessName;
 
     public EndOfDayStatements(ReportFacts facts, EndOfDayFacts endOfDayFacts, ShiftCashFigures shiftCashFigures,
                               ShiftSignoffs signoffs, ZReadings zReadings, DayCloseRules dayCloseRules,
                               CloseDaySettings closeDaySettings,
                               SalesSummaryReport salesSummary, TenderSummaryReport tenderSummary,
-                              CashUpVarianceReport cashUp, Clock clock,
-                              @Value("${app.business.name:Beacon Culinary}") String businessName) {
+                              CashUpVarianceReport cashUp, Clock clock, BusinessName businessName) {
         this.facts = facts;
         this.endOfDayFacts = endOfDayFacts;
         this.shiftCashFigures = shiftCashFigures;
@@ -109,6 +108,7 @@ public class EndOfDayStatements {
         sections.add(cashSection(shifts, figures, netCashMovement));
         var inProcess = closeDaySettings.covers(tradingDay);
         sections.add(shiftsTable(shifts, figures, states, inProcess));
+        sections.add(tillsTable(shifts, figures, facts.cashRefundsOfOtherTills(range)));
 
         var readings = readingsVsX(shifts, takings, collected);
         sections.add(readings.section());
@@ -142,7 +142,7 @@ public class EndOfDayStatements {
 
     private Map<String, Object> dayHeader(LocalDate tradingDay, ZContext z) {
         var items = Sections.items();
-        items.add(Sections.item("Business", ColumnType.TEXT, businessName));
+        items.add(Sections.item("Business", ColumnType.TEXT, businessName.current()));
         items.add(Sections.item("Report", ColumnType.TEXT, z == null ? X_TITLE : Z_TITLE));
         if (z != null) {
             items.add(Sections.item("Z number", ColumnType.TEXT, ZReadings.Z.reference(z.zNumber())));
@@ -232,6 +232,7 @@ public class EndOfDayStatements {
         var columns = List.of(
                 ReportColumn.of("shiftId", "Shift", ColumnType.INT, ColumnTotal.LABEL),
                 ReportColumn.of("cashier", "Cashier", ColumnType.TEXT, ColumnTotal.NONE),
+                ReportColumn.of("till", "Till", ColumnType.TEXT, ColumnTotal.NONE),
                 ReportColumn.of("openedAt", "Opened", ColumnType.DATETIME, ColumnTotal.NONE),
                 ReportColumn.of("closedAt", "Closed", ColumnType.DATETIME, ColumnTotal.NONE),
                 ReportColumn.of("openingFloat", "Float", ColumnType.MONEY, ColumnTotal.SUM),
@@ -254,14 +255,15 @@ public class EndOfDayStatements {
             var row = new LinkedHashMap<String, Object>();
             row.put("shiftId", shift.shiftId());
             row.put("cashier", shift.ownerName());
+            row.put("till", shift.tillLabel());
             row.put("openedAt", UtcTimestamps.toInstant(shift.openedAtUtc()));
             row.put("closedAt", shift.open() ? null : UtcTimestamps.toInstant(shift.closedAtUtc()));
             row.put("openingFloat", money(shift.openingFloat()));
             row.put("cashSales", money(cash.cashSales()));
             row.put("cashRefunds", money(cash.cashRefunds()));
             row.put("expectedCash", money(cash.expectedCash()));
-            row.put("countedCash", shift.open() ? null : money(shift.closingCash()));
-            row.put("variance", shift.open() ? null : money(shift.variance()));
+            row.put("countedCash", shift.open() ? null : ReportValues.moneyOrNull(shift.closingCash()));
+            row.put("variance", shift.open() ? null : ReportValues.moneyOrNull(shift.variance()));
             row.put("signedOffBy", signed ? state.byName() : inProcess ? "Not signed off" : NOT_REQUIRED);
             row.put("signedOffAt", signed ? state.at() : null);
             rows.add(row);
@@ -418,9 +420,10 @@ public class EndOfDayStatements {
 
         var sections = new ArrayList<Map<String, Object>>();
         var header = Sections.items();
-        header.add(Sections.item("Business", ColumnType.TEXT, businessName));
+        header.add(Sections.item("Business", ColumnType.TEXT, businessName.current()));
         header.add(Sections.item("Report", ColumnType.TEXT, open ? CASHIER_TITLE + " — INTERIM" : CASHIER_TITLE));
         header.add(Sections.item("Cashier", ColumnType.TEXT, shift.ownerName()));
+        header.add(Sections.item("Till", ColumnType.TEXT, shift.tillLabel()));
         header.add(Sections.item("Shift", ColumnType.INT, shiftId));
         header.add(Sections.item("Trading day", ColumnType.DATE, shift.tradingDay()));
         header.add(Sections.item("Opened", ColumnType.DATETIME, UtcTimestamps.toInstant(shift.openedAtUtc())));
@@ -445,8 +448,12 @@ public class EndOfDayStatements {
         cashUpItems.add(Sections.item("Cash sales", ColumnType.MONEY, money(cash.cashSales())));
         cashUpItems.add(Sections.item("Cash refunds processed in this shift", ColumnType.MONEY, money(cash.cashRefunds())));
         cashUpItems.add(Sections.total("Expected cash", ColumnType.MONEY, money(cash.expectedCash())));
-        cashUpItems.add(Sections.item("Counted cash", ColumnType.MONEY, open ? null : money(shift.closingCash())));
-        cashUpItems.add(Sections.total("Variance", ColumnType.VARIANCE, open ? null : money(shift.variance())));
+        cashUpItems.add(Sections.item("Counted cash", ColumnType.MONEY, open ? null : ReportValues.moneyOrNull(shift.closingCash())));
+        cashUpItems.add(Sections.total("Variance", ColumnType.VARIANCE, open ? null : ReportValues.moneyOrNull(shift.variance())));
+        if (!open && shift.cashCount() != null && !"COUNTED".equals(shift.cashCount())) {
+            // O2: "Not counted", "Not counted (confirmed)" or "Counted after close".
+            cashUpItems.add(Sections.item("Cash count", ColumnType.TEXT, cashCountLabel(shift.cashCount())));
+        }
         cashUpItems.add(Sections.item("Variance reason", ColumnType.TEXT, ShiftVarianceReasonCode.labelOf(shift.varianceReasonCode())));
         cashUpItems.add(Sections.item("Authorised by", ColumnType.TEXT, shift.varianceAuthorizedByName()));
         sections.add(Sections.keyValue("cashUp", "Cash-up", cashUpItems));
@@ -536,8 +543,10 @@ public class EndOfDayStatements {
             problems.add("the shift is missing from Cash-up & Variance");
         } else {
             same(problems, "expected cash", money(cash.expectedCash()), (BigDecimal) row.get("expectedCash"));
-            same(problems, "counted cash", shift.open() ? null : money(shift.closingCash()), (BigDecimal) row.get("countedCash"));
-            same(problems, "variance", shift.open() ? null : money(shift.variance()), (BigDecimal) row.get("variance"));
+            same(problems, "counted cash", shift.open() ? null : ReportValues.moneyOrNull(shift.closingCash()),
+                    (BigDecimal) row.get("countedCash"));
+            same(problems, "variance", shift.open() ? null : ReportValues.moneyOrNull(shift.variance()),
+                    (BigDecimal) row.get("variance"));
         }
         return ReportCheck.failures("agrees-with-cash-up", "Expected, counted and variance agree with Cash-up & Variance",
                 problems.size(), problems.isEmpty() ? null : "Differs on " + String.join(", ", problems) + ".");
@@ -580,6 +589,107 @@ public class EndOfDayStatements {
             credits = credits.add(row.accountCredits());
         }
         return new ReportFacts.PaidOutFacts(null, cash, credits);
+    }
+
+    /** O2 R13: one row per till that had a shift on the day (by till code, the unregistered till last).
+     * Counted cash and variance cover counted shifts only; "Not counted" says how many have none. */
+    private static Map<String, Object> tillsTable(List<ShiftFacts> shifts, Map<Long, ShiftCashFigures.Figures> figures,
+                                                  Map<Long, BigDecimal> refundsOfOtherTills) {
+        var columns = List.of(
+                ReportColumn.of("till", "Till", ColumnType.TEXT, ColumnTotal.LABEL),
+                ReportColumn.of("shifts", "Shifts", ColumnType.INT, ColumnTotal.SUM),
+                ReportColumn.of("openingFloat", "Float", ColumnType.MONEY, ColumnTotal.SUM),
+                ReportColumn.of("cashSales", "Cash sales", ColumnType.MONEY, ColumnTotal.SUM),
+                ReportColumn.of("cashRefunds", "Cash refunds", ColumnType.MONEY, ColumnTotal.SUM),
+                ReportColumn.of("refundsOfOtherTills", "of which other tills' sales", ColumnType.MONEY, ColumnTotal.SUM),
+                ReportColumn.of("expectedCash", "Expected", ColumnType.MONEY, ColumnTotal.SUM),
+                ReportColumn.of("countedCash", "Counted", ColumnType.MONEY, ColumnTotal.SUM),
+                ReportColumn.of("variance", "Variance", ColumnType.VARIANCE, ColumnTotal.SUM),
+                ReportColumn.of("uncounted", "Not counted", ColumnType.INT, ColumnTotal.SUM));
+        var ordered = new ArrayList<>(shifts);
+        // Registered tills by code, then the unregistered till.
+        ordered.sort(java.util.Comparator.comparing((ShiftFacts s) -> s.deviceId() == null)
+                .thenComparing(s -> s.tillCode() == null ? "" : s.tillCode())
+                .thenComparing(ShiftFacts::tillLabel));
+        var byTill = new LinkedHashMap<String, List<ShiftFacts>>();
+        for (var shift : ordered) {
+            byTill.computeIfAbsent(shift.tillLabel(), key -> new ArrayList<>()).add(shift);
+        }
+        var rows = new ArrayList<Map<String, Object>>();
+        var totals = new LinkedHashMap<String, Object>();
+        for (var key : List.of("openingFloat", "cashSales", "cashRefunds", "refundsOfOtherTills", "expectedCash")) {
+            totals.put(key, money(BigDecimal.ZERO));
+        }
+        long totalShifts = 0;
+        long totalUncounted = 0;
+        BigDecimal totalCounted = null;
+        BigDecimal totalVariance = null;
+        for (var entry : byTill.entrySet()) {
+            var floats = BigDecimal.ZERO;
+            var cashSales = BigDecimal.ZERO;
+            var cashRefunds = BigDecimal.ZERO;
+            var others = BigDecimal.ZERO;
+            var expected = BigDecimal.ZERO;
+            BigDecimal counted = null;
+            BigDecimal variance = null;
+            long uncounted = 0;
+            for (var shift : entry.getValue()) {
+                var cash = figures.get(shift.shiftId());
+                floats = floats.add(shift.openingFloat());
+                cashSales = cashSales.add(cash.cashSales());
+                cashRefunds = cashRefunds.add(cash.cashRefunds());
+                others = others.add(refundsOfOtherTills.getOrDefault(shift.shiftId(), BigDecimal.ZERO));
+                expected = expected.add(cash.expectedCash());
+                if (!shift.open() && shift.closingCash() != null && shift.variance() != null) {
+                    counted = (counted == null ? BigDecimal.ZERO : counted).add(shift.closingCash());
+                    variance = (variance == null ? BigDecimal.ZERO : variance).add(shift.variance());
+                } else if (!shift.open() && !shift.counted()) {
+                    uncounted++;
+                }
+            }
+            var row = new LinkedHashMap<String, Object>();
+            row.put("till", entry.getKey());
+            row.put("shifts", (long) entry.getValue().size());
+            row.put("openingFloat", money(floats));
+            row.put("cashSales", money(cashSales));
+            row.put("cashRefunds", money(cashRefunds));
+            row.put("refundsOfOtherTills", money(others));
+            row.put("expectedCash", money(expected));
+            row.put("countedCash", ReportValues.moneyOrNull(counted));
+            row.put("variance", ReportValues.moneyOrNull(variance));
+            row.put("uncounted", uncounted);
+            rows.add(row);
+            for (var key : List.of("openingFloat", "cashSales", "cashRefunds", "refundsOfOtherTills", "expectedCash")) {
+                totals.put(key, ((BigDecimal) totals.get(key)).add((BigDecimal) row.get(key)));
+            }
+            totalShifts += entry.getValue().size();
+            totalUncounted += uncounted;
+            if (counted != null) {
+                totalCounted = (totalCounted == null ? BigDecimal.ZERO : totalCounted).add(counted);
+                totalVariance = (totalVariance == null ? BigDecimal.ZERO : totalVariance).add(variance);
+            }
+        }
+        var totalsRow = new LinkedHashMap<String, Object>();
+        totalsRow.put("till", "Total");
+        totalsRow.put("shifts", totalShifts);
+        totalsRow.putAll(totals);
+        totalsRow.put("countedCash", ReportValues.moneyOrNull(totalCounted));
+        totalsRow.put("variance", ReportValues.moneyOrNull(totalVariance));
+        totalsRow.put("uncounted", totalUncounted);
+        return Sections.table("tills", "Tills", columns, rows, totalsRow, "till", "expectedCash", "variance");
+    }
+
+    /** O2: how a shift's drawer was counted, for reports: null when counted at close. */
+    public static String cashCountLabel(String cashCount) {
+        if (cashCount == null) {
+            return null;
+        }
+        return switch (cashCount) {
+            case "UNCOUNTED" -> "Not counted";
+            case "NO_COUNT_CONFIRMED" -> "Not counted (confirmed)";
+            case "COUNTED_LATE" -> "Counted after close";
+            default -> null;
+        };
     }
 
     private static Map<String, Object> totalsRow(String labelKey, Map<String, Object> values) {

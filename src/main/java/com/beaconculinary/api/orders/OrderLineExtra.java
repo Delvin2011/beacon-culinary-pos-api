@@ -25,6 +25,10 @@ public class OrderLineExtra {
     @JoinColumn(name = "daily_component_stock_id")
     private DailyComponentStock dailyComponentStock;
 
+    // O2b: the component's name at sale; null before V109 (OrderMapper falls back to the current name).
+    @Column(name = "component_name")
+    private String componentName;
+
     // Snapshotted at order time from DailyComponentStock.extraPrice.
     @Column(name = "price_delta")
     private BigDecimal priceDelta;

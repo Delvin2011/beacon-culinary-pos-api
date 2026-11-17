@@ -38,6 +38,18 @@ cors:
 board:
   done-display-minutes: ${BOARD_DONE_DISPLAY_MINUTES:10}
 
+# O1: when true, POST /orders needs clientOrderId and POST /orders/{id}/adjustments needs
+# clientRequestId (400 otherwise). Off until every till sends them.
+pos:
+  require-client-order-id: ${POS_REQUIRE_CLIENT_ORDER_ID:false}
+  # O2 tills and POS sessions (TillProperties): docs/2026-11-17-o2-tills-shifts-api-contract.md section 2.
+  tills:
+    max-active: ${POS_TILLS_MAXACTIVE:3}
+    require-registered: ${POS_TILLS_REQUIREREGISTERED:false}
+  session:
+    idle-lock-minutes: ${POS_SESSION_IDLELOCKMINUTES:5}
+    idle-expiry-minutes: ${POS_SESSION_IDLEEXPIRYMINUTES:30}
+
 # GRV VAT handling: the standard VAT rate, snapshotted onto every GRV line.
 vat:
   standard-rate: 0.15

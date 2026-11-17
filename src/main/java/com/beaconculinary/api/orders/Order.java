@@ -5,12 +5,15 @@ import com.beaconculinary.api.users.User;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.Generated;
+import org.hibernate.generator.EventType;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -70,11 +73,34 @@ public class Order {
     @Column(name = "extras_adjusted")
     private boolean extrasAdjusted = false;
 
+    // O1: read back after the insert, so POST /orders returns the stored value (it was null).
+    @Generated(event = EventType.INSERT)
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "print_failed")
     private boolean printFailed = false;
+
+    // O1: the till's idempotency key and the SHA-256 of its normalised request
+    // (RequestFingerprint); both null when the sale was sent without a key.
+    @Column(name = "client_order_id")
+    private UUID clientOrderId;
+
+    @Column(name = "client_request_hash")
+    private byte[] clientRequestHash;
+
+    // O2: the till the sale was rung up on, copied from its shift; null for the unregistered till
+    // and for sales before O2.
+    @Column(name = "device_id")
+    private UUID deviceId;
+
+    // O2b: the VAT rate in force and the VAT included in originalTotal, stored once at creation
+    // (VatRule). Null on orders from before O2b.
+    @Column(name = "vat_rate")
+    private BigDecimal vatRate;
+
+    @Column(name = "vat_included_amount")
+    private BigDecimal vatIncludedAmount;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderLine> lines = new ArrayList<>();

@@ -44,9 +44,14 @@ public class Jwt {
         return claims.get(SignIn.DEVICE_CLAIM, String.class);
     }
 
+    /** O2: the session (sid), or null on tokens issued before O2. */
+    public String getSessionId() {
+        return claims.get(SignIn.SESSION_CLAIM, String.class);
+    }
+
     /** The sign-in facts carried by this token, to keep them on refresh. */
     public SignIn getSignIn() {
-        return new SignIn(getAmr(), getAuthTime(), getDeviceId());
+        return new SignIn(getAmr(), getAuthTime(), getDeviceId(), getSessionId());
     }
 
     public String toString() {

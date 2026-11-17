@@ -42,6 +42,7 @@ public class OrderStationService {
     private final OrderStatusEventPublisher orderStatusEventPublisher;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final AuthService authService;
+    private final StationViews stationViews;
     private final Clock clock;
 
     /**
@@ -96,7 +97,7 @@ public class OrderStationService {
             orderStatusEventPublisher.publish(order, previous);
         } else {
             orderRepository.save(order);
-            applicationEventPublisher.publishEvent(new StationViewChangedEvent(order, OrderEventType.STATUS_CHANGED));
+            applicationEventPublisher.publishEvent(StationViewChangedEvent.of(order, OrderEventType.STATUS_CHANGED, stationViews));
         }
         return order;
     }
