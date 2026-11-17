@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.Map;
 
 /**
  * Reports R3: shift sign-off and Close Day. ADMIN only, through AdminSecurityRules' /admin/**
@@ -38,8 +39,15 @@ public class EndOfDayController {
 
     /** 200 with the Z envelope, or 409 CLOSE_DAY_BLOCKED with every blocker. */
     @PostMapping("/admin/days/{tradingDay}/close")
-    public ReportEnvelope closeDay(@PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tradingDay) {
-        return closeDayService.close(tradingDay);
+    public ReportEnvelope closeDay(@PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tradingDay,
+                                   @RequestBody(required = false) CloseDayRequest request) {
+        return closeDayService.close(tradingDay, request);
+    }
+
+    /** O3: 400 field map, e.g. {"reason": "..."}. */
+    @ExceptionHandler(InvalidCloseDayRequestException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidClose(InvalidCloseDayRequestException ex) {
+        return ResponseEntity.badRequest().body(ex.getErrors());
     }
 
     @ExceptionHandler(EndOfDayConflictException.class)

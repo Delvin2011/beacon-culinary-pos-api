@@ -5,6 +5,7 @@ import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.offline.OfflineGrantStore;
+import com.beaconculinary.api.offline.OfflinePending;
 import com.beaconculinary.api.endofday.EndOfDayConflictException;
 import com.beaconculinary.api.endofday.TradingDayLock;
 import com.beaconculinary.api.endofday.ZReadings;
@@ -38,6 +39,7 @@ public class ShiftService {
     private final OpenShiftConflicts openShiftConflicts;
     private final SessionGuard sessionGuard;
     private final OfflineGrantStore offlineGrants;
+    private final OfflinePending offlinePending;
 
     @Transactional
     public ShiftDto openShift(OpenShiftRequest request) {
@@ -120,6 +122,10 @@ public class ShiftService {
         if (shift.getStatus() != ShiftStatus.OPEN) {
             throw new ShiftAlreadyClosedException();
         }
+        // O3: not while this shift's till reports unsynced sales for it (force close stays possible).
+        offlinePending.forShift(shift.getId(), shift.getDeviceId()).ifPresent(pending -> {
+            throw OfflinePending.shiftCloseRefused(pending);
+        });
 
         var breakdown = shiftCashCalculator.compute(shift.getId(), shift.getOpeningFloat());
         var variance = request.getCountedCash().subtract(breakdown.expectedCash());
