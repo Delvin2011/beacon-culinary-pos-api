@@ -1,5 +1,6 @@
 package com.beaconculinary.api.sessions;
 
+import com.beaconculinary.api.auth.JwtConfig;
 import com.beaconculinary.api.auth.SignIn;
 import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.common.UtcTimestamps;
@@ -7,12 +8,15 @@ import com.beaconculinary.api.devices.DeviceContext;
 import com.beaconculinary.api.shifts.OpenShiftConflicts;
 import com.beaconculinary.api.tills.CurrentTill;
 import com.beaconculinary.api.tills.TillException;
+import com.beaconculinary.api.tills.TillProperties;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -40,14 +44,21 @@ public class SessionService {
     private final OpenShiftConflicts openShifts;
     private final AppLock appLock;
     private final Clock clock;
+    private final TillProperties properties;
+    private final JwtConfig jwtConfig;
+
+    /** R10: at most one last-seen update per session per minute. */
+    private static final Duration TOUCH_INTERVAL = Duration.ofMinutes(1);
 
     public SessionService(SessionStore store, CurrentTill currentTill, OpenShiftConflicts openShifts, AppLock appLock,
-                          Clock clock) {
+                          Clock clock, TillProperties properties, JwtConfig jwtConfig) {
         this.store = store;
         this.currentTill = currentTill;
         this.openShifts = openShifts;
         this.appLock = appLock;
         this.clock = clock;
+        this.properties = properties;
+        this.jwtConfig = jwtConfig;
     }
 
     /**
@@ -85,7 +96,42 @@ public class SessionService {
         if (!session.active()) {
             throw new SessionEndedException(session.endReason());
         }
+        // R10: a POS session idle beyond pos.session.idle-expiry-minutes counts as ended now; the sweep
+        // records it within a minute. Not written here: this often runs inside a write's transaction,
+        // which then rolls back.
+        if (isIdle(session, UtcTimestamps.nowUtc(clock))) {
+            throw new SessionEndedException(SessionEndReason.IDLE);
+        }
         return session;
+    }
+
+    /** R10 activity (POS writes): moves a POS session's last-seen time, at most once a minute. */
+    public void touch(SessionStore.SessionRow session) {
+        var now = UtcTimestamps.nowUtc(clock);
+        if (session.kind() == SessionKind.POS && session.lastSeenAt().isBefore(now.minus(TOUCH_INTERVAL))) {
+            store.touch(session.id(), now);
+        }
+    }
+
+    /** R9/R12: whether the user has an active, non-idle POS session on this till (else the till is locked). */
+    public boolean hasActivePosSession(long userId, UUID deviceId) {
+        return store.hasActivePosSession(userId, deviceId, idleCutoff(UtcTimestamps.nowUtc(clock)));
+    }
+
+    /** R10: records idle POS sessions (IDLE) and sessions past the refresh-token lifetime (EXPIRED). */
+    @Transactional
+    public void sweep() {
+        var now = UtcTimestamps.nowUtc(clock);
+        store.endIdlePos(idleCutoff(now), now);
+        store.endStartedBefore(now.minusSeconds(jwtConfig.getRefreshTokenExpiration()), SessionEndReason.EXPIRED, now);
+    }
+
+    private LocalDateTime idleCutoff(LocalDateTime now) {
+        return now.minusMinutes(properties.getSession().getIdleExpiryMinutes());
+    }
+
+    private boolean isIdle(SessionStore.SessionRow session, LocalDateTime now) {
+        return session.kind() == SessionKind.POS && session.lastSeenAt().isBefore(idleCutoff(now));
     }
 
     /** Ends the session behind {@code sid}, if it's still active. Unknown or malformed IDs are ignored. */

@@ -55,6 +55,7 @@ Application settings, validated at startup, each overridable by environment vari
 | `pos.tills.require-registered` | `false` | `POS_TILLS_REQUIREREGISTERED` | When `true`, the POS needs a registered till: shift open, sales, adjustments and CASHIER/ADMIN PIN sign-in return 403 `DEVICE_NOT_REGISTERED` from any other browser. When `false`, unregistered browsers share the NULL till. |
 | `pos.session.idle-lock-minutes` | `5` | `POS_SESSION_IDLELOCKMINUTES` | For the frontend: lock the till after this many minutes without user activity. The server doesn't enforce it. |
 | `pos.session.idle-expiry-minutes` | `30` | `POS_SESSION_IDLEEXPIRYMINUTES` | Server backstop: a POS session with no activity (section 4.3) for this long ends with `IDLE`. Must be at least `idle-lock-minutes`. |
+| `pos.session.sweep-enabled` | `true` | `POS_SESSION_SWEEP_ENABLED` | Runs the once-a-minute sweep that records idle (`IDLE`) and expired (`EXPIRED`) sessions. Refresh and POS writes treat an idle session as ended either way; the sweep only records it. Leave it on. |
 
 **`require-registered` and `security.device-trust.mode` are independent.** The device-trust mode (WS1-1b) decides whether the staff list, POS tiles and manager-PIN approval need a registered till; `require-registered` decides whether selling does. The till is recognised from its cookie in every device-trust mode, including `off`. Recommended production setting: device-trust `required` and `require-registered=true`.
 
@@ -203,7 +204,7 @@ What the POS sign-in screen shows: "This till: T1 · Till 1 (front)", and who ho
 - **Public** (no sign-in), so it can be read before anyone signs in.
 - Send credentials so the `deviceToken` cookie goes with it.
 - Till and shift details are returned **only to a registered till**. Any other browser gets `registered: false` and `shift: null`, so owner names are never shown on an unregistered browser.
-- Under the per-address burst limit like other public requests.
+- Not rate-limited: it's a read, like `GET /health`. The burst limit covers only sign-in (`/auth/**`) and manager-PIN approval.
 
 **Response 200, registered till with a locked shift:**
 

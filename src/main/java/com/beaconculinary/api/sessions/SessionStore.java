@@ -83,6 +83,34 @@ public class SessionStore {
                 now, reason.name(), credentialId.toString());
     }
 
+    /** R10: activity on an active session. */
+    public void touch(UUID id, LocalDateTime now) {
+        jdbc.update("UPDATE [user_sessions] SET [last_seen_at] = ? WHERE [id] = ? AND [ended_at] IS NULL", now, id.toString());
+    }
+
+    /** R9/R12: an active POS session of the user on the till, seen since {@code seenSince}. */
+    public boolean hasActivePosSession(long userId, UUID deviceId, LocalDateTime seenSince) {
+        Integer count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM [user_sessions]
+                WHERE [user_id] = ? AND [device_id] = ? AND [kind] = 'POS' AND [ended_at] IS NULL AND [last_seen_at] >= ?
+                """, Integer.class, userId, deviceId.toString(), seenSince);
+        return count != null && count > 0;
+    }
+
+    /** R10 sweep: POS sessions not seen since {@code seenBefore}. */
+    public int endIdlePos(LocalDateTime seenBefore, LocalDateTime now) {
+        return jdbc.update("""
+                UPDATE [user_sessions] SET [ended_at] = ?, [end_reason] = 'IDLE'
+                WHERE [ended_at] IS NULL AND [kind] = 'POS' AND [last_seen_at] < ?
+                """, now, seenBefore);
+    }
+
+    /** Sweep: sessions started before {@code startedBefore} (their refresh token has expired). */
+    public int endStartedBefore(LocalDateTime startedBefore, SessionEndReason reason, LocalDateTime now) {
+        return jdbc.update("UPDATE [user_sessions] SET [ended_at] = ?, [end_reason] = ? WHERE [ended_at] IS NULL AND [started_at] < ?",
+                now, reason.name(), startedBefore);
+    }
+
     private static String str(UUID id) {
         return id == null ? null : id.toString();
     }

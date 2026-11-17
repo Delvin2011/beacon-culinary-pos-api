@@ -38,6 +38,8 @@ public class SessionGuard {
             return;
         }
         var jwt = jwtService.parseToken(header.substring(7));
-        sessions.requireActive(jwt == null ? null : jwt.getSessionId());
+        var session = sessions.requireActive(jwt == null ? null : jwt.getSessionId());
+        // R10: a POS write is activity.
+        sessions.touch(session);
     }
 }

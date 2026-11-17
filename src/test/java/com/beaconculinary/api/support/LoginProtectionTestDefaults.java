@@ -33,7 +33,9 @@ public class LoginProtectionTestDefaults implements EnvironmentPostProcessor {
                 // O2: tests share one database and register tills freely, so the active-till limit is
                 // pinned high; O2TillCodeIntegrationTests sets it back to 3. require-registered stays off.
                 "pos.tills.max-active", "1000",
-                "pos.tills.require-registered", "false"));
+                "pos.tills.require-registered", "false",
+                // O2: the session sweep runs on real time; tests move the clock, so they call it themselves.
+                "pos.session.sweep-enabled", "false"));
         var sources = environment.getPropertySources();
         if (sources.contains(INLINED_TEST_PROPERTIES)) {
             sources.addAfter(INLINED_TEST_PROPERTIES, source);
