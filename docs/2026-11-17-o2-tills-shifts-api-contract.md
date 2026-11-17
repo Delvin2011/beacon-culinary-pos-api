@@ -257,6 +257,40 @@ Afterwards the till shows the sign-in screen with "Locked by Thandi". `GET /pos/
 
 An ADMIN closes an abandoned shift on any till. See section 10.
 
+### 7.4 `GET /admin/tills`
+
+Every active till with its open shift and lock state, for the manager's "Tills" view.
+- ADMIN only (401 without sign-in, 403 for other roles, as for all `/admin/**`).
+- One row per **active** till, sorted by till code. Revoked tills aren't listed (`GET /admin/devices` has them).
+- The unregistered till is listed **last**, and **only while it has an open shift**.
+
+```json
+[
+  {
+    "deviceId": "6f1c2a0e-3d5b-4b8e-9a51-1f2c3d4e5f60",
+    "tillCode": "T1",
+    "tillName": "Till 1 (front)",
+    "registered": true,
+    "shift": {"shiftId": 412, "ownerId": 17, "ownerName": "Thandi Mokoena", "openedAt": "2026-11-18T05:58:12Z", "locked": true}
+  },
+  {"deviceId": "0b7e…", "tillCode": "T2", "tillName": "Till 2 (back)", "registered": true, "shift": null},
+  {
+    "deviceId": null,
+    "tillCode": null,
+    "tillName": "Unregistered till",
+    "registered": false,
+    "shift": {"shiftId": 415, "ownerId": 23, "ownerName": "Sipho Dlamini", "openedAt": "2026-11-18T06:10:00Z", "locked": null}
+  }
+]
+```
+
+| Field | Meaning |
+|---|---|
+| `shift` | The till's open shift, or `null`. |
+| `shift.locked` | `true`: the owner has no active POS session on this till (locked, idle or replaced). `false`: they're signed in there now. `null` for the unregistered till, which has no lock rule. |
+
+Act on a row with the existing endpoints: force close (7.3), the shift's activity (`GET /admin/shifts/{id}/activity`), or the device pages (8.1).
+
 ## 8. Changed endpoints
 
 ### 8.1 Device administration (`/admin/devices`)
@@ -644,6 +678,7 @@ The same applies if T1's shift is already closed or signed off: its figures neve
   - show and edit `tillCode`;
   - handle `TILL_LIMIT_REACHED` ("3 of 3 tills in use: revoke one first") and `TILL_CODE_IN_USE`.
 - [ ] **Admin shift screens:**
+  - a Tills view from `GET /admin/tills` (7.4): code, name, owner, opened time, locked;
   - till column;
   - "Force close" (reason, optional count, variance reason; send to password sign-in on `REAUTH_REQUIRED`);
   - for `cashCount: "UNCOUNTED"`: "Record count" (10.2) or "Confirm no count" in sign-off (10.3).

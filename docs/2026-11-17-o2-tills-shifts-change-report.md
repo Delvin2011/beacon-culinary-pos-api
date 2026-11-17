@@ -2,7 +2,7 @@
 
 **Branch:** `feature/o2-tills-shifts`, from `feature/o1-resilience` (O1 isn't merged into `main` yet). Not pushed or merged.
 **Contract:** `docs/2026-11-17-o2-tills-shifts-api-contract.md` (the frontend builds against it).
-**Tests:** 775 of 775 passing on the full suite at `73b9162`. O2 started from O1's 668; it adds 107 tests.
+**Tests:** 779 of 779 passing on the full suite. O2 started from O1's 668; it adds 111 tests.
 **Database:** one migration, `V107__o2_tills_shifts_sessions.sql`, applied to the test database (`BeaconculinaryTest`) only.
 
 ## 1. What changed, in one paragraph
@@ -21,7 +21,8 @@ Up to three registered tills (T1, T2, T3) can now trade at once, each with its o
 | 6 | `3aac5bd` | `GET /pos/till-status`, `POST /pos/lock`, idle expiry and the session sweep |
 | 7 | `96c5170` | Force close, uncounted shifts, late count, confirmed "no count" at sign-off, audit |
 | 8 | `73b9162` | Till columns on shift reports, Tills section in X and Z (definition 2), uncounted shown blank |
-| 9 | this report | |
+| 9 | `2b4a8f9` | This report |
+| 10 | (this commit) | `GET /admin/tills`: every active till with its open shift and lock state, for the frontend's Tills view |
 
 ## 3. Rules R1–R14
 
@@ -38,7 +39,7 @@ Up to three registered tills (T1, T2, T3) can now trade at once, each with its o
 | R9 Lock; only owner or ADMIN sign in on a till with an open shift (TILL_LOCKED) | Done; also ends any other POS session on that till (C8) | `PosController`, `SessionService` |
 | R10 Idle lock (frontend, 5 min) and server expiry (30 min) | Done; lazy check on refresh and writes, sweep records it | `SessionService`, `SessionSweepJob` |
 | R11 Force close with recent password, ends owner's sessions, variance approval | Done; the admin's password sign-in is the approval; uncounted path with late count or confirmed no-count | `ShiftAdminService`, `ShiftSignoffService` |
-| R12 `GET /pos/till-status` before sign-in | Done; details only for a registered till | `TillStatusService` |
+| R12 `GET /pos/till-status` before sign-in | Done; details only for a registered till; the manager's view of every till is `GET /admin/tills` | `TillStatusService`, `AdminTillsService` |
 | R13 Day close across tills; till columns; per-till Z section | Done; new Zs are definition 2, stored Zs unchanged | `EndOfDayStatements`, `DayCloseRules` |
 | R14 Cash refunds book to the processing till's shift; cross-till refunds reported | Done; "of which other tills' sales" in the Tills section | `ReportFacts.cashRefundsOfOtherTills` |
 
@@ -67,6 +68,7 @@ Made while building (each shown as a diff and approved):
 | 6 | Idle activity = sign-in and POS writes only (refresh, polling and reads don't count). The lazy idle check doesn't write (it often runs in a transaction that rolls back); the once-a-minute sweep records IDLE and EXPIRED. `pos.session.sweep-enabled` added (off in tests). |
 | 7 | The recent-password check moved from `DeviceService` to `auth/RecentPasswordCheck` (same 30-minute `reauth-max-age`, same message for till management). The close snapshot is shared between a cashier's close and a force close (`ShiftCloses`). |
 | 8 | `ReportValues.money(null)` turned a missing count into 0.00; uncounted values now show blank in the X/Z shifts table, Cash-up, the Cashier reading and their cross-check. Cash-up & Variance moved to definition 5 (new column). |
+| 10 | `GET /admin/tills` added after the frontend-prompt review (no endpoint gave every till's shift and lock state). The idle behaviour (only POS writes count as activity) was confirmed as acceptable. |
 
 Contract corrections made during the build: `/pos/till-status` is not rate-limited (7.1; the burst limit covers only sign-in and manager-PIN approval); the missing-note error on a no-count sign-off is `{"error": ...}` like other sign-off errors (10.3); `pos.session.sweep-enabled` added (2); section 11 matches what the reports show.
 
@@ -83,10 +85,11 @@ Contract corrections made during the build: `/pos/till-status` is not rate-limit
 | `tills/O2LockIdleTillStatusIntegrationTests` | 14 | Till status; **lock, resume by the owner, TILL_LOCKED for others, ADMIN override**; **idle expiry**; activity rules; the sweep |
 | `shifts/O2ForceCloseIntegrationTests` | 12 | **Force close** counted and uncounted, variance approval, REAUTH_REQUIRED, refusals; late count; confirmed no-count; Close Day with an uncounted shift; audit |
 | `reports/O2TillReportsIntegrationTests` | 7 | **Day close across tills**: till columns, the Tills section with refunds of other tills' sales, uncounted blank everywhere, Close Day labels, admin views, Z definition 2 |
+| `tills/O2AdminTillsIntegrationTests` | 4 | `GET /admin/tills`: shift, owner and lock state per till; the unregistered till only while it has a shift, listed last; revoked tills left out; ADMIN only |
 
 Existing tests changed (each approved): `ReportsIntegrationTests` (two Cash-up assertions by column position, definition 5), `EndOfDayIntegrationTests` (definition 5), `LoginProtectionTestDefaults` (pins the till limit, require-registered and the sweep for the suite).
 
-Full-suite runs after each step: 682 → 697 → 724 → 742 → 756 → 768 → 775, all passing.
+Full-suite runs after each step: 682 → 697 → 724 → 742 → 756 → 768 → 775 → 779, all passing.
 
 ## 6. Deployment notes
 
@@ -100,7 +103,7 @@ Full-suite runs after each step: 682 → 697 → 724 → 742 → 756 → 768 →
 ## 7. Known limitations and follow-ups
 
 - **Reads after a session ends.** Only refresh and POS writes check the session. A replaced or locked session can still read (menus, reports it's allowed) until its access token expires, at most 15 minutes.
-- **Idle means no POS writes.** A cashier signed in for 30 minutes without a sale, adjustment or shift action is signed out (IDLE) on the next refresh or write, even if the screen was in use. The frontend's 5-minute auto-lock normally ends the session first.
+- **Idle means no POS writes (accepted).** A cashier signed in for 30 minutes without a sale, adjustment or shift action is signed out (IDLE) on the next refresh or write, even if the screen was in use. The frontend keeps the cart and returns to sign-in, as for a lock; its 5-minute auto-lock normally ends the session first.
 - **Idle is recorded within a minute.** Refresh and writes refuse an idle session at once; the database row says IDLE after the next sweep.
 - **Refresh isn't bound to the till** it was issued on. A copied refresh token works from another browser while its session is active. Candidate for O3.
 - **Two different people signing in on the same till at the same instant** could both end up active there (the sign-in lock is per user). The next sign-in on that till ends both; it doesn't affect which shift money goes to.
@@ -111,7 +114,7 @@ Full-suite runs after each step: 682 → 697 → 724 → 742 → 756 → 768 →
 
 ## 8. Every file created or modified
 
-**Created (39)**
+**Created (43)**
 
 | Area | Files |
 |---|---|
@@ -120,8 +123,8 @@ Full-suite runs after each step: 682 → 697 → 724 → 742 → 756 → 768 →
 | `auth` | `RecentPasswordCheck.java` |
 | `sessions` | `SessionEndReason.java`, `SessionEndedException.java`, `SessionExceptionHandler.java`, `SessionGuard.java`, `SessionKind.java`, `SessionService.java`, `SessionStore.java`, `SessionSweepJob.java` |
 | `shifts` | `OpenShiftConflicts.java`, `ShiftAdminController.java`, `ShiftAdminRequests.java`, `ShiftAdminService.java`, `ShiftCashCount.java`, `ShiftCashCountEvents.java`, `ShiftCloses.java` |
-| `tills` | `CurrentTill.java`, `PosController.java`, `PosSecurityRules.java`, `Till.java`, `TillCodes.java`, `TillConfig.java`, `TillException.java`, `TillExceptionHandler.java`, `TillProperties.java`, `TillStatusDto.java`, `TillStatusService.java` |
-| Tests | `devices/O2TillCodeIntegrationTests.java`, `reports/O2TillReportsIntegrationTests.java`, `sessions/O2SessionIntegrationTests.java`, `shifts/O2ForceCloseIntegrationTests.java`, `shifts/O2PerTillShiftIntegrationTests.java`, `shifts/O2RequireRegisteredIntegrationTests.java`, `shifts/O2TillShiftIndexIntegrationTests.java`, `tills/O2LockIdleTillStatusIntegrationTests.java`, `tills/TillCodesTest.java` |
+| `tills` | `AdminTillDto.java`, `AdminTillsController.java`, `AdminTillsService.java`, `CurrentTill.java`, `PosController.java`, `PosSecurityRules.java`, `Till.java`, `TillCodes.java`, `TillConfig.java`, `TillException.java`, `TillExceptionHandler.java`, `TillProperties.java`, `TillStatusDto.java`, `TillStatusService.java` |
+| Tests | `devices/O2TillCodeIntegrationTests.java`, `reports/O2TillReportsIntegrationTests.java`, `sessions/O2SessionIntegrationTests.java`, `shifts/O2ForceCloseIntegrationTests.java`, `shifts/O2PerTillShiftIntegrationTests.java`, `shifts/O2RequireRegisteredIntegrationTests.java`, `shifts/O2TillShiftIndexIntegrationTests.java`, `tills/O2AdminTillsIntegrationTests.java`, `tills/O2LockIdleTillStatusIntegrationTests.java`, `tills/TillCodesTest.java` |
 
 **Modified (38)** (paths under `src/main/java/com/beaconculinary/api/` unless shown)
 
