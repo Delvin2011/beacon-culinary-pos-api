@@ -29,7 +29,9 @@ public interface OrderMapper {
 
     @Mapping(target = "shiftId", source = "shift.id")
     @Mapping(target = "tillCode", source = "shift.tillCode")
+    @Mapping(target = "tillName", source = "shift.tillName")
     @Mapping(target = "cashierId", source = "cashier.id")
+    @Mapping(target = "cashierName", source = "cashier.name")
     @Mapping(target = "stations", expression = "java(toStationDtos(order))")
     OrderDto toDto(Order order);
 

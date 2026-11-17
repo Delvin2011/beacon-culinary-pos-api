@@ -94,6 +94,14 @@ public class Order {
     @Column(name = "device_id")
     private UUID deviceId;
 
+    // O2b: the VAT rate in force and the VAT included in originalTotal, stored once at creation
+    // (VatRule). Null on orders from before O2b.
+    @Column(name = "vat_rate")
+    private BigDecimal vatRate;
+
+    @Column(name = "vat_included_amount")
+    private BigDecimal vatIncludedAmount;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderLine> lines = new ArrayList<>();
 

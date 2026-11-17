@@ -5,6 +5,7 @@ import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.inventory.LightMealStockService;
+import com.beaconculinary.api.inventory.VatSettings;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.AlwaysOnMenuService;
@@ -47,6 +48,7 @@ public class OrderService {
     private final Clock clock;
     private final CurrentTill currentTill;
     private final SessionGuard sessionGuard;
+    private final VatSettings vatSettings;
 
     static final int IDEMPOTENCY_LOCK_TIMEOUT_MILLIS = 15_000;
 
@@ -216,6 +218,11 @@ public class OrderService {
         order.setSaleDiscount(saleDiscount);
         order.setOriginalTotal(originalTotal);
         order.setTotal(originalTotal);
+        // O2b: the VAT included in the sale as rung (after a discount at sale, 0 for complimentary),
+        // stored once and never recomputed (VatRule; the offline till uses the same rule).
+        var vatRate = vatSettings.standardRate();
+        order.setVatRate(VatRule.storedRate(vatRate));
+        order.setVatIncludedAmount(VatRule.includedVat(originalTotal, vatRate));
         if (discount != null) {
             discount.setOrder(order);
             order.setDiscount(discount);
