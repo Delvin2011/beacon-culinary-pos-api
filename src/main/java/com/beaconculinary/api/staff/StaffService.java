@@ -3,6 +3,8 @@ package com.beaconculinary.api.staff;
 import com.beaconculinary.api.auth.protection.LoginAttemptService;
 import com.beaconculinary.api.auth.protection.LoginMethod;
 import com.beaconculinary.api.auth.protection.LoginProtectionStore;
+import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.offline.OfflineGrantStore;
 import com.beaconculinary.api.staff.StaffRolePolicy.Requirement;
 import com.beaconculinary.api.staff.StaffRolePolicy.RoleRule;
 import com.beaconculinary.api.users.Role;
@@ -14,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -42,6 +45,8 @@ public class StaffService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final LoginAttemptService loginAttempts;
+    private final OfflineGrantStore offlineGrants;
+    private final Clock clock;
 
     public List<RoleRule> roles() {
         return StaffRolePolicy.RULES;
@@ -152,9 +157,15 @@ public class StaffService {
             requireUniqueAdminPin(request.getPin(), user.getId());
         }
 
+        var wasActive = user.isActive();
         user.setName(name);
         user.setRole(rule.role());
         user.setActive(active);
+        if (wasActive && !active) {
+            // O3: a deactivated cashier's offline grants end (kept for O4's sync).
+            offlineGrants.revokeForCashier(user.getId(), OfflineGrantStore.RevokeReason.CASHIER_DEACTIVATED,
+                    UtcTimestamps.nowUtc(clock));
+        }
         user.setEmail(rule.usesPassword() ? email : null);
         if (!rule.usesPassword()) {
             user.setPassword(null);

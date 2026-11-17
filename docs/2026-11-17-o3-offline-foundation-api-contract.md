@@ -66,7 +66,7 @@ All new timestamps are UTC instants with a `Z` suffix (e.g. `2026-11-18T06:02:11
 | CASHIER or ADMIN role | required | required | not needed |
 | The caller owns this till's open shift | required | not needed | not needed |
 
-The checks run in this order and the first failure is returned: enabled, till, session, role, shift. Send requests with credentials so the cookie goes along.
+The checks run in this order and the first failure is returned: sign-in (401 without a bearer token) and role (403), then enabled, till, session, shift. The status report checks only the till. Send requests with credentials so the cookie goes along.
 
 ## 4. Error codes
 

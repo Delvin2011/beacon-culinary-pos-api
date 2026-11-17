@@ -4,6 +4,7 @@ import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.offline.OfflineGrantStore;
 import com.beaconculinary.api.endofday.EndOfDayConflictException;
 import com.beaconculinary.api.endofday.TradingDayLock;
 import com.beaconculinary.api.endofday.ZReadings;
@@ -36,6 +37,7 @@ public class ShiftService {
     private final CurrentTill currentTill;
     private final OpenShiftConflicts openShiftConflicts;
     private final SessionGuard sessionGuard;
+    private final OfflineGrantStore offlineGrants;
 
     @Transactional
     public ShiftDto openShift(OpenShiftRequest request) {
@@ -144,9 +146,11 @@ public class ShiftService {
 
         // UTC, matching opened_at's SYSUTCDATETIME() default (V84 corrected older rows). Shared with the
         // admin force close (O2), so both snapshot the same figures.
-        ShiftCloses.record(shift, breakdown, request.getCountedCash(), variance, authService.getCurrentUser(),
-                UtcTimestamps.nowUtc(clock));
+        var now = UtcTimestamps.nowUtc(clock);
+        ShiftCloses.record(shift, breakdown, request.getCountedCash(), variance, authService.getCurrentUser(), now);
         shiftRepository.save(shift);
+        // O3: the shift's offline grants end with it.
+        offlineGrants.revokeForShift(shift.getId(), OfflineGrantStore.RevokeReason.SHIFT_CLOSED, now);
 
         return shiftMapper.toDto(shift);
     }

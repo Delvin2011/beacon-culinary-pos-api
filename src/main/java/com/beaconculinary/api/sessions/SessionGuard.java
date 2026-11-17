@@ -30,16 +30,26 @@ public class SessionGuard {
      * gets this far.
      */
     public void requireActive() {
+        var session = current();
+        if (session != null) {
+            // R10: a POS write is activity.
+            sessions.touch(session);
+        }
+    }
+
+    /**
+     * O3: the caller's session, which must be active (401 SESSION_ENDED otherwise), without counting as
+     * activity. Null for an internal call (no web request or no bearer token), as in requireActive.
+     */
+    public SessionStore.SessionRow current() {
         if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes)) {
-            return;
+            return null;
         }
         var header = attributes.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
         if (header == null || !header.startsWith("Bearer ")) {
-            return;
+            return null;
         }
         var jwt = jwtService.parseToken(header.substring(7));
-        var session = sessions.requireActive(jwt == null ? null : jwt.getSessionId());
-        // R10: a POS write is activity.
-        sessions.touch(session);
+        return sessions.requireActive(jwt == null ? null : jwt.getSessionId());
     }
 }

@@ -4,6 +4,7 @@ import com.beaconculinary.api.auth.RecentPasswordCheck;
 import com.beaconculinary.api.auth.protection.ClientIpResolver;
 import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.offline.OfflineGrantStore;
 import com.beaconculinary.api.sessions.SessionEndReason;
 import com.beaconculinary.api.sessions.SessionStore;
 import com.beaconculinary.api.tills.TillCodes;
@@ -49,11 +50,13 @@ public class DeviceService {
     private final DeviceAlerts alerts;
     private final RecentPasswordCheck recentPasswordCheck;
     private final ClientIpResolver clientIpResolver;
+    private final OfflineGrantStore offlineGrants;
     private final Clock clock;
 
     public DeviceService(DeviceTrustProperties properties, TillProperties tillProperties, AppLock appLock,
                          SessionStore sessionStore, DeviceStore store, DeviceCookies cookies, DeviceAlerts alerts,
-                         RecentPasswordCheck recentPasswordCheck, ClientIpResolver clientIpResolver, Clock clock) {
+                         RecentPasswordCheck recentPasswordCheck, ClientIpResolver clientIpResolver,
+                         OfflineGrantStore offlineGrants, Clock clock) {
         this.properties = properties;
         this.tillProperties = tillProperties;
         this.appLock = appLock;
@@ -63,6 +66,7 @@ public class DeviceService {
         this.alerts = alerts;
         this.recentPasswordCheck = recentPasswordCheck;
         this.clientIpResolver = clientIpResolver;
+        this.offlineGrants = offlineGrants;
         this.clock = clock;
     }
 
@@ -213,6 +217,8 @@ public class DeviceService {
         if (store.revokeDevice(device.id(), admin.getId(), admin.getName(), reason, now)) {
             // O2: every session on the till ends at once (ADMIN); a shift open there stays open.
             sessionStore.endActiveOnDevice(UUID.fromString(device.id()), SessionEndReason.ADMIN, now);
+            // O3: the till's offline grants end too (kept for O4's sync).
+            offlineGrants.revokeForDevice(UUID.fromString(device.id()), OfflineGrantStore.RevokeReason.TILL_REVOKED, now);
             alerts.alert("DEVICE_REVOKED", "device=" + device.id() + " by=" + admin.getId());
         }
         return current(device.id());
@@ -229,6 +235,7 @@ public class DeviceService {
         var now = UtcTimestamps.nowUtc(clock);
         if (store.revokeCredential(credential.id(), admin.getId(), admin.getName(), reason, now)) {
             sessionStore.endActiveOnCredential(UUID.fromString(credential.id()), SessionEndReason.ADMIN, now);
+            offlineGrants.revokeForCredential(UUID.fromString(credential.id()), OfflineGrantStore.RevokeReason.BROWSER_REVOKED, now);
             alerts.alert("DEVICE_CREDENTIAL_REVOKED", "device=" + device.id() + " credential=" + credential.id() + " by=" + admin.getId());
         }
         return current(device.id());
