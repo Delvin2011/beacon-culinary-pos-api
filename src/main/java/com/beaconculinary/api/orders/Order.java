@@ -89,6 +89,11 @@ public class Order {
     @Column(name = "client_request_hash")
     private byte[] clientRequestHash;
 
+    // O2: the till the sale was rung up on, copied from its shift; null for the unregistered till
+    // and for sales before O2.
+    @Column(name = "device_id")
+    private UUID deviceId;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderLine> lines = new ArrayList<>();
 

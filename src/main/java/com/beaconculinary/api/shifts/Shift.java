@@ -7,6 +7,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -69,4 +70,27 @@ public class Shift {
 
     @Column(name = "cash_refunds_at_close")
     private BigDecimal cashRefundsAtClose;
+
+    // O2: the till the shift is open on; null = the shared "unregistered till" (V107). The till's
+    // code and name are kept as they were at open, so later edits don't change past reports.
+    @Column(name = "device_id")
+    private UUID deviceId;
+
+    @Column(name = "till_code")
+    private String tillCode;
+
+    @Column(name = "till_name")
+    private String tillName;
+
+    // O2: closed by an ADMIN through POST /admin/shifts/{id}/force-close, with the reason given.
+    @Column(name = "force_closed")
+    private boolean forceClosed = false;
+
+    @Column(name = "force_close_reason")
+    private String forceCloseReason;
+
+    // O2: whether the drawer was counted; UNCOUNTED after a force close without a count.
+    @Column(name = "cash_count")
+    @Enumerated(EnumType.STRING)
+    private ShiftCashCount cashCount = ShiftCashCount.COUNTED;
 }
