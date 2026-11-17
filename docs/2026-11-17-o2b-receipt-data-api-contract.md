@@ -2,7 +2,7 @@
 
 What the backend gives the frontend to print a receipt: the business details (receipt settings), the VAT included in each sale, and who rang it up on which till. It builds on the O2 contract (`docs/2026-11-17-o2-tills-shifts-api-contract.md`) and the O1 contract (`docs/2026-11-16-o1-resilience-api-contract.md`), which still apply.
 
-**Status:** implemented on `feature/o2b-receipt-data` (see `docs/2026-11-17-o2b-receipt-data-change-report.md`). The additions in section 8.2 (receipt title, receipt number, line names stored at sale, business name in reports) are being built (V109).
+**Status:** implemented on `feature/o2b-receipt-data` (see `docs/2026-11-17-o2b-receipt-data-change-report.md`). The additions in section 8.2 (receipt title, receipt number, line names stored at sale, business name in reports) are built too (V109); they follow the recommendations and still await final answers.
 
 ## Contents
 
