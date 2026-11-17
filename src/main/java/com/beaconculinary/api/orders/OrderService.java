@@ -11,6 +11,7 @@ import com.beaconculinary.api.menu.AlwaysOnMenuService;
 import com.beaconculinary.api.menu.Availability;
 import com.beaconculinary.api.menu.DailyPlanItemStatus;
 import com.beaconculinary.api.shifts.ShiftRepository;
+import com.beaconculinary.api.sessions.SessionGuard;
 import com.beaconculinary.api.tills.CurrentTill;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
@@ -45,6 +46,7 @@ public class OrderService {
     private final OrderNumberAllocator orderNumberAllocator;
     private final Clock clock;
     private final CurrentTill currentTill;
+    private final SessionGuard sessionGuard;
 
     static final int IDEMPOTENCY_LOCK_TIMEOUT_MILLIS = 15_000;
 
@@ -68,6 +70,8 @@ public class OrderService {
                 return OrderResult.replayed(replay(existing.get(), requestHash, currentUser));
             }
         }
+        // O2 R7: after the replay lookup (an ended session can still collect its sale), before anything new.
+        sessionGuard.requireActive();
         // O2 R4/R5: sell on the open shift of the till making the request (the unregistered till when
         // there is no valid till cookie), which the caller must own unless they're an ADMIN (POS
         // Oversight B1); cashier_id below still records who rang it up. The shared lock serialises
@@ -271,6 +275,7 @@ public class OrderService {
 
     @Transactional
     public OrderDto markPrintFailed(Long id) {
+        sessionGuard.requireActive();
         var order = orderRepository.findById(id).orElseThrow(OrderNotFoundException::new);
         order.setPrintFailed(true);
         orderRepository.save(order);

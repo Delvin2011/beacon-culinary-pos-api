@@ -5,6 +5,8 @@ import com.beaconculinary.api.auth.SignIn;
 import com.beaconculinary.api.auth.protection.ClientIpResolver;
 import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.sessions.SessionEndReason;
+import com.beaconculinary.api.sessions.SessionStore;
 import com.beaconculinary.api.tills.TillCodes;
 import com.beaconculinary.api.tills.TillProperties;
 import com.beaconculinary.api.users.User;
@@ -26,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -43,6 +46,7 @@ public class DeviceService {
     private final DeviceTrustProperties properties;
     private final TillProperties tillProperties;
     private final AppLock appLock;
+    private final SessionStore sessionStore;
     private final DeviceStore store;
     private final DeviceCookies cookies;
     private final DeviceAlerts alerts;
@@ -52,11 +56,12 @@ public class DeviceService {
     private final Clock clock;
 
     public DeviceService(DeviceTrustProperties properties, TillProperties tillProperties, AppLock appLock,
-                         DeviceStore store, DeviceCookies cookies, DeviceAlerts alerts,
+                         SessionStore sessionStore, DeviceStore store, DeviceCookies cookies, DeviceAlerts alerts,
                          UserRepository userRepository, JwtService jwtService, ClientIpResolver clientIpResolver, Clock clock) {
         this.properties = properties;
         this.tillProperties = tillProperties;
         this.appLock = appLock;
+        this.sessionStore = sessionStore;
         this.store = store;
         this.cookies = cookies;
         this.alerts = alerts;
@@ -209,7 +214,10 @@ public class DeviceService {
         var admin = requireRecentPassword(http);
         var device = loadDevice(id);
         var reason = reason(request);
-        if (store.revokeDevice(device.id(), admin.getId(), admin.getName(), reason, UtcTimestamps.nowUtc(clock))) {
+        var now = UtcTimestamps.nowUtc(clock);
+        if (store.revokeDevice(device.id(), admin.getId(), admin.getName(), reason, now)) {
+            // O2: every session on the till ends at once (ADMIN); a shift open there stays open.
+            sessionStore.endActiveOnDevice(UUID.fromString(device.id()), SessionEndReason.ADMIN, now);
             alerts.alert("DEVICE_REVOKED", "device=" + device.id() + " by=" + admin.getId());
         }
         return current(device.id());
@@ -223,7 +231,9 @@ public class DeviceService {
         var device = loadDevice(id);
         var credential = loadCredential(device.id(), credentialId);
         var reason = reason(request);
-        if (store.revokeCredential(credential.id(), admin.getId(), admin.getName(), reason, UtcTimestamps.nowUtc(clock))) {
+        var now = UtcTimestamps.nowUtc(clock);
+        if (store.revokeCredential(credential.id(), admin.getId(), admin.getName(), reason, now)) {
+            sessionStore.endActiveOnCredential(UUID.fromString(credential.id()), SessionEndReason.ADMIN, now);
             alerts.alert("DEVICE_CREDENTIAL_REVOKED", "device=" + device.id() + " credential=" + credential.id() + " by=" + admin.getId());
         }
         return current(device.id());

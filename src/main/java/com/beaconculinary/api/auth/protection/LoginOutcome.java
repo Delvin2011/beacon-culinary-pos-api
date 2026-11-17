@@ -16,7 +16,11 @@ public enum LoginOutcome {
     /** The request failed validation before any credential check. */
     VALIDATION,
     /** WS1-1b: refused because a registered POS till is required (no credential check). */
-    DEVICE_NOT_REGISTERED;
+    DEVICE_NOT_REGISTERED,
+    /** O2: correct credential, refused because the user has an open shift on another till. Not a failure. */
+    SHIFT_OPEN_ON_OTHER_TILL,
+    /** O2: correct credential, refused because this till's shift belongs to someone else. Not a failure. */
+    TILL_LOCKED;
 
     /** Whether this outcome counts towards the failure thresholds. */
     public boolean isFailure() {

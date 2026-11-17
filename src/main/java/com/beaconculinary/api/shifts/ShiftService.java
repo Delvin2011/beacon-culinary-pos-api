@@ -7,6 +7,7 @@ import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.endofday.EndOfDayConflictException;
 import com.beaconculinary.api.endofday.TradingDayLock;
 import com.beaconculinary.api.endofday.ZReadings;
+import com.beaconculinary.api.sessions.SessionGuard;
 import com.beaconculinary.api.tills.CurrentTill;
 import com.beaconculinary.api.tills.Till;
 import com.beaconculinary.api.users.Role;
@@ -34,10 +35,13 @@ public class ShiftService {
     private final ZReadings zReadings;
     private final CurrentTill currentTill;
     private final OpenShiftConflicts openShiftConflicts;
+    private final SessionGuard sessionGuard;
 
     @Transactional
     public ShiftDto openShift(OpenShiftRequest request) {
         var currentUser = authService.getCurrentUser();
+        // O2 R7: an active session.
+        sessionGuard.requireActive();
         // O2 R4: a registered till when pos.tills.require-registered is on.
         currentTill.requireRegisteredForPos();
         var till = currentTill.resolve();
@@ -103,6 +107,7 @@ public class ShiftService {
 
     @Transactional
     public ShiftDto closeShift(Long id, CloseShiftRequest request) {
+        sessionGuard.requireActive();
         // POS Oversight B3: exclusive row lock before anything is read or computed, so an order
         // or adjustment can't attach to this shift between the expected-cash calculation and
         // the close being written (see ShiftRepository.findOpenOnTillWithSharedLock). Taken

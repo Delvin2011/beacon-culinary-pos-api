@@ -7,6 +7,7 @@ import com.beaconculinary.api.inventory.LightMealStockService;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.shifts.ShiftRepository;
+import com.beaconculinary.api.sessions.SessionGuard;
 import com.beaconculinary.api.tills.CurrentTill;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
@@ -52,6 +53,7 @@ public class OrderAdjustmentService {
     private final PosSettings posSettings;
     private final Clock clock;
     private final CurrentTill currentTill;
+    private final SessionGuard sessionGuard;
 
     @Transactional
     public OrderResult adjustOrder(Long orderId, CreateOrderAdjustmentRequest request) {
@@ -79,6 +81,8 @@ public class OrderAdjustmentService {
                 return OrderResult.replayed(replay(existing.get(), orderId, requestHash, authService.getCurrentUser()));
             }
         }
+        // O2 R7: after the replay lookup, before anything new.
+        sessionGuard.requireActive();
         // O2 (contract 4.4): the till checks come before the refund rules and the manager approval, so a
         // refusal here never burns a single-use token. The cash-out books to the open shift of the till
         // processing it (R14; it may be a later shift, or another till, than the sale's), which only its

@@ -45,7 +45,16 @@ public class TillException extends RuntimeException {
                 where + " already has an open shift (" + ownerName + ").", details);
     }
 
-    /** The caller has an open shift on another till. Sign-in says so too (step 5). */
+    /** R9: a registered till with an open shift, and the user is neither its owner nor an ADMIN. */
+    public static TillException tillLocked(String ownerName, String tillCode) {
+        var details = new LinkedHashMap<String, Object>();
+        details.put("ownerName", ownerName);
+        details.put("tillCode", tillCode);
+        return new TillException(HttpStatus.CONFLICT, "TILL_LOCKED", "This till is in use by " + ownerName + " ("
+                + tillCode + "). Only they or a manager can sign in.", details);
+    }
+
+    /** The caller has an open shift on another till (shift open and sign-in). */
     public static TillException shiftOpenOnOtherTill(Till other, String advice) {
         var details = new LinkedHashMap<String, Object>();
         details.put("tillCode", other.code());

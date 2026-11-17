@@ -4,6 +4,7 @@ import com.beaconculinary.api.users.UserDto;
 import com.beaconculinary.api.users.UserMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -58,13 +59,17 @@ public class AuthController {
     }
 
     /**
-     * Removes the refresh cookie from this browser. Public and idempotent: works without a session or
-     * with an expired access token, and always returns 204. The browser never sends the refresh cookie
-     * here (its path is /auth/refresh), so the token itself isn't revoked. The deviceToken cookie is
-     * left alone.
+     * Removes the refresh cookie from this browser and, since O2, ends the session named by the bearer
+     * token if one is sent (an expired one is accepted), so its refresh token stops working. Public and
+     * idempotent: works without a session, and always returns 204. The browser never sends the refresh
+     * cookie here (its path is /auth/refresh). The deviceToken cookie is left alone.
      */
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(HttpServletResponse response) {
+    public ResponseEntity<Void> logout(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+                                       HttpServletResponse response) {
+        if (authorization != null && authorization.startsWith("Bearer ")) {
+            authService.logout(authorization.substring(7));
+        }
         refreshCookies.clear(response);
         return ResponseEntity.noContent().build();
     }
