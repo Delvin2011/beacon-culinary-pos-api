@@ -131,6 +131,7 @@ public class OrderService {
             var line = new OrderLine();
             line.setOrder(order);
             line.setDailyMealOption(option);
+            line.setName(option.getName());
             line.setStation(meal.getStation());
             line.setUnitPrice(option.getPrice());
             line.setQuantity(lineRequest.getQuantity());
@@ -158,6 +159,7 @@ public class OrderService {
                 var extra = new OrderLineExtra();
                 extra.setOrderLine(line);
                 extra.setDailyComponentStock(stock);
+                extra.setComponentName(stock.getComponentCatalog().getName());
                 extra.setPriceDelta(stock.getExtraPrice());
                 extra.setQuantity(extraRequest.getQuantity());
                 var extraLineTotal = stock.getExtraPrice().multiply(BigDecimal.valueOf(extraRequest.getQuantity()));

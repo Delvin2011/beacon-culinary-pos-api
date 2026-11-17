@@ -4,6 +4,7 @@ import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.users.UserRefDto;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.Named;
 
 import java.util.Comparator;
 import java.util.List;
@@ -11,11 +12,11 @@ import java.util.List;
 @Mapper(componentModel = "spring", imports = UserRefDto.class)
 public interface OrderMapper {
     @Mapping(target = "dailyComponentStockId", source = "dailyComponentStock.id")
-    @Mapping(target = "componentName", source = "dailyComponentStock.componentCatalog.name")
+    @Mapping(target = "componentName", expression = "java(componentName(extra))")
     OrderLineExtraDto toDto(OrderLineExtra extra);
 
     @Mapping(target = "dailyMealOptionId", source = "dailyMealOption.id")
-    @Mapping(target = "name", source = "dailyMealOption.name")
+    @Mapping(target = "name", expression = "java(lineName(line))")
     OrderLineDto toDto(OrderLine line);
 
     @Mapping(target = "requestedById", source = "requestedBy.id")
@@ -28,12 +29,32 @@ public interface OrderMapper {
     OrderPaymentDto toDto(OrderPayment payment);
 
     @Mapping(target = "shiftId", source = "shift.id")
+    @Mapping(target = "receiptNumber", expression = "java(ReceiptNumbers.of(order.getOrderDate(), order.getOrderNumber()))")
     @Mapping(target = "tillCode", source = "shift.tillCode")
     @Mapping(target = "tillName", source = "shift.tillName")
     @Mapping(target = "cashierId", source = "cashier.id")
     @Mapping(target = "cashierName", source = "cashier.name")
     @Mapping(target = "stations", expression = "java(toStationDtos(order))")
     OrderDto toDto(Order order);
+
+    /** O2b: the name stored at sale, or the option's current name for lines from before V109. */
+    @Named("lineName")
+    default String lineName(OrderLine line) {
+        if (line.getName() != null) {
+            return line.getName();
+        }
+        return line.getDailyMealOption() == null ? null : line.getDailyMealOption().getName();
+    }
+
+    /** O2b: the component name stored at sale, or the current one for extras from before V109. */
+    @Named("componentName")
+    default String componentName(OrderLineExtra extra) {
+        if (extra.getComponentName() != null) {
+            return extra.getComponentName();
+        }
+        var stock = extra.getDailyComponentStock();
+        return stock == null || stock.getComponentCatalog() == null ? null : stock.getComponentCatalog().getName();
+    }
 
     default List<OrderStationDto> toStationDtos(Order order) {
         return order.getStationStatuses().stream()

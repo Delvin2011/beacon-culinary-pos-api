@@ -33,6 +33,11 @@ public class OrderLine {
     @Column(name = "station")
     private Station station = Station.KITCHEN;
 
+    // O2b: the option's name at sale, so a later rename doesn't change old receipts. Null on lines
+    // from before V109; OrderMapper then falls back to the option's current name.
+    @Column(name = "name")
+    private String name;
+
     // Snapshotted at order time — a later catalog/daily-option change must never
     // retroactively rewrite an already-sold order line.
     @Column(name = "unit_price")
