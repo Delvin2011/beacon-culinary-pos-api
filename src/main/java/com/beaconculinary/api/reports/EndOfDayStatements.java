@@ -10,7 +10,7 @@ import com.beaconculinary.api.reports.definitions.SalesSummaryReport;
 import com.beaconculinary.api.reports.definitions.TenderSummaryReport;
 import com.beaconculinary.api.shifts.ShiftVarianceReasonCode;
 import com.beaconculinary.api.common.UtcTimestamps;
-import org.springframework.beans.factory.annotation.Value;
+import com.beaconculinary.api.receipts.BusinessName;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -51,14 +51,13 @@ public class EndOfDayStatements {
     private final TenderSummaryReport tenderSummary;
     private final CashUpVarianceReport cashUp;
     private final Clock clock;
-    private final String businessName;
+    private final BusinessName businessName;
 
     public EndOfDayStatements(ReportFacts facts, EndOfDayFacts endOfDayFacts, ShiftCashFigures shiftCashFigures,
                               ShiftSignoffs signoffs, ZReadings zReadings, DayCloseRules dayCloseRules,
                               CloseDaySettings closeDaySettings,
                               SalesSummaryReport salesSummary, TenderSummaryReport tenderSummary,
-                              CashUpVarianceReport cashUp, Clock clock,
-                              @Value("${app.business.name:Beacon Culinary}") String businessName) {
+                              CashUpVarianceReport cashUp, Clock clock, BusinessName businessName) {
         this.facts = facts;
         this.endOfDayFacts = endOfDayFacts;
         this.shiftCashFigures = shiftCashFigures;
@@ -143,7 +142,7 @@ public class EndOfDayStatements {
 
     private Map<String, Object> dayHeader(LocalDate tradingDay, ZContext z) {
         var items = Sections.items();
-        items.add(Sections.item("Business", ColumnType.TEXT, businessName));
+        items.add(Sections.item("Business", ColumnType.TEXT, businessName.current()));
         items.add(Sections.item("Report", ColumnType.TEXT, z == null ? X_TITLE : Z_TITLE));
         if (z != null) {
             items.add(Sections.item("Z number", ColumnType.TEXT, ZReadings.Z.reference(z.zNumber())));
@@ -421,7 +420,7 @@ public class EndOfDayStatements {
 
         var sections = new ArrayList<Map<String, Object>>();
         var header = Sections.items();
-        header.add(Sections.item("Business", ColumnType.TEXT, businessName));
+        header.add(Sections.item("Business", ColumnType.TEXT, businessName.current()));
         header.add(Sections.item("Report", ColumnType.TEXT, open ? CASHIER_TITLE + " — INTERIM" : CASHIER_TITLE));
         header.add(Sections.item("Cashier", ColumnType.TEXT, shift.ownerName()));
         header.add(Sections.item("Till", ColumnType.TEXT, shift.tillLabel()));

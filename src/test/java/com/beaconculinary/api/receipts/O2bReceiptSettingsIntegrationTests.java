@@ -60,7 +60,8 @@ class O2bReceiptSettingsIntegrationTests {
         var body = body(getAs("/pos/receipt-settings", cashierToken).andExpect(status().isOk()));
 
         assertThat(fieldNames(body)).containsExactlyInAnyOrder(
-                "businessName", "addressLines", "phone", "vatNumber", "footerText", "showVatLine");
+                "receiptTitle", "businessName", "addressLines", "phone", "vatNumber", "footerText", "showVatLine");
+        assertThat(body.get("receiptTitle").isNull()).isTrue();
         assertThat(body.get("businessName").isNull()).isTrue();
         assertThat(body.get("addressLines").isArray()).isTrue();
         assertThat(body.get("addressLines")).isEmpty();
@@ -74,8 +75,8 @@ class O2bReceiptSettingsIntegrationTests {
     void admin_beforeAnySave_hasNoUpdatedAtOrBy() throws Exception {
         var body = body(getAs("/admin/receipt-settings", adminToken).andExpect(status().isOk()));
 
-        assertThat(fieldNames(body)).containsExactlyInAnyOrder("businessName", "addressLines", "phone", "vatNumber",
-                "footerText", "showVatLine", "updatedAt", "updatedBy");
+        assertThat(fieldNames(body)).containsExactlyInAnyOrder("receiptTitle", "businessName", "addressLines", "phone",
+                "vatNumber", "footerText", "showVatLine", "updatedAt", "updatedBy");
         assertThat(body.get("updatedAt").isNull()).isTrue();
         assertThat(body.get("updatedBy").isNull()).isTrue();
         assertThat(body.get("showVatLine").asBoolean()).isFalse();
@@ -85,7 +86,7 @@ class O2bReceiptSettingsIntegrationTests {
 
     @Test
     void put_savesTrimmedValues_andRecordsWhoSaved() throws Exception {
-        var request = full("  Canteen at Riverside Park  ", List.of(" 12 Main Road ", "   ", "Riverside", "", "Cape Town 8001"),
+        var request = full(null, "  Canteen at Riverside Park  ", List.of(" 12 Main Road ", "   ", "Riverside", "", "Cape Town 8001"),
                 " 021 555 0100 ", " 4123456789 ", "Thank you!\nKeep this slip for refunds.", true);
 
         var saved = body(putAs(adminToken, request).andExpect(status().isOk()));
@@ -115,7 +116,7 @@ class O2bReceiptSettingsIntegrationTests {
 
     @Test
     void put_replacesEverything_blankAndMissingValuesBecomeNull() throws Exception {
-        putAs(adminToken, full("Canteen", List.of("1 Road", "Town"), "021", "4123", "Thanks", true))
+        putAs(adminToken, full(null, "Canteen", List.of("1 Road", "Town"), "021", "4123", "Thanks", true))
                 .andExpect(status().isOk());
 
         var request = new HashMap<String, Object>();
@@ -156,7 +157,7 @@ class O2bReceiptSettingsIntegrationTests {
     @Test
     void put_acceptsValuesAtTheirLimits() throws Exception {
         var footer = "x".repeat(250) + "\n" + "y".repeat(249);
-        var request = full("b".repeat(100), List.of("a".repeat(100), "2", "3", "4"), "p".repeat(50), "v".repeat(20), footer, true);
+        var request = full(null, "b".repeat(100), List.of("a".repeat(100), "2", "3", "4"), "p".repeat(50), "v".repeat(20), footer, true);
 
         var saved = body(putAs(adminToken, request).andExpect(status().isOk()));
 
@@ -169,20 +170,44 @@ class O2bReceiptSettingsIntegrationTests {
 
     @Test
     void put_fiveLinesWithOneBlank_keepsFour() throws Exception {
-        var saved = body(putAs(adminToken, full(null, List.of("1", " ", "2", "3", "4"), null, null, null, false))
+        var saved = body(putAs(adminToken, full(null, null, List.of("1", " ", "2", "3", "4"), null, null, null, false))
                 .andExpect(status().isOk()));
 
         assertThat(texts(saved.get("addressLines"))).containsExactly("1", "2", "3", "4");
     }
 
+    @Test
+    void put_savesTheReceiptTitle_trimmed_andShowsItOnBothReads() throws Exception {
+        var saved = body(putAs(adminToken, full(" Tax Invoice ", "Canteen", List.of(), null, null, null, true))
+                .andExpect(status().isOk()));
+
+        assertThat(saved.get("receiptTitle").asText()).isEqualTo("Tax Invoice");
+        assertThat(body(getAs("/admin/receipt-settings", adminToken)).get("receiptTitle").asText()).isEqualTo("Tax Invoice");
+        assertThat(body(getAs("/pos/receipt-settings", cashierToken)).get("receiptTitle").asText()).isEqualTo("Tax Invoice");
+        assertThat(jdbc.queryForObject("SELECT [receipt_title] FROM [receipt_settings] WHERE [id] = 1", String.class))
+                .isEqualTo("Tax Invoice");
+    }
+
     // ---- validation ----
 
     @Test
+    void put_receiptTitleTooLong_returns400() throws Exception {
+        var errors = body(putAs(adminToken, full("t".repeat(51), "Canteen", List.of(), null, null, null, true))
+                .andExpect(status().isBadRequest()));
+
+        assertThat(fieldNames(errors)).containsExactly("receiptTitle");
+        assertThat(errors.get("receiptTitle").asText()).isEqualTo("Receipt title must be 50 characters or fewer.");
+        assertNothingSaved();
+    }
+
+
+    @Test
     void put_valuesTooLong_returnsAFieldMap_andSavesNothing() throws Exception {
-        var request = full("b".repeat(101), List.of("a".repeat(101)), "p".repeat(51), "v".repeat(21), "f".repeat(501), true);
+        var request = full("t".repeat(51), "b".repeat(101), List.of("a".repeat(101)), "p".repeat(51), "v".repeat(21), "f".repeat(501), true);
 
         var errors = body(putAs(adminToken, request).andExpect(status().isBadRequest()));
 
+        assertThat(errors.get("receiptTitle").asText()).isEqualTo("Receipt title must be 50 characters or fewer.");
         assertThat(errors.get("businessName").asText()).isEqualTo("Business name must be 100 characters or fewer.");
         assertThat(errors.get("addressLines").asText()).isEqualTo("Each address line must be 100 characters or fewer.");
         assertThat(errors.get("phone").asText()).isEqualTo("Phone must be 50 characters or fewer.");
@@ -193,7 +218,7 @@ class O2bReceiptSettingsIntegrationTests {
 
     @Test
     void put_lengthIsCheckedAfterTrimming() throws Exception {
-        var saved = body(putAs(adminToken, full("  " + "b".repeat(100) + "  ", List.of(), null, " " + "v".repeat(20) + " ", null, false))
+        var saved = body(putAs(adminToken, full(null, "  " + "b".repeat(100) + "  ", List.of(), null, " " + "v".repeat(20) + " ", null, false))
                 .andExpect(status().isOk()));
 
         assertThat(saved.get("businessName").asText()).hasSize(100);
@@ -202,7 +227,7 @@ class O2bReceiptSettingsIntegrationTests {
 
     @Test
     void put_moreThanFourAddressLines_returns400() throws Exception {
-        var errors = body(putAs(adminToken, full("Canteen", List.of("1", "2", "3", "4", "5"), null, null, null, false))
+        var errors = body(putAs(adminToken, full(null, "Canteen", List.of("1", "2", "3", "4", "5"), null, null, null, false))
                 .andExpect(status().isBadRequest()));
 
         assertThat(errors.get("addressLines").asText()).isEqualTo("At most 4 address lines.");
@@ -225,7 +250,7 @@ class O2bReceiptSettingsIntegrationTests {
 
     @Test
     void writesAndAdminReads_areAdminOnly() throws Exception {
-        var request = full("Canteen", List.of(), null, null, null, true);
+        var request = full(null, "Canteen", List.of(), null, null, null, true);
         for (var token : List.of(cashierToken, AuthTestHelper.loginAsHeadChef(mockMvc),
                 AuthTestHelper.loginAsStockAdmin(mockMvc), AuthTestHelper.loginAsKitchen(mockMvc))) {
             putAs(token, request).andExpect(status().isForbidden());
@@ -247,7 +272,7 @@ class O2bReceiptSettingsIntegrationTests {
         mockMvc.perform(get("/pos/receipt-settings")).andExpect(status().isUnauthorized());
         mockMvc.perform(get("/admin/receipt-settings")).andExpect(status().isUnauthorized());
         mockMvc.perform(put("/admin/receipt-settings").contentType(MediaType.APPLICATION_JSON)
-                .content(MAPPER.writeValueAsString(full("Canteen", List.of(), null, null, null, true))))
+                .content(MAPPER.writeValueAsString(full(null, "Canteen", List.of(), null, null, null, true))))
                 .andExpect(status().isUnauthorized());
         assertNothingSaved();
     }
@@ -257,7 +282,7 @@ class O2bReceiptSettingsIntegrationTests {
     private void resetRow() {
         jdbc.update("""
                 UPDATE [receipt_settings]
-                SET [business_name] = NULL, [address_line_1] = NULL, [address_line_2] = NULL, [address_line_3] = NULL,
+                SET [receipt_title] = NULL, [business_name] = NULL, [address_line_1] = NULL, [address_line_2] = NULL, [address_line_3] = NULL,
                     [address_line_4] = NULL, [phone] = NULL, [vat_number] = NULL, [footer_text] = NULL,
                     [show_vat_line] = 0, [updated_at] = NULL, [updated_by] = NULL, [updated_by_name] = NULL
                 WHERE [id] = 1""");
@@ -270,9 +295,10 @@ class O2bReceiptSettingsIntegrationTests {
         assertThat(row.get("show_vat_line")).isEqualTo(false);
     }
 
-    private static Map<String, Object> full(String businessName, List<String> addressLines, String phone, String vatNumber,
+    private static Map<String, Object> full(String receiptTitle, String businessName, List<String> addressLines, String phone, String vatNumber,
                                             String footerText, Boolean showVatLine) {
         var request = new HashMap<String, Object>();
+        request.put("receiptTitle", receiptTitle);
         request.put("businessName", businessName);
         request.put("addressLines", addressLines);
         request.put("phone", phone);

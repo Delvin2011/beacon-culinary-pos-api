@@ -23,13 +23,13 @@ public class ReceiptSettingsStore {
     }
 
     /** The stored values; addressLines holds only the non-null lines, in order. */
-    public record Row(String businessName, List<String> addressLines, String phone, String vatNumber,
+    public record Row(String receiptTitle, String businessName, List<String> addressLines, String phone, String vatNumber,
                       String footerText, boolean showVatLine, LocalDateTime updatedAt, String updatedByName) {
     }
 
     public Optional<Row> find() {
         return jdbc.query("""
-                SELECT [business_name], [address_line_1], [address_line_2], [address_line_3], [address_line_4],
+                SELECT [receipt_title], [business_name], [address_line_1], [address_line_2], [address_line_3], [address_line_4],
                        [phone], [vat_number], [footer_text], [show_vat_line], [updated_at], [updated_by_name]
                 FROM [receipt_settings] WHERE [id] = ?""", (rs, i) -> {
             var lines = new ArrayList<String>();
@@ -39,7 +39,7 @@ public class ReceiptSettingsStore {
                     lines.add(line);
                 }
             }
-            return new Row(rs.getString("business_name"), List.copyOf(lines), rs.getString("phone"),
+            return new Row(rs.getString("receipt_title"), rs.getString("business_name"), List.copyOf(lines), rs.getString("phone"),
                     rs.getString("vat_number"), rs.getString("footer_text"), rs.getBoolean("show_vat_line"),
                     rs.getObject("updated_at", LocalDateTime.class), rs.getString("updated_by_name"));
         }, ROW_ID).stream().findFirst();
@@ -49,7 +49,7 @@ public class ReceiptSettingsStore {
      * Replaces every value and records who saved, at the database's UTC time. Inserts row 1 if it's
      * missing (V108 creates it, so that's only a safeguard).
      */
-    public void save(String businessName, List<String> addressLines, String phone, String vatNumber,
+    public void save(String receiptTitle, String businessName, List<String> addressLines, String phone, String vatNumber,
                      String footerText, boolean showVatLine, long updatedById, String updatedByName) {
         var line = new String[ReceiptSettingsService.MAX_ADDRESS_LINES];
         for (int n = 0; n < addressLines.size(); n++) {
@@ -57,19 +57,19 @@ public class ReceiptSettingsStore {
         }
         int updated = jdbc.update("""
                 UPDATE [receipt_settings]
-                SET [business_name] = ?, [address_line_1] = ?, [address_line_2] = ?, [address_line_3] = ?,
+                SET [receipt_title] = ?, [business_name] = ?, [address_line_1] = ?, [address_line_2] = ?, [address_line_3] = ?,
                     [address_line_4] = ?, [phone] = ?, [vat_number] = ?, [footer_text] = ?, [show_vat_line] = ?,
                     [updated_at] = SYSUTCDATETIME(), [updated_by] = ?, [updated_by_name] = ?
                 WHERE [id] = ?""",
-                businessName, line[0], line[1], line[2], line[3], phone, vatNumber, footerText, showVatLine,
-                updatedById, updatedByName, ROW_ID);
+                receiptTitle, businessName, line[0], line[1], line[2], line[3], phone, vatNumber, footerText,
+                showVatLine, updatedById, updatedByName, ROW_ID);
         if (updated == 0) {
             jdbc.update("""
-                    INSERT INTO [receipt_settings] ([id], [business_name], [address_line_1], [address_line_2],
-                        [address_line_3], [address_line_4], [phone], [vat_number], [footer_text], [show_vat_line],
-                        [updated_at], [updated_by], [updated_by_name])
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SYSUTCDATETIME(), ?, ?)""",
-                    ROW_ID, businessName, line[0], line[1], line[2], line[3], phone, vatNumber, footerText,
+                    INSERT INTO [receipt_settings] ([id], [receipt_title], [business_name], [address_line_1],
+                        [address_line_2], [address_line_3], [address_line_4], [phone], [vat_number], [footer_text],
+                        [show_vat_line], [updated_at], [updated_by], [updated_by_name])
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SYSUTCDATETIME(), ?, ?)""",
+                    ROW_ID, receiptTitle, businessName, line[0], line[1], line[2], line[3], phone, vatNumber, footerText,
                     showVatLine, updatedById, updatedByName);
         }
     }

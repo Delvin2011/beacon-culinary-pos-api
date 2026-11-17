@@ -2,7 +2,7 @@ package com.beaconculinary.api.reports;
 
 import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.common.ClockConfig;
-import org.springframework.beans.factory.annotation.Value;
+import com.beaconculinary.api.receipts.BusinessName;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,11 +27,10 @@ public class ReportService {
     private final ReportExporter exporter;
     private final AuthService authService;
     private final Clock clock;
-    private final String businessName;
+    private final BusinessName businessName;
 
     public ReportService(ReportRegistry registry, ReportParamParser paramParser, ReportExporter exporter,
-                         AuthService authService, Clock clock,
-                         @Value("${app.business.name:Beacon Culinary}") String businessName) {
+                         AuthService authService, Clock clock, BusinessName businessName) {
         this.registry = registry;
         this.paramParser = paramParser;
         this.exporter = exporter;
@@ -86,7 +85,7 @@ public class ReportService {
                 statement == null ? null : statement.title(),
                 statement == null ? null : statement.reference(),
                 statement == null ? null : statement.interim(),
-                isStatement ? new ReportEnvelope.Business(businessName) : null);
+                isStatement ? new ReportEnvelope.Business(businessName.current()) : null);
         return new ReportEnvelope(meta, result.columns(), result.rows(), result.totals(), result.checks(), result.page(),
                 result.sections(), result.actions());
     }

@@ -21,6 +21,7 @@ import java.util.Map;
 @Service
 public class ReceiptSettingsService {
     public static final int MAX_ADDRESS_LINES = 4;
+    static final int MAX_RECEIPT_TITLE = 50;
     static final int MAX_BUSINESS_NAME = 100;
     static final int MAX_ADDRESS_LINE = 100;
     static final int MAX_PHONE = 50;
@@ -28,7 +29,7 @@ public class ReceiptSettingsService {
     static final int MAX_FOOTER = 500;
 
     private static final ReceiptSettingsStore.Row EMPTY =
-            new ReceiptSettingsStore.Row(null, List.of(), null, null, null, false, null, null);
+            new ReceiptSettingsStore.Row(null, null, List.of(), null, null, null, false, null, null);
 
     private final ReceiptSettingsStore store;
     private final AuthService authService;
@@ -41,7 +42,7 @@ public class ReceiptSettingsService {
     @Transactional(readOnly = true)
     public PosView forPos() {
         var row = current();
-        return new PosView(row.businessName(), row.addressLines(), row.phone(), row.vatNumber(),
+        return new PosView(row.receiptTitle(), row.businessName(), row.addressLines(), row.phone(), row.vatNumber(),
                 row.footerText(), row.showVatLine());
     }
 
@@ -53,6 +54,8 @@ public class ReceiptSettingsService {
     @Transactional
     public AdminView update(UpdateRequest request) {
         var errors = new LinkedHashMap<String, String>();
+        var receiptTitle = text(request.receiptTitle(), MAX_RECEIPT_TITLE, "receiptTitle",
+                "Receipt title must be 50 characters or fewer.", errors);
         var businessName = text(request.businessName(), MAX_BUSINESS_NAME, "businessName",
                 "Business name must be 100 characters or fewer.", errors);
         var addressLines = addressLines(request.addressLines(), errors);
@@ -68,7 +71,7 @@ public class ReceiptSettingsService {
             throw new ReceiptSettingsValidationException(errors);
         }
         var user = authService.getCurrentUser();
-        store.save(businessName, addressLines, phone, vatNumber, footerText, request.showVatLine(),
+        store.save(receiptTitle, businessName, addressLines, phone, vatNumber, footerText, request.showVatLine(),
                 user.getId(), user.getName());
         return adminView(current());
     }
@@ -78,7 +81,7 @@ public class ReceiptSettingsService {
     }
 
     private static AdminView adminView(ReceiptSettingsStore.Row row) {
-        return new AdminView(row.businessName(), row.addressLines(), row.phone(), row.vatNumber(),
+        return new AdminView(row.receiptTitle(), row.businessName(), row.addressLines(), row.phone(), row.vatNumber(),
                 row.footerText(), row.showVatLine(), UtcTimestamps.toInstant(row.updatedAt()), row.updatedByName());
     }
 
