@@ -71,8 +71,11 @@ TASKS
      Store the response as is (the `grant` string is opaque: never parse it).
      - NOT_SHIFT_OWNER (e.g. an ADMIN covering): quietly "not ready", no error shown.
      - NO_OPEN_SHIFT, DEVICE_NOT_REGISTERED, OFFLINE_DISABLED: delete the grant and the unlock value.
-   - A grant is valid only if its deviceId is this till, its shiftId is the open shift, its
-     cashierId is the signed-in user, and expiresAt hasn't passed (by server time).
+   - A grant is valid only if its shiftId is the open shift (till-status shift.shiftId), its
+     cashierId is the signed-in user (and the shift's owner), and expiresAt hasn't passed (by server
+     time). Don't check deviceId: the till can't learn its own (till-status doesn't return it), and
+     this browser's storage only ever holds grants issued to its own cookie. A revoked till shows as
+     till-status registered=false: delete everything then. Store deviceId as received.
    - Delete the grant and unlock value when: the shift closes (including a force close seen via
      till-status); the till is found revoked; a different cashier opens a shift; offlineEnabled
      becomes false. Keep the snapshot (it holds no secrets) but delete its accounts list at shift
