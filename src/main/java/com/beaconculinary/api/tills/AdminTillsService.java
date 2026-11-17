@@ -1,6 +1,8 @@
 package com.beaconculinary.api.tills;
 
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.offline.OfflineStatusDtos;
+import com.beaconculinary.api.offline.OfflineStatusService;
 import com.beaconculinary.api.devices.DeviceStore;
 import com.beaconculinary.api.sessions.SessionService;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,11 +26,14 @@ public class AdminTillsService {
     private final DeviceStore deviceStore;
     private final SessionService sessionService;
     private final JdbcTemplate jdbc;
+    private final OfflineStatusService offlineStatus;
 
-    public AdminTillsService(DeviceStore deviceStore, SessionService sessionService, JdbcTemplate jdbc) {
+    public AdminTillsService(DeviceStore deviceStore, SessionService sessionService, JdbcTemplate jdbc,
+                             OfflineStatusService offlineStatus) {
         this.deviceStore = deviceStore;
         this.sessionService = sessionService;
         this.jdbc = jdbc;
+        this.offlineStatus = offlineStatus;
     }
 
     private record OpenShift(long shiftId, long ownerId, String ownerName, String deviceId, LocalDateTime openedAtUtc) {
@@ -52,6 +57,7 @@ public class AdminTillsService {
                 .sorted(Comparator.comparing((DeviceStore.DeviceRow d) -> d.tillCode() == null ? "" : d.tillCode())
                         .thenComparing(DeviceStore.DeviceRow::name))
                 .toList();
+        var offline = offlineStatus.forAdmin();
         for (var device : active) {
             var open = openByDevice.get(device.id());
             AdminTillDto.Shift shift = null;
@@ -60,12 +66,13 @@ public class AdminTillsService {
                 shift = new AdminTillDto.Shift(open.shiftId(), open.ownerId(), open.ownerName(),
                         UtcTimestamps.toInstant(open.openedAtUtc()), locked);
             }
-            tills.add(new AdminTillDto(device.id(), device.tillCode(), device.name(), true, shift));
+            tills.add(new AdminTillDto(device.id(), device.tillCode(), device.name(), true, shift,
+                    offline.getOrDefault(UUID.fromString(device.id()), OfflineStatusDtos.TillOffline.NEVER)));
         }
         if (unregistered != null) {
             tills.add(new AdminTillDto(null, null, Till.UNREGISTERED_NAME, false, new AdminTillDto.Shift(
                     unregistered.shiftId(), unregistered.ownerId(), unregistered.ownerName(),
-                    UtcTimestamps.toInstant(unregistered.openedAtUtc()), null)));
+                    UtcTimestamps.toInstant(unregistered.openedAtUtc()), null), null));
         }
         return tills;
     }

@@ -13,6 +13,8 @@ public class PosSecurityRules implements SecurityRules {
     @Override
     public void configure(AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry registry) {
         registry.requestMatchers(HttpMethod.GET, "/pos/till-status").permitAll();
+        // O3: the heartbeat authenticates by the till cookie only (OfflineStatusController); no sign-in.
+        registry.requestMatchers(HttpMethod.POST, "/pos/offline/status").permitAll();
         registry.requestMatchers("/pos/**").hasAnyRole(Role.CASHIER.name(), Role.ADMIN.name());
     }
 }
