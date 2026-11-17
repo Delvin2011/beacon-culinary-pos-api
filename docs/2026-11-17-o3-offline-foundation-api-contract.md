@@ -8,7 +8,7 @@ It builds on these contracts, which still apply:
 - O2b receipt data: `docs/2026-11-17-o2b-receipt-data-api-contract.md`
 - WS1-1b device registration: `docs/2026-11-13-device-registration-api-contract.md`
 
-**Status:** the contract to build against. Nothing here is implemented yet.
+**Status:** implemented on `feature/o3-offline-foundation` (see `docs/2026-11-18-o3-offline-foundation-change-report.md`).
 
 ## Contents
 
@@ -126,6 +126,8 @@ Issues the grant for this till's open shift. Call it:
 | `nextOfflineSeq` | Where offline numbering should continue for this till today (section 7). |
 | `accountCap` | Present only when `accountsEnabled` is true. |
 | `serverTimeUtc` | The server's clock. Use it to measure the till's clock drift. |
+
+`tillCode` is the till's code as recorded on the shift when it opened. Asking for a grant doesn't count as activity for the session's idle timer.
 
 **Errors:** `OFFLINE_DISABLED`, `DEVICE_NOT_REGISTERED`, 401, `SESSION_ENDED`, `POS_SESSION_REQUIRED`, 403 for other roles, `NO_OPEN_SHIFT`, `NOT_SHIFT_OWNER` (section 4).
 
@@ -245,7 +247,9 @@ Today's data for selling offline. Fetch it after sign-in, after opening a shift,
 
 Prices, portions and the "which always-on items are listed" rule are exactly those of `GET /menu/today` (they come from the same code).
 
-**Size:** about 15–60 KB for 20–100 options and 50 accounts; a 304 is a few hundred bytes. Portion counts change with each sale, so during service the `ETag` changes often and most refreshes return 200.
+**Size:** measured at about 300 bytes per option (1.7 KB for the test fixture of 4 options and 1 account), so about 35 KB for 100 options and 50 accounts; a 304 is a few hundred bytes. Portion counts change with each sale, so during service the `ETag` changes often and most refreshes return 200.
+
+Responses carry `Cache-Control: private, no-cache`, so a browser may cache the body but must revalidate it. `periods` are in start-time order, `options` in till-menu order and `accounts` by account number.
 
 ## 9. `POST /pos/offline/status` (heartbeat)
 
@@ -287,7 +291,10 @@ The till reports its unsynced sales. Send it every 60 seconds while online, and 
 
 `clockSkewMs` = `tillClockUtc` − `receivedAt`: positive when the till's clock is ahead.
 
-**Errors:** 403 `DEVICE_NOT_REGISTERED`; 400 field map for an invalid body.
+**Errors:**
+- 400 field map for an invalid body. The body is checked **before** the cookie, so an invalid report gets 400 even from an unregistered browser; nothing is stored. Keys: the field name (`pendingCount`, `tillClockUtc`, `pending`, `pending[0].count`, `appVersion`), `pendingCountConsistent` (the counts don't add up) and `pendingUnique` (a shift and day listed twice).
+- 403 `DEVICE_NOT_REGISTERED`.
+- 415 when the body isn't `application/json`.
 
 The server keeps only the **latest** report per till (each report replaces the previous one, including its `pending` list).
 
@@ -331,6 +338,8 @@ Each registered till gains `offline`; the unregistered till's row has `"offline"
 
 `tillCode` is a new optional field on blockers; existing blockers don't have it.
 
+When the till has gone silent (stale), the message ends "(last report 09:15, nothing heard since)." Times are Johannesburg time.
+
 **New optional body**, to override it:
 
 ```json
@@ -345,6 +354,8 @@ Each registered till gains `offline`; the unregistered till's row has `"offline"
 | Override, other blockers remain | 409 `CLOSE_DAY_BLOCKED` with only the other blockers |
 | Override, no other blockers | 200, the Z as before. Each overridden till is recorded (who, when, reason, its counts and last report). |
 | Override when there's no `OFFLINE_SALES_PENDING` blocker | Ignored; the day closes normally and nothing is recorded. |
+
+With the override, the recent-password check runs first (403), then the reason (400).
 
 The preview of blockers (the existing end-of-day screens) shows `OFFLINE_SALES_PENDING` like the others.
 
@@ -375,7 +386,8 @@ Force close (`POST /admin/shifts/{id}/force-close`) is **not** blocked; late sal
 ## 12. Notes for O4
 
 Fixed now so O4 can rely on them:
-- Grants, numbering and status live in `offline_grants`, `offline_sequences` and `offline_till_status` / `offline_till_pending` (migration V110). O4 updates `offline_sequences.last_seq` when it accepts sales.
+- Grants, numbering and status live in `offline_grants`, `offline_sequences` and `offline_till_status` / `offline_till_pending` (migration V110). O4 raises `offline_sequences.last_seq` with `OfflineSequenceStore.recordSeen` when it accepts sales (it never lowers it).
+- **Key rotation:** grants are verified against the current key only. Rotating `grant-signing-key` would make grants signed with the old key unreadable to O4's sync. Before rotating, either let every till sync, or have O4 accept the previous key as well (a second, verify-only key).
 - O4 accepts a sale under a grant that was revoked or expired **after** the sale's `soldAt`, and refuses or flags sales made after it.
 - **ACCOUNT sales offline:** online ACCOUNT payments need a manager approval, which can't be obtained offline. O4 records offline account sales up to `accountCap` (per account, per till, per outage) **without** that approval, and flags them for review. Anything over the cap is flagged too.
 - Offline sales are recorded with the till's prices and stock counts; differences become review exceptions, not refusals (offline-readiness analysis, section 5).
