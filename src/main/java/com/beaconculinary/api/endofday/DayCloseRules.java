@@ -40,7 +40,7 @@ public class DayCloseRules {
     }
 
     /** A shift that opened on a trading day, with its owner. */
-    public record DayShift(long shiftId, String status, String ownerName) {
+    public record DayShift(long shiftId, String status, String ownerName, String cashCount) {
         public boolean open() {
             return "OPEN".equals(status);
         }
@@ -52,14 +52,15 @@ public class DayCloseRules {
 
     public List<DayShift> shifts(LocalDate tradingDay) {
         return jdbc.query("""
-                SELECT sf.shift_id, s.status, u.name AS owner_name
+                SELECT sf.shift_id, s.status, u.name AS owner_name, s.cash_count
                 FROM v_shift_facts sf
                 JOIN shifts s ON s.id = sf.shift_id
                 JOIN users u ON u.id = s.cashier_id
                 WHERE sf.trading_day = :day
                 ORDER BY sf.opened_at_utc, sf.shift_id""",
                 new MapSqlParameterSource("day", java.sql.Date.valueOf(tradingDay)),
-                (rs, i) -> new DayShift(rs.getLong("shift_id"), rs.getString("status"), rs.getString("owner_name")));
+                (rs, i) -> new DayShift(rs.getLong("shift_id"), rs.getString("status"), rs.getString("owner_name"),
+                        rs.getString("cash_count")));
     }
 
     public List<Blocker> blockers(LocalDate tradingDay) {
@@ -95,7 +96,11 @@ public class DayCloseRules {
         for (var shift : shifts) {
             var state = states.get(shift.shiftId());
             if (state == null || !state.signedOff()) {
-                blockers.add(new Blocker("SHIFT_NOT_SIGNED_OFF", shift.label() + " is not signed off.", shift.shiftId(),
+                // O2: an uncounted shift needs a late count or a confirmed "no count" before its sign-off.
+                var why = "UNCOUNTED".equals(shift.cashCount())
+                        ? " is not signed off: it was closed without a cash count. Record the count or confirm there is no count."
+                        : " is not signed off.";
+                blockers.add(new Blocker("SHIFT_NOT_SIGNED_OFF", shift.label() + why, shift.shiftId(),
                         null, null));
             }
         }

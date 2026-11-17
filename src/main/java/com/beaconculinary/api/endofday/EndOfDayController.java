@@ -21,12 +21,14 @@ public class EndOfDayController {
     private final ShiftSignoffService signoffService;
     private final CloseDayService closeDayService;
 
-    public record NoteRequest(String note) {
+    /** {@code confirmNoCount} (O2): sign off a shift force-closed without a count; {@code note} is then the reason. */
+    public record NoteRequest(String note, Boolean confirmNoCount) {
     }
 
     @PostMapping("/admin/shifts/{id}/signoff")
     public ShiftSignoffService.SignoffDto signOff(@PathVariable long id, @RequestBody(required = false) NoteRequest request) {
-        return signoffService.signOff(id, request == null ? null : request.note());
+        return signoffService.signOff(id, request == null ? null : request.note(),
+                request != null && Boolean.TRUE.equals(request.confirmNoCount()));
     }
 
     @PostMapping("/admin/shifts/{id}/signoff/revoke")

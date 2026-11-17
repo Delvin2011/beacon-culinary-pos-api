@@ -142,15 +142,10 @@ public class ShiftService {
             shift.setVarianceAuthorizedBy(admin);
         }
 
-        shift.setClosingCash(request.getCountedCash());
-        shift.setExpectedCash(breakdown.expectedCash());
-        shift.setCashSalesAtClose(breakdown.cashSales());
-        shift.setCashRefundsAtClose(breakdown.cashRefunds());
-        shift.setVariance(variance);
-        shift.setStatus(ShiftStatus.CLOSED);
-        shift.setClosedBy(authService.getCurrentUser());
-        // UTC, matching opened_at's SYSUTCDATETIME() default (V84 corrected older rows).
-        shift.setClosedAt(UtcTimestamps.nowUtc(clock));
+        // UTC, matching opened_at's SYSUTCDATETIME() default (V84 corrected older rows). Shared with the
+        // admin force close (O2), so both snapshot the same figures.
+        ShiftCloses.record(shift, breakdown, request.getCountedCash(), variance, authService.getCurrentUser(),
+                UtcTimestamps.nowUtc(clock));
         shiftRepository.save(shift);
 
         return shiftMapper.toDto(shift);

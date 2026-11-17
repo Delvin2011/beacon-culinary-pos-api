@@ -1,7 +1,6 @@
 package com.beaconculinary.api.devices;
 
-import com.beaconculinary.api.auth.JwtService;
-import com.beaconculinary.api.auth.SignIn;
+import com.beaconculinary.api.auth.RecentPasswordCheck;
 import com.beaconculinary.api.auth.protection.ClientIpResolver;
 import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.common.UtcTimestamps;
@@ -10,13 +9,11 @@ import com.beaconculinary.api.sessions.SessionStore;
 import com.beaconculinary.api.tills.TillCodes;
 import com.beaconculinary.api.tills.TillProperties;
 import com.beaconculinary.api.users.User;
-import com.beaconculinary.api.users.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,14 +47,13 @@ public class DeviceService {
     private final DeviceStore store;
     private final DeviceCookies cookies;
     private final DeviceAlerts alerts;
-    private final UserRepository userRepository;
-    private final JwtService jwtService;
+    private final RecentPasswordCheck recentPasswordCheck;
     private final ClientIpResolver clientIpResolver;
     private final Clock clock;
 
     public DeviceService(DeviceTrustProperties properties, TillProperties tillProperties, AppLock appLock,
                          SessionStore sessionStore, DeviceStore store, DeviceCookies cookies, DeviceAlerts alerts,
-                         UserRepository userRepository, JwtService jwtService, ClientIpResolver clientIpResolver, Clock clock) {
+                         RecentPasswordCheck recentPasswordCheck, ClientIpResolver clientIpResolver, Clock clock) {
         this.properties = properties;
         this.tillProperties = tillProperties;
         this.appLock = appLock;
@@ -65,8 +61,7 @@ public class DeviceService {
         this.store = store;
         this.cookies = cookies;
         this.alerts = alerts;
-        this.userRepository = userRepository;
-        this.jwtService = jwtService;
+        this.recentPasswordCheck = recentPasswordCheck;
         this.clientIpResolver = clientIpResolver;
         this.clock = clock;
     }
@@ -243,17 +238,7 @@ public class DeviceService {
 
     /** K2: an ADMIN session from a password sign-in no older than reauth-max-age. */
     private User requireRecentPassword(HttpServletRequest http) {
-        var header = http.getHeader(HttpHeaders.AUTHORIZATION);
-        var jwt = header != null && header.startsWith("Bearer ") ? jwtService.parseToken(header.substring(7)) : null;
-        var authTime = jwt == null ? null : jwt.getAuthTime();
-        var fresh = jwt != null && SignIn.PASSWORD.equals(jwt.getAmr()) && authTime != null
-                && clock.instant().getEpochSecond() - authTime <= properties.getReauthMaxAge().toSeconds();
-        if (!fresh) {
-            throw DeviceException.reauthRequired();
-        }
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        var userId = authentication != null && authentication.getPrincipal() instanceof Long id ? id : jwt.getUserId();
-        return userRepository.findById(userId).orElseThrow(DeviceException::reauthRequired);
+        return recentPasswordCheck.require(http, "manage tills");
     }
 
     private DeviceStore.DeviceRow loadDevice(String id) {

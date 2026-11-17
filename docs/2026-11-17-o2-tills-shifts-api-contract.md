@@ -530,7 +530,7 @@ For a shift whose owner can't close it: they left, their till was revoked, or th
 | `COUNTED`, `COUNTED_LATE` | as today | Signed off, as today |
 | `UNCOUNTED` | without `confirmNoCount` | 409 `SHIFT_UNCOUNTED`: "Record the count or confirm there is no count." |
 | `UNCOUNTED` | `confirmNoCount: true` and a non-blank `note` | Signed off. `cashCount` becomes `NO_COUNT_CONFIRMED`; the note is the reason. Needs a recent password sign-in (403 `REAUTH_REQUIRED`). |
-| `UNCOUNTED` | `confirmNoCount: true`, no `note` | 400 `{"note": "note is required to confirm there is no count."}` |
+| `UNCOUNTED` | `confirmNoCount: true`, no `note` | 400 `{"error": "note is required to confirm there is no count."}` (as for a revoke without a note) |
 | `NO_COUNT_CONFIRMED` (sign-off revoked) | as today | Signed off again, as today |
 
 ```json
