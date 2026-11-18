@@ -198,9 +198,12 @@ public class OrderAdjustmentService {
 
         if (action == OrderAdjustmentAction.VOID) {
             for (var line : order.getLines()) {
-                dailyMealOptionRepository.incrementPortionsRemaining(line.getDailyMealOption().getId(), line.getQuantity());
+                // O4: offline lines may have no menu link (UNKNOWN_ITEM): nothing to restock.
+                if (line.getDailyMealOption() != null) {
+                    dailyMealOptionRepository.incrementPortionsRemaining(line.getDailyMealOption().getId(), line.getQuantity());
+                }
                 for (var extra : line.getExtras()) {
-                    if (!extra.isAdjusted()) {
+                    if (!extra.isAdjusted() && extra.getDailyComponentStock() != null) {
                         dailyComponentStockRepository.incrementBufferRemaining(
                                 extra.getDailyComponentStock().getId(), extra.getQuantity());
                     }
@@ -253,8 +256,10 @@ public class OrderAdjustmentService {
 
         if (action == OrderAdjustmentAction.VOID) {
             for (var extra : unadjustedExtras) {
-                dailyComponentStockRepository.incrementBufferRemaining(
-                        extra.getDailyComponentStock().getId(), extra.getQuantity());
+                if (extra.getDailyComponentStock() != null) {
+                    dailyComponentStockRepository.incrementBufferRemaining(
+                            extra.getDailyComponentStock().getId(), extra.getQuantity());
+                }
             }
         }
         unadjustedExtras.forEach(extra -> extra.setAdjusted(true));

@@ -144,7 +144,8 @@ public class LightMealStockService {
      */
     public void deductForSale(Collection<OrderLine> lines, User recordedBy) {
         var lightMealLines = lines.stream()
-                .filter(line -> line.getDailyMealOption().isAlwaysOn()
+                // O4: an offline line without a menu link (UNKNOWN_ITEM) has no recipe to deduct.
+                .filter(line -> line.getDailyMealOption() != null && line.getDailyMealOption().isAlwaysOn()
                         && line.getDailyMealOption().getMealCatalog().getGroup() == CatalogGroup.LIGHT_MEALS)
                 .toList();
         if (lightMealLines.isEmpty()) {
