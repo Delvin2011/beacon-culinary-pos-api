@@ -131,13 +131,13 @@ public class OfflineSaleRecorder {
     public SaleResult record(Sale sale, OfflineGrantStore.GrantRow grant, Context context) {
         var existing = orderRepository.findByClientOrderId(sale.clientOrderId());
         if (existing.isPresent()) {
-            return duplicate(sale, existing.get());
+            return duplicate(sale, existing.get(), grant);
         }
         // One grant's sales one at a time: the account cap and the till's numbering are per grant.
         appLock.lock("offline-sync-grant:" + grant.id(), GRANT_LOCK_TIMEOUT_MILLIS);
         existing = orderRepository.findByClientOrderId(sale.clientOrderId());
         if (existing.isPresent()) {
-            return duplicate(sale, existing.get());
+            return duplicate(sale, existing.get(), grant);
         }
 
         var flags = new ArrayList<Flag>();
@@ -484,8 +484,21 @@ public class OfflineSaleRecorder {
 
     // ---- duplicates ----
 
-    private SaleResult duplicate(Sale sale, Order existing) {
+    private SaleResult duplicate(Sale sale, Order existing, OfflineGrantStore.GrantRow grant) {
         var refs = new ArrayList<ExceptionRef>();
+        // A stuck online sale (O1 outcome unknown) that the till then printed offline: the customer holds
+        // the offline slip, so the order takes the slip's numbers (contract decision C) and the till's
+        // numbering moves past it. Only once, and never over numbers an order already has.
+        if (!existing.isRecordedOffline() && existing.getOfflineReceiptNumber() == null
+                && sale.offlineReceiptNumber() != null) {
+            existing.setOfflineReceiptNumber(sale.offlineReceiptNumber());
+            existing.setCollectionNumber(sale.collectionNumber());
+            orderRepository.save(existing);
+            if (sale.offlineSeq() != null) {
+                sequences.recordSeen(grant.deviceId(), LocalDate.ofInstant(sale.soldAt(), ClockConfig.BUSINESS_ZONE),
+                        sale.offlineSeq(), LocalDateTime.ofInstant(Instant.now(), java.time.ZoneOffset.UTC));
+            }
+        }
         var differences = differences(sale, existing);
         if (!differences.isEmpty() && !exceptions.exists(existing.getId(), SaleExceptionCode.DUPLICATE_DIFFERS)) {
             var day = existing.getBookedTradingDay() != null ? existing.getBookedTradingDay() : existing.getOrderDate();

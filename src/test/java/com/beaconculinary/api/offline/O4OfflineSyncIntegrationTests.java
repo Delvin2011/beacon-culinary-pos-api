@@ -206,7 +206,7 @@ class O4OfflineSyncIntegrationTests {
     }
 
     @Test
-    void aSaleFirstSentOnline_comesBackAsADuplicate() throws Exception {
+    void aSaleFirstSentOnline_comesBackAsADuplicate_withTheSlipsNumbers() throws Exception {
         var clientOrderId = UUID.randomUUID();
         var online = mockMvc.perform(on(post("/orders"), t1).header("Authorization", "Bearer " + cashierToken)
                 .contentType(MediaType.APPLICATION_JSON).content(MAPPER.writeValueAsString(Map.of(
@@ -221,7 +221,15 @@ class O4OfflineSyncIntegrationTests {
 
         assertThat(result.get("result").asText()).isEqualTo("DUPLICATE");
         assertThat(result.get("orderId").asLong()).isEqualTo(body(online).get("id").asLong());
-        assertThat(result.get("receiptNumber").asText()).isEqualTo(body(online).get("receiptNumber").asText());
+        assertThat(result.get("receiptNumber").asText()).isEqualTo(receipt(1));
+        assertThat(result.get("collectionNumber").asText()).isEqualTo("T1-1");
+        var fetched = body(mockMvc.perform(get("/orders/" + result.get("orderId").asLong())
+                .header("Authorization", "Bearer " + adminPwd)).andReturn());
+        assertThat(fetched.get("receiptNumber").asText()).isEqualTo(receipt(1));
+        assertThat(fetched.get("recordedOffline").asBoolean()).isFalse();
+        assertThat(sequences.nextFor(UUID.fromString(t1.id()), today)).isEqualTo(2);
+        // A second resend changes nothing.
+        assertThat(result(sync(t1, List.of(grantToken()), List.of(sale)), 0).get("receiptNumber").asText()).isEqualTo(receipt(1));
     }
 
     // ---- invalid and refused ----

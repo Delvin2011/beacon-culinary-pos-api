@@ -6,7 +6,7 @@ How a POS till hands over the sales it made offline, how the server records them
 - O2 tills, shifts and sessions: `docs/2026-11-17-o2-tills-shifts-api-contract.md`
 - O1 resilience: `docs/2026-11-16-o1-resilience-api-contract.md` (`clientOrderId`)
 
-**Status:** the contract to build against. Nothing here is implemented yet.
+**Status:** implemented on `feature/o4-offline-sync` (see `docs/2026-11-18-o4-offline-sync-change-report.md`).
 
 ## Contents
 
@@ -145,7 +145,7 @@ Amounts are numbers with at most 2 decimals; `vatRate` at most 4.
 |---|---|---|
 | `CREATED` | Recorded, nothing to review. | Remove it from the queue. |
 | `CREATED_WITH_EXCEPTIONS` | Recorded; `exceptions` lists what managers will review. | Remove it from the queue. Nothing to tell the cashier. |
-| `DUPLICATE` | This `clientOrderId` was already recorded (an earlier sync, or the online `POST /orders` whose outcome was unknown). The existing order is returned. | Remove it from the queue. |
+| `DUPLICATE` | This `clientOrderId` was already recorded (an earlier sync, or the online `POST /orders` whose outcome was unknown). The existing order is returned. When it's a sale first sent online (O1) that the till then printed offline, the order takes the slip's offline receipt and collection numbers (once), so reprints match the slip. | Remove it from the queue. |
 | `INVALID` | The sale couldn't be read (section 3). `error` says why. Nothing was recorded. | **Keep it**, mark it for support, and continue with the rest. |
 | `REFUSED` | `code` `GRANT_INVALID`: the grant's signature doesn't check out, or the grant belongs to another till. Nothing was recorded. | **Keep it**, mark it for support. |
 
@@ -214,7 +214,7 @@ Every order response (`POST /orders`, `GET /orders/{id}`, reprints, the sync res
 | `collectionNumber` | text or `null` | The till's collection number for an offline sale. |
 | `bookedTradingDay` | date or `null` | Set when a late sale was booked to a later day (`LATE_AFTER_Z`). |
 
-For an offline sale, **`receiptNumber` is the till's offline receipt number** (e.g. `T1-20261118-0007`) in every response, reprints included, so a reprint matches the customer's slip. Online sales keep the O2b format.
+For an offline sale, **`receiptNumber` is the till's offline receipt number** (e.g. `T1-20261118-0007`) in every response, reprints included, so a reprint matches the customer's slip. Online sales keep the O2b format. An online sale whose outcome was unknown and that the till then printed offline (sent again through sync, `DUPLICATE`) takes the slip's offline receipt and collection numbers, so its reprints match the slip; it stays an online sale (`recordedOffline` false).
 
 ## 8. Exception review (admin endpoints)
 
