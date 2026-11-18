@@ -24,6 +24,7 @@ Tills can now hand over the sales they made offline, and managers can review wha
 | 4 | `8e2b4a2` | Exception review endpoints; counts in admin tills and the dashboard |
 | 5 | `5e2766b` | Offline section in X and Z, late offline cash, reconciliation, Z definition 3 |
 | 6 | (this commit) | This report |
+| Follow-up | `11a3a98` | A `DUPLICATE` of a stuck online sale (O1 outcome unknown, then printed offline) takes the offline slip's receipt and collection numbers, so reprints match the slip; contract status line |
 
 ## 3. The tasks
 
@@ -31,7 +32,7 @@ Tills can now hand over the sales they made offline, and managers can review wha
 |---|---|---|
 | 1. Batch sync, at most 50 | Done (also 10 grants, 512 KB). Per-sale results CREATED, CREATED_WITH_EXCEPTIONS, DUPLICATE, INVALID, REFUSED | `OfflineSyncService`, `OfflineSyncController` |
 | Auth (G) | Till cookie, VALID, REVOKED or EXPIRED; unknown or missing: 403. Each grant's signature and till checked; a bad one makes its sales REFUSED | `OfflineSyncService` |
-| Idempotency, duplicates of online sales (H) | On `clientOrderId` (O1's unique index); a concurrent duplicate is read back. `DUPLICATE_DIFFERS` once, on the existing order | `OfflineSaleRecorder` |
+| Idempotency, duplicates of online sales (H) | On `clientOrderId` (O1's unique index); a concurrent duplicate is read back. `DUPLICATE_DIFFERS` once, on the existing order. A stuck online sale printed offline takes the slip's numbers (follow-up) | `OfflineSaleRecorder` |
 | 2. Recording path | A new service, not `OrderService.createOrder`. No clock checks; `PERIOD_CLOSED` and `ITEM_UNAVAILABLE` as INFO | `OfflineSaleRecorder` |
 | Trading day, Z (D6) | `soldAt`'s Johannesburg date; after a Z, booked to the first later day without one (`LATE_AFTER_Z`); `orderNumber` from O1's per-day allocator | `OfflineSaleRecorder` |
 | New order columns | `recorded_offline`, `offline_receipt_number`, `collection_number`, `sold_at`, `offline_grant_id`, `offline_trading_day`, `offline_seq`, `booked_trading_day`; unique (till, day, seq) | V111 |
