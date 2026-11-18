@@ -54,7 +54,7 @@ public class OfflineStatusService {
         for (var row : store.findAll()) {
             byDevice.put(row.deviceId(), new TillOffline(state(row.pendingCount(), row.receivedAt(), now), row.pendingCount(),
                     UtcTimestamps.toInstant(row.receivedAt()), row.clockSkewMs(), UtcTimestamps.toInstant(row.offlineSince()),
-                    row.appVersion()));
+                    row.appVersion(), 0));
         }
         return byDevice;
     }

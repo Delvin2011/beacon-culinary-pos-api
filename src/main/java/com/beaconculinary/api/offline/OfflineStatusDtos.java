@@ -72,7 +72,12 @@ public final class OfflineStatusDtos {
 
     /** GET /admin/tills, per registered till: its latest report and what it means now. */
     public record TillOffline(State state, Integer pendingCount, Instant lastReportAt, Long clockSkewMs,
-                              Instant offlineSince, String appVersion) {
-        public static final TillOffline NEVER = new TillOffline(State.NEVER_REPORTED, null, null, null, null, null);
+                              Instant offlineSince, String appVersion, int openExceptions) {
+        public static final TillOffline NEVER = new TillOffline(State.NEVER_REPORTED, null, null, null, null, null, 0);
+
+        /** O4: with the till's open REVIEW sale exceptions. */
+        public TillOffline withOpenExceptions(int count) {
+            return new TillOffline(state, pendingCount, lastReportAt, clockSkewMs, offlineSince, appVersion, count);
+        }
     }
 }

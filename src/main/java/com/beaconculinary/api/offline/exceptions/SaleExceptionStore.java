@@ -114,6 +114,17 @@ public class SaleExceptionStore {
         return counts;
     }
 
+    /** Open REVIEW exceptions: how many, and when the oldest was raised (null when none). */
+    public record OpenSummary(int count, LocalDateTime oldest) {
+    }
+
+    public OpenSummary openReviewSummary() {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*) AS [n], MIN([created_at]) AS [oldest] FROM [sale_exceptions]
+                WHERE [status] = 'OPEN' AND [severity] = 'REVIEW'""",
+                (rs, i) -> new OpenSummary(rs.getInt("n"), rs.getObject("oldest", LocalDateTime.class)));
+    }
+
     /** Marks an OPEN exception resolved; false when it was already resolved (or doesn't exist). */
     public boolean resolve(long id, Resolution resolution, String note, long resolvedBy, String resolvedByName,
                            LocalDateTime at) {
