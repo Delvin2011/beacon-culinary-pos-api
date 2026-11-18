@@ -39,6 +39,7 @@ import static com.beaconculinary.api.support.O3Tills.body;
 import static com.beaconculinary.api.support.O3Tills.on;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /** O3: GET /pos/offline/snapshot (contract section 8). */
@@ -226,6 +227,23 @@ class O3OfflineSnapshotIntegrationTests {
         var changed = snapshot(token, t1, etag);
         assertThat(changed.getResponse().getStatus()).isEqualTo(200);
         assertThat(changed.getResponse().getHeader("ETag")).isNotEqualTo(etag);
+    }
+
+    @Test
+    void crossOrigin_theTillCanReadTheETag_andSendIfNoneMatch() throws Exception {
+        var token = tills.pinLogin(cashier, t1);
+        var result = mockMvc.perform(on(get("/pos/offline/snapshot"), t1).header("Authorization", "Bearer " + token)
+                .header("Origin", "http://localhost:3000")).andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        assertThat(result.getResponse().getHeader("Access-Control-Allow-Origin")).isEqualTo("http://localhost:3000");
+        assertThat(result.getResponse().getHeader("Access-Control-Expose-Headers")).contains("ETag");
+
+        var preflight = mockMvc.perform(options("/pos/offline/snapshot").header("Origin", "http://localhost:3000")
+                .header("Access-Control-Request-Method", "GET")
+                .header("Access-Control-Request-Headers", "authorization, if-none-match")).andReturn();
+        assertThat(preflight.getResponse().getStatus()).isEqualTo(200);
+        assertThat(preflight.getResponse().getHeader("Access-Control-Allow-Headers")).containsIgnoringCase("if-none-match");
     }
 
     // ---- trading day ----

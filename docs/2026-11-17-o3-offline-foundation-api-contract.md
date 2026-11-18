@@ -251,6 +251,8 @@ Prices, portions and the "which always-on items are listed" rule are exactly tho
 
 Responses carry `Cache-Control: private, no-cache`, so a browser may cache the body but must revalidate it. `periods` are in start-time order, `options` in till-menu order and `accounts` by account number.
 
+Cross-origin: the API exposes `ETag` (Access-Control-Expose-Headers) and allows `If-None-Match` in requests, so the till can read the one and send the other. A snapshot refresh doesn't count as session activity, and neither does a grant request: only POS writes keep a POS session from idling out.
+
 ## 9. `POST /pos/offline/status` (heartbeat)
 
 The till reports its unsynced sales. Send it every 60 seconds while online, and immediately after reconnecting and after each sync.
