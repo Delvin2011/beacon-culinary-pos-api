@@ -2,7 +2,7 @@
 
 **Branch:** `feature/o3-offline-foundation`, from `main` at `b0d1431` (O1, O2 and O2b merged). Not pushed or merged.
 **Contract:** `docs/2026-11-17-o3-offline-foundation-api-contract.md` (the frontend builds against it).
-**Tests:** 883 of 883 pass on the full suite. `main` had 825; O3 adds 58.
+**Tests:** 884 of 884 pass on the full suite. `main` had 825; O3 adds 59.
 **Database:** one migration, `V110__o3_offline_foundation.sql`, applied to the test database (`BeaconculinaryTest`) only.
 **Switch:** `pos.offline.enabled` defaults to `false`. Nothing changes for tills until it's turned on and `POS_OFFLINE_GRANTSIGNINGKEY` is set.
 
@@ -25,6 +25,7 @@ A POS till can now prepare for an outage of up to 6 hours. Offline selling and s
 | 5 | `62c675b` | `POST /pos/offline/status`, offline state in admin tills and till status |
 | 6 | `07c6fd5` | `OFFLINE_SALES_PENDING` on Close Day (with override) and shift close |
 | 7 | (this commit) | This report; contract brought in line with the build (sections 5, 8, 9, 10.3 and 12) |
+| Fix | `8834050` | `ETag` exposed to the cross-origin till (CORS); contract notes that refreshes aren't session activity |
 
 ## 3. Tasks
 
@@ -49,14 +50,14 @@ A POS till can now prepare for an outage of up to 6 hours. Offline selling and s
 
 Measured with the test fixture: **1,680 bytes** for 4 options, 1 extra and 1 account, about 300 bytes per option. Extrapolated, 100 options and 50 accounts come to about **35 KB**; a 304 is a few hundred bytes.
 
-## 5. Tests (58 new)
+## 5. Tests (59 new)
 
 | Class | Tests | What |
 |---|---|---|
 | `OfflineGrantSignerTest` | 9 | Sign and verify, `kid`, tampered payload, other key, other `kid`, other `typ`, expired grant still read, garbage, no key |
 | `OfflinePropertiesTest` | 6 | Defaults; warn < max; grant ≥ max; key required when enabled (missing, short, not Base64); ranges; `toString` hides the key |
 | `O3OfflineGrantIntegrationTests` | 19 | Success with a verifiable signature; tampered grant; accounts off; each refusal (disabled, no till, no sign-in, other till or back-office session, ended session, no shift, ADMIN covering, other role); replacement; revocation on close, force close, till, browser, deactivation; unrelated staff edit; `nextOfflineSeq` |
-| `O3OfflineSnapshotIntegrationTests` | 7 | Every period (Breakfast at 12:30), PLANNED item, beverage, extra, VAT, receipt settings, tenders, limits, size; accounts without phone or email; accounts off; `ETag`/304 and a change; trading day around midnight in Johannesburg; any POS user on the till; refusals |
+| `O3OfflineSnapshotIntegrationTests` | 8 | CORS: `ETag` exposed and `If-None-Match` allowed. Every period (Breakfast at 12:30), PLANNED item, beverage, extra, VAT, receipt settings, tenders, limits, size; accounts without phone or email; accounts off; `ETag`/304 and a change; trading day around midnight in Johannesburg; any POS user on the till; refusals |
 | `O3OfflineStatusIntegrationTests` | 8 | Stored and replaced, skew; no sign-in and while disabled; unregistered and revoked till; validation; non-JSON; admin tills states including stale; just under the stale limit; till-status fields |
 | `O3OfflineBlockingIntegrationTests` | 9 | Close Day blocked per till (other day ignored); stale still blocks; cleared report; override recorded; override needs password and reason; override lifts only its blocker; override with nothing to override; shift close blocked (fresh, stale) and force close allowed; another till's report doesn't block |
 
