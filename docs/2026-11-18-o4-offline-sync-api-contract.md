@@ -268,6 +268,7 @@ For `ACCOUNT_APPROVAL_PENDING` only, `{"note": "..."}` (optional, at most 500): 
   - A new **Offline sales** section: count and total of offline sales, open REVIEW exceptions for the day.
   - **Late offline cash:** cash taken offline on a shift that had already closed shows on its own line ("Late offline cash after close: R x, n sales"), on that shift's cashier reading and in the day's Z. The closed shift's own figures (expected cash, variance) don't change.
   - Z definition **3**. Z readings already taken keep their snapshot.
+  - Late offline cash is left out of the cash-ups reconciliation checks (Cash-up & Variance and Tender Summary), so they keep agreeing; it is shown on its own line instead.
 - **Close Day:** open REVIEW exceptions for the day are a **warning**, not a blocker: they show in the X reading's checks and the Z's offline section.
 - **Status (O3):** unchanged. The till reports its new pending count in the heartbeat it sends after each batch; `OFFLINE_SALES_PENDING` clears when it reports 0.
 

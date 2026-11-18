@@ -52,12 +52,14 @@ public class EndOfDayStatements {
     private final CashUpVarianceReport cashUp;
     private final Clock clock;
     private final BusinessName businessName;
+    private final OfflineSalesFacts offlineSales;
 
     public EndOfDayStatements(ReportFacts facts, EndOfDayFacts endOfDayFacts, ShiftCashFigures shiftCashFigures,
                               ShiftSignoffs signoffs, ZReadings zReadings, DayCloseRules dayCloseRules,
                               CloseDaySettings closeDaySettings,
                               SalesSummaryReport salesSummary, TenderSummaryReport tenderSummary,
-                              CashUpVarianceReport cashUp, Clock clock, BusinessName businessName) {
+                              CashUpVarianceReport cashUp, Clock clock, BusinessName businessName,
+                              OfflineSalesFacts offlineSales) {
         this.facts = facts;
         this.endOfDayFacts = endOfDayFacts;
         this.shiftCashFigures = shiftCashFigures;
@@ -70,6 +72,7 @@ public class EndOfDayStatements {
         this.cashUp = cashUp;
         this.clock = clock;
         this.businessName = businessName;
+        this.offlineSales = offlineSales;
     }
 
     /** Set when building the Z for a day being closed: its number and who closed it, when. */
@@ -106,6 +109,14 @@ public class EndOfDayStatements {
 
         var netCashMovement = collected.cash().subtract(paidOut.cashPaidOut());
         sections.add(cashSection(shifts, figures, netCashMovement));
+        // O4: offline sales on this day (booked late ones included), late offline cash, and open exceptions.
+        var offline = offlineSales.forDay(tradingDay);
+        sections.add(Sections.keyValue("offline", "Offline sales", List.of(
+                Sections.item("Offline sales", ColumnType.INT, offline.sales()),
+                Sections.item("Offline sales total", ColumnType.MONEY, money(offline.total())),
+                Sections.item("Late offline cash after close", ColumnType.MONEY, money(offline.lateCash().amount())),
+                Sections.item("Late offline cash sales", ColumnType.INT, offline.lateCash().sales()),
+                Sections.item("Open exceptions to review", ColumnType.INT, offline.openReviewExceptions()))));
         var inProcess = closeDaySettings.covers(tradingDay);
         sections.add(shiftsTable(shifts, figures, states, inProcess));
         sections.add(tillsTable(shifts, figures, facts.cashRefundsOfOtherTills(range)));
@@ -130,6 +141,11 @@ public class EndOfDayStatements {
         if (inProcess && unsigned > 0) {
             checks.add(ReportCheck.count("unsigned-shifts", "Every shift of the day is signed off", unsigned, CheckStatus.WARN,
                     unsigned + (unsigned == 1 ? " shift is" : " shifts are") + " not yet signed off."));
+        }
+        if (offline.openReviewExceptions() > 0) {
+            var n = offline.openReviewExceptions();
+            checks.add(ReportCheck.count("offline-exceptions", "No offline sale exceptions are waiting for review", n,
+                    CheckStatus.WARN, n + (n == 1 ? " exception" : " exceptions") + " on offline sales still to review."));
         }
 
         if (z != null) {
@@ -456,6 +472,12 @@ public class EndOfDayStatements {
         }
         cashUpItems.add(Sections.item("Variance reason", ColumnType.TEXT, ShiftVarianceReasonCode.labelOf(shift.varianceReasonCode())));
         cashUpItems.add(Sections.item("Authorised by", ColumnType.TEXT, shift.varianceAuthorizedByName()));
+        // O4: cash taken offline but recorded after the close: not in this shift's expected cash.
+        var late = offlineSales.lateCashOfShift(shiftId);
+        if (late.any()) {
+            cashUpItems.add(Sections.item("Late offline cash after close", ColumnType.MONEY, money(late.amount())));
+            cashUpItems.add(Sections.item("Late offline cash sales", ColumnType.INT, late.sales()));
+        }
         sections.add(Sections.keyValue("cashUp", "Cash-up", cashUpItems));
 
         sections.add(processedTable(shiftId, processed));
