@@ -77,6 +77,33 @@ class OfflineGrantSignerTest {
     }
 
     @Test
+    void afterARotation_aGrantSignedWithThePreviousKey_stillVerifies() {
+        var oldKey = properties.getGrantSigningKey();
+        var token = signer.sign(grant);
+        properties.setGrantSigningKey(randomKey());
+        properties.setGrantKeyId("k2");
+        assertThat(signer.verify(token)).isEmpty();
+
+        properties.setGrantPreviousSigningKey(oldKey);
+        properties.setGrantPreviousKeyId("k1");
+
+        assertThat(signer.verify(token)).isPresent();
+        assertThat(signer.verify(signer.sign(grant))).isPresent();
+    }
+
+    @Test
+    void aPreviousKeyUnderAnotherId_doesntVerifyIt() {
+        var oldKey = properties.getGrantSigningKey();
+        var token = signer.sign(grant);
+        properties.setGrantSigningKey(randomKey());
+        properties.setGrantKeyId("k2");
+        properties.setGrantPreviousSigningKey(oldKey);
+        properties.setGrantPreviousKeyId("k0");
+
+        assertThat(signer.verify(token)).isEmpty();
+    }
+
+    @Test
     void aTokenOfAnotherType_failsVerification() {
         var key = Keys.hmacShaKeyFor(properties.signingKeyBytes());
         var token = Jwts.builder().header().keyId("k1").and()

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -143,13 +144,19 @@ public class LightMealStockService {
      * skipped: they deducted at planning confirmation. Complimentary orders deduct like sales.
      */
     public void deductForSale(Collection<OrderLine> lines, User recordedBy) {
+        deductForSale(lines, recordedBy, null);
+    }
+
+    /** O4: as above, dated {@code occurredAt} (an offline sale's soldAt, UTC); returns the movements written. */
+    public List<IngredientStockMovement> deductForSale(Collection<OrderLine> lines, User recordedBy,
+                                                       LocalDateTime occurredAt) {
         var lightMealLines = lines.stream()
                 // O4: an offline line without a menu link (UNKNOWN_ITEM) has no recipe to deduct.
                 .filter(line -> line.getDailyMealOption() != null && line.getDailyMealOption().isAlwaysOn()
                         && line.getDailyMealOption().getMealCatalog().getGroup() == CatalogGroup.LIGHT_MEALS)
                 .toList();
         if (lightMealLines.isEmpty()) {
-            return;
+            return List.of();
         }
         var perUnitByMeal = mealIngredientRequirements.perUnitForMeals(lightMealLines.stream()
                 .map(line -> line.getDailyMealOption().getMealCatalog()).distinct().toList());
@@ -164,9 +171,11 @@ public class LightMealStockService {
                         .setScale(LEDGER_SCALE, RoundingMode.HALF_UP);
                 movements.add(movement(row.ingredient(), MovementType.CONSUMED, quantity.negate(), kitchen,
                         line.getId(), recordedBy));
+                movements.get(movements.size() - 1).setOccurredAt(occurredAt);
             }
         }
         movementRepository.saveAll(movements);
+        return movements;
     }
 
     /**

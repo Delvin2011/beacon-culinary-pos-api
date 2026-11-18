@@ -61,4 +61,8 @@ public class IngredientStockMovement {
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    // O4: when the stock was actually used (an offline sale's soldAt); null means createdAt.
+    @Column(name = "occurred_at")
+    private LocalDateTime occurredAt;
 }

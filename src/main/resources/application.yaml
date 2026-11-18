@@ -61,6 +61,9 @@ pos:
     status-stale-minutes: ${POS_OFFLINE_STATUSSTALEMINUTES:10}
     grant-signing-key: ${POS_OFFLINE_GRANTSIGNINGKEY:}
     grant-key-id: ${POS_OFFLINE_GRANTKEYID:k1}
+    # O4: optional previous key, verify-only, for rotating grant-signing-key without refusing older grants.
+    grant-previous-signing-key: ${POS_OFFLINE_GRANTPREVIOUSSIGNINGKEY:}
+    grant-previous-key-id: ${POS_OFFLINE_GRANTPREVIOUSKEYID:}
 
 # GRV VAT handling: the standard VAT rate, snapshotted onto every GRV line.
 vat:

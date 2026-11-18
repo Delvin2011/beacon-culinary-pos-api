@@ -2,9 +2,11 @@ package com.beaconculinary.api.offline;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwsHeader;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.SignatureException;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -71,16 +73,13 @@ public class OfflineGrantSigner {
         }
         Claims claims;
         try {
-            var jws = Jwts.parser().verifyWith(key()).build().parseSignedClaims(token);
-            if (!properties.getGrantKeyId().equals(jws.getHeader().getKeyId())) {
-                return Optional.empty();
-            }
+            // O4: the current key, or the previous one during a rotation; any other kid fails.
+            var jws = Jwts.parser().keyLocator(header -> keyFor(((JwsHeader) header).getKeyId())).build()
+                    .parseSignedClaims(token);
             claims = jws.getPayload();
         } catch (ExpiredJwtException e) {
-            // Thrown only after the signature checked out; an expired grant is still a genuine one.
-            if (!properties.getGrantKeyId().equals(e.getHeader().get("kid"))) {
-                return Optional.empty();
-            }
+            // Thrown only after the signature checked out (with the key its kid named); an expired
+            // grant is still a genuine one.
             claims = e.getClaims();
         } catch (JwtException | IllegalArgumentException e) {
             return Optional.empty();
@@ -100,6 +99,18 @@ public class OfflineGrantSigner {
         } catch (RuntimeException e) {
             return Optional.empty();
         }
+    }
+
+    /** The verification key for a kid: the current one, or the configured previous one. */
+    private SecretKey keyFor(String kid) {
+        if (properties.getGrantKeyId().equals(kid)) {
+            return key();
+        }
+        var previous = properties.previousKeyBytes();
+        if (previous != null && kid != null && kid.equals(properties.getGrantPreviousKeyId())) {
+            return Keys.hmacShaKeyFor(previous);
+        }
+        throw new SignatureException("Unknown grant key id");
     }
 
     private SecretKey key() {

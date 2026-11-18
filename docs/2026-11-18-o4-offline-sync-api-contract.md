@@ -65,6 +65,7 @@ Sends up to **50** offline sales, oldest first.
 | Body unreadable, `grants` or `sales` missing or empty, more than 50 sales or 10 grants | 400 `{"error": "...", "code": "INVALID_BATCH"}` |
 | Body over 512 KB | 413 |
 | Not JSON | 415 |
+| An unexpected server error | 500. The batch stops there; sales before it may already be recorded. Resend the batch: those come back as `DUPLICATE`. |
 
 ## 3. The sale payload
 
@@ -83,7 +84,7 @@ Sends up to **50** offline sales, oldest first.
   "snapshotVersion": "9f2c4e1ab07d5c3e",
   "lines": [
     {"dailyMealOptionId": 801, "name": "Beef stew", "station": "KITCHEN", "quantity": 1,
-     "unitPrice": 50.00, "lineTotal": 65.00,
+     "unitPrice": 50.00, "lineTotal": 50.00,
      "extras": [{"dailyComponentStockId": 3102, "name": "Extra beef", "priceDelta": 15.00, "quantity": 1, "lineTotal": 15.00}]},
     {"dailyMealOptionId": 912, "name": "Still water 500 ml", "station": "NONE", "quantity": 2,
      "unitPrice": 20.00, "lineTotal": 40.00, "extras": []}
@@ -110,7 +111,7 @@ Sends up to **50** offline sales, oldest first.
 | `shiftId`, `cashierId` | As recorded on the till. Expected to match the grant. |
 | `unlockedOffline` | `true` when the cashier unlocked the till offline (PIN checked on the till, O3 decision D13) before this sale. |
 | `snapshotVersion` | The snapshot the till sold from (for support). |
-| `lines` | **Essential:** at least one. `quantity` ≥ 1. `dailyMealOptionId` may be null for an item the till can't match. `name` is what was printed. |
+| `lines` | **Essential:** at least one. `quantity` ≥ 1. `lineTotal` is `unitPrice × quantity`, without the extras (they have their own `lineTotal`). `dailyMealOptionId` may be null for an item the till can't match. `name` is what was printed. |
 | `lines[].extras` | May be empty. Same rules. |
 | `subtotal`, `total` | As charged, ≥ 0. |
 | `vatRate`, `vatIncludedAmount` | As printed. |

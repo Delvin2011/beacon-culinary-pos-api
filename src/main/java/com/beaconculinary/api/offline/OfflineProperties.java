@@ -57,6 +57,12 @@ public class OfflineProperties {
     @Size(max = 20)
     private String grantKeyId = "k1";
 
+    /** O4: a previous signing key, used only to verify grants during sync (key rotation). Optional. */
+    private String grantPreviousSigningKey;
+
+    @Size(max = 20)
+    private String grantPreviousKeyId;
+
     @AssertTrue(message = "pos.offline.warn-offline-hours must be less than pos.offline.max-offline-hours")
     public boolean isWarnBeforeMax() {
         return warnOfflineHours < maxOfflineHours;
@@ -72,13 +78,33 @@ public class OfflineProperties {
         return !enabled || signingKeyBytes() != null;
     }
 
+    @AssertTrue(message = "pos.offline.grant-previous-signing-key and grant-previous-key-id go together; the key must be "
+            + "Base64 of at least 32 bytes, and its id different from grant-key-id")
+    public boolean isPreviousKeyValid() {
+        var hasKey = grantPreviousSigningKey != null && !grantPreviousSigningKey.isBlank();
+        var hasId = grantPreviousKeyId != null && !grantPreviousKeyId.isBlank();
+        if (!hasKey && !hasId) {
+            return true;
+        }
+        return hasKey && hasId && decode(grantPreviousSigningKey) != null && !grantPreviousKeyId.equals(grantKeyId);
+    }
+
     /** The decoded signing key, or null when it's missing, not Base64 or too short. */
     public byte[] signingKeyBytes() {
-        if (grantSigningKey == null || grantSigningKey.isBlank()) {
+        return decode(grantSigningKey);
+    }
+
+    /** The decoded previous key, or null when none is set. */
+    public byte[] previousKeyBytes() {
+        return decode(grantPreviousSigningKey);
+    }
+
+    private static byte[] decode(String key) {
+        if (key == null || key.isBlank()) {
             return null;
         }
         try {
-            var bytes = Base64.getDecoder().decode(grantSigningKey.trim());
+            var bytes = Base64.getDecoder().decode(key.trim());
             return bytes.length >= MIN_KEY_BYTES ? bytes : null;
         } catch (IllegalArgumentException e) {
             return null;
@@ -91,6 +117,7 @@ public class OfflineProperties {
         return "OfflineProperties(enabled=" + enabled + ", maxOfflineHours=" + maxOfflineHours
                 + ", warnOfflineHours=" + warnOfflineHours + ", accountsEnabled=" + accountsEnabled
                 + ", accountCap=" + accountCap + ", grantMaxHours=" + grantMaxHours
-                + ", statusStaleMinutes=" + statusStaleMinutes + ", grantKeyId=" + grantKeyId + ")";
+                + ", statusStaleMinutes=" + statusStaleMinutes + ", grantKeyId=" + grantKeyId
+                + ", grantPreviousKeyId=" + grantPreviousKeyId + ")";
     }
 }
