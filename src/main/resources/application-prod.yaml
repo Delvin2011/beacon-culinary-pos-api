@@ -8,3 +8,9 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# T0-1: one JSON object per line on stdout (Logstash field names), collected by Azure.
+logging:
+  structured:
+    format:
+      console: logstash
