@@ -3,6 +3,7 @@ package com.beaconculinary.api.settings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -13,14 +14,16 @@ import java.time.LocalTime;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * T0-4a: the customer's settings, as every consumer reads them. A setting's value is the one saved
  * in site_settings, otherwise its configuration default ({@link SiteSettingDefaults}).
  *
  * <p>Cache: the saved values are read in one query and kept for {@link #CACHE_TTL} (30 s) on the
- * application clock (a clock that moves backwards also expires it). A save on this instance replaces
- * the cache once committed ({@link #invalidate()}); other instances see it within 30 s.
+ * application clock (a clock that moves backwards also expires it). A save on this instance drops
+ * the cache once committed ({@link #onChanged}); other instances see it within 30 s. A read that
+ * started before the drop doesn't put its older values back (generation check).
  *
  * <p>A saved value that no longer parses, breaks its limits (e.g. grant-max-hours was lowered below
  * a saved max-offline-hours) or breaks a cross-field rule with the other values is ignored with an
@@ -35,6 +38,7 @@ public class SiteSettings {
     private final SiteSettingDefaults defaults;
     private final Clock clock;
     private volatile Snapshot snapshot;
+    private final AtomicLong generation = new AtomicLong();
 
     /** The saved values in effect (only those not ignored), and when they were read. */
     private record Snapshot(Instant loadedAt, Map<SiteSetting, Object> saved) {
@@ -133,9 +137,16 @@ public class SiteSettings {
         return defaults;
     }
 
-    /** Drops the cache, so the next read loads the saved values again (after a committed save). */
+    /** Drops the cache, so the next read loads the saved values again. */
     public void invalidate() {
+        generation.incrementAndGet();
         snapshot = null;
+    }
+
+    /** After a save or reset commits on this instance. */
+    @TransactionalEventListener(fallbackExecution = true)
+    public void onChanged(SiteSettingsChangedEvent event) {
+        invalidate();
     }
 
     private Snapshot current() {
@@ -149,8 +160,11 @@ public class SiteSettings {
             if (cached != null && !now.isBefore(cached.loadedAt()) && now.isBefore(cached.loadedAt().plus(CACHE_TTL))) {
                 return cached;
             }
+            var started = generation.get();
             var fresh = new Snapshot(now, Collections.unmodifiableMap(load()));
-            snapshot = fresh;
+            if (generation.get() == started) {
+                snapshot = fresh;
+            }
             return fresh;
         }
     }

@@ -2,6 +2,7 @@ package com.beaconculinary.api.dashboard;
 
 import com.beaconculinary.api.orders.OrderStatusStreamEvent;
 import com.beaconculinary.api.orders.StationViewChangedEvent;
+import com.beaconculinary.api.settings.SiteSettingsChangedEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -16,7 +17,8 @@ import java.util.function.Supplier;
  * caller sees value fields (+ the section's own params, + the user for per-user sections). Ages
  * are measured on the application clock, so a moved clock (or one that goes backwards) expires
  * entries. A new order or a status change clears everything once committed (cheap: the sections
- * are recomputed on their next request); shift changes rely on the short lifetimes.
+ * are recomputed on their next request); so does a saved site setting (T0-4a: thresholds and
+ * opening hours are baked into cached sections). Shift changes rely on the short lifetimes.
  */
 @Component
 public class DashboardCache {
@@ -62,6 +64,11 @@ public class DashboardCache {
 
     @TransactionalEventListener(fallbackExecution = true)
     public void onStationView(StationViewChangedEvent event) {
+        clear();
+    }
+
+    @TransactionalEventListener(fallbackExecution = true)
+    public void onSiteSettings(SiteSettingsChangedEvent event) {
         clear();
     }
 }

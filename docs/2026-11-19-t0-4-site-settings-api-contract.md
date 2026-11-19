@@ -20,7 +20,7 @@ Background: multi-tenancy readiness analysis (19 Nov 2026) sections A.2, B.3, B.
 - Times in responses (`lastChange.at`, history `changedAt`) are UTC instants (`2026-11-19T08:15:00Z`).
 - **Sensitive** settings need a password sign-in within the last 30 minutes, as for till
   management. Otherwise 403 `REAUTH_REQUIRED`.
-- Errors other than validation use the usual body: `{"message": "...", "code": "...", "details": {...}}`.
+- Errors other than validation use the usual body: `{"error": "...", "code": "...", "details": {...}}`.
   Validation errors are a **400 field map** keyed by setting key, as for receipt settings:
   `{"pos.session.idle-expiry-minutes": "Must be at least the idle lock time (5)."}`.
 
@@ -129,16 +129,18 @@ A partial update: only the keys sent change.
 
 - **All or nothing.** All values are validated together, including the cross-field rules (section
   4) on the values that would result. One error and nothing is saved.
-- A value equal to the current value is accepted and records nothing.
-- Saving a value equal to the default still stores it (`isDefault` becomes true only after a reset;
-  see 3.3). `isDefault` means "no saved value".
+- A value equal to the current value is accepted and records nothing (a setting at its default
+  stays at its default).
+- Changing a saved value back to the default value stores it like any other value: `isDefault`
+  means "no saved value" and becomes true only after a reset (3.3).
 - If any **sensitive** setting would change, the password sign-in check applies to the whole
   request.
 
 | Result | Response |
 |---|---|
 | Saved | 200, the full GET body |
-| Empty body `{}` | 200, the full GET body, nothing recorded |
+| Empty body or `{}` | 200, the full GET body, nothing recorded |
+| Not a JSON object (an array, or invalid JSON) | 400 `{"body": "Must be a JSON object of settings, e.g. {\"board.done-display-minutes\": 5}."}` |
 | Unknown key, wrong JSON type, out of limits, cross-field rule broken | 400 field map; every bad key listed |
 | A sensitive setting would change, no password sign-in in the last 30 min | 403 `REAUTH_REQUIRED` |
 | Not an ADMIN | 403 (empty) |
@@ -156,7 +158,7 @@ A partial update: only the keys sent change.
 **403 example:**
 
 ```json
-{"message": "Sign in again with your password to change vat.standard-rate.", "code": "REAUTH_REQUIRED", "details": {"keys": ["vat.standard-rate"]}}
+{"error": "Sign in again with your password to change vat.standard-rate.", "code": "REAUTH_REQUIRED", "details": {"keys": ["vat.standard-rate"]}}
 ```
 
 Validation (400) is checked before the sign-in check (403).
@@ -178,7 +180,8 @@ Removes the saved value; the setting goes back to the default. No body.
 
 Every change, newest first. Insert-only: entries are never edited or removed.
 
-Query: `key` (optional, exact key), `page` (from 0, default 0), `size` (default 50, max 200).
+Query: `key` (optional, exact key), `page` (from 0, default 0; a negative page is read as 0),
+`size` (default 50; at most 200, larger values are reduced to 200).
 An unknown `key` is not an error (empty page).
 
 **200:**
