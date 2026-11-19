@@ -34,6 +34,14 @@ springdoc:
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
+# T0-2 site locale: business time zone and currency (docs/2026-11-19-site-locale.md). Checked at
+# startup. The SQL report views assume South Africa Standard Time, so the zone must be one that
+# maps to it (e.g. Africa/Johannesburg) or the app refuses to start.
+site:
+  time-zone: ${SITE_TIME_ZONE:Africa/Johannesburg}
+  currency-code: ${SITE_CURRENCY_CODE:ZAR}
+  currency-symbol: ${SITE_CURRENCY_SYMBOL:R}
+
 # Public board: minutes a DONE order stays on the board before it drops off (0 = straight away).
 board:
   done-display-minutes: ${BOARD_DONE_DISPLAY_MINUTES:10}
