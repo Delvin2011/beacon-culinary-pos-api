@@ -24,8 +24,15 @@ public class Jwt {
         return Long.valueOf(claims.getSubject());
     }
 
+    /** The role in the token, or null when it names no current role (for example USER, removed in T0-3).
+     * The filter then treats the request as unauthenticated instead of failing with a 500. */
     public Role getRole() {
-        return Role.valueOf(claims.get("role", String.class));
+        var role = claims.get("role", String.class);
+        try {
+            return role == null ? null : Role.valueOf(role);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /** How the person signed in (WS1-1b): {@link SignIn#PASSWORD}, {@link SignIn#PIN}, or null on older tokens. */
