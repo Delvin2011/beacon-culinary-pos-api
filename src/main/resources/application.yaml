@@ -25,6 +25,19 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+# T0-1 logging (docs/2026-11-19-logging.md). Text on the console here and in dev; JSON lines in prod.
+# Change a level by environment variable, e.g. LOGGING_LEVEL_COM_BEACONCULINARY_API_DEVICES=DEBUG.
+logging:
+  level:
+    root: INFO
+    com.beaconculinary: INFO
+  pattern:
+    # Adds the request id (or the job name) and user id to each text line.
+    level: "%5p [%X{requestId:-}%X{jobName:-}] [%X{userId:-}]"
+  # Paths with no request log line (Ant patterns): /health polls and the SSE streams.
+  request:
+    skip-paths: ${LOGGING_REQUEST_SKIP_PATHS:/health,/**/stream}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

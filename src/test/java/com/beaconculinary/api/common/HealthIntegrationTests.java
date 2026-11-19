@@ -77,7 +77,8 @@ class HealthIntegrationTests {
         mockMvc.perform(get("/health")).andExpect(status().isOk());
         mockMvc.perform(get("/meal-periods")).andExpect(status().isOk());
 
-        assertThat(output.getOut()).doesNotContain("Request: /health").contains("Request: /meal-periods");
+        // T0-1: the request log line comes from RequestContextFilter; /health stays out of it.
+        assertThat(output.getOut()).doesNotContain("request GET /health").contains("request GET /meal-periods status=200");
     }
 
     @Test

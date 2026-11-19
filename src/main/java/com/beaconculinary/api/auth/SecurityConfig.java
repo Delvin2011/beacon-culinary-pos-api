@@ -4,6 +4,7 @@ import com.beaconculinary.api.auth.protection.ClientIpResolver;
 import com.beaconculinary.api.auth.protection.LoginBurstFilter;
 import com.beaconculinary.api.auth.protection.LoginProtectionProperties;
 import com.beaconculinary.api.common.SecurityRules;
+import com.beaconculinary.api.common.logging.RequestContextFilter;
 import com.beaconculinary.api.devices.DeviceFilters;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
@@ -69,7 +70,9 @@ public class SecurityConfig {
         // WS1-1: lets the cross-origin frontend read Retry-After on a 429. O1: and the
         // Idempotent-Replay header on a 200 that replayed an earlier sale or adjustment.
         // O3: and ETag, so the till can send it back as If-None-Match on the next snapshot refresh.
-        cors.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER, "Idempotent-Replay", HttpHeaders.ETAG));
+        // T0-1: and X-Request-Id, so a support report can quote the request.
+        cors.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER, "Idempotent-Replay", HttpHeaders.ETAG,
+                RequestContextFilter.HEADER));
         cors.setAllowCredentials(true);
 
         var source = new UrlBasedCorsConfigurationSource();

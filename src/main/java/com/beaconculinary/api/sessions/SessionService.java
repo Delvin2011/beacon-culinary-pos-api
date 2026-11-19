@@ -118,12 +118,13 @@ public class SessionService {
         return store.hasActivePosSession(userId, deviceId, idleCutoff(UtcTimestamps.nowUtc(clock)));
     }
 
-    /** R10: records idle POS sessions (IDLE) and sessions past the refresh-token lifetime (EXPIRED). */
+    /** R10: records idle POS sessions (IDLE) and sessions past the refresh-token lifetime (EXPIRED).
+     * Returns how many sessions were ended. */
     @Transactional
-    public void sweep() {
+    public int sweep() {
         var now = UtcTimestamps.nowUtc(clock);
-        store.endIdlePos(idleCutoff(now), now);
-        store.endStartedBefore(now.minusSeconds(jwtConfig.getRefreshTokenExpiration()), SessionEndReason.EXPIRED, now);
+        return store.endIdlePos(idleCutoff(now), now)
+                + store.endStartedBefore(now.minusSeconds(jwtConfig.getRefreshTokenExpiration()), SessionEndReason.EXPIRED, now);
     }
 
     private LocalDateTime idleCutoff(LocalDateTime now) {

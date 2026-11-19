@@ -2,6 +2,7 @@ package com.beaconculinary.api.devices;
 
 import com.beaconculinary.api.auth.protection.ClientIpResolver;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.logging.RequestLogContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -82,6 +83,8 @@ public class DeviceResolutionFilter extends OncePerRequestFilter {
         if (found == null || !DeviceTokens.sameHash(found.tokenHash(), hash)) {
             return invalid(ip);
         }
+        // T0-1: the till behind this request, for its log lines (the id and code, never the cookie).
+        RequestLogContext.device(found.deviceId(), found.tillCode());
         if (!"ACTIVE".equals(found.credentialStatus()) || !"ACTIVE".equals(found.deviceStatus())) {
             if (!properties.isOff()) {
                 alerts.alert("DEVICE_REVOKED_USED", "device=" + found.deviceId() + " credential=" + found.credentialId() + " ip=" + ip);

@@ -1,5 +1,6 @@
 package com.beaconculinary.api.devices;
 
+import com.beaconculinary.api.common.logging.LogMarkers;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +29,7 @@ public class DeviceAlerts {
     }
 
     public void alert(String type, String details) {
-        log.warn("{} type={} {}", MARKER, type, details);
+        log.warn(LogMarkers.LOGIN_PROTECTION_ALERT, "{} type={} {}", MARKER, type, details);
     }
 
     /** An invalid device token from this address; alerts once the threshold is reached in the window. */

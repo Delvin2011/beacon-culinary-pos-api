@@ -1,5 +1,6 @@
 package com.beaconculinary.api.common;
 
+import com.beaconculinary.api.common.logging.JobContext;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,9 +64,10 @@ public class DatabaseHealthCheck {
             var up = probe();
             if (lastUp == null || lastUp != up) {
                 if (up) {
-                    log.info("Health: database reachable");
+                    log.atInfo().addKeyValue("source", "health-check").log("Health: database reachable");
                 } else {
-                    log.warn("Health: database not reachable within {} ms", timeout.toMillis());
+                    log.atWarn().addKeyValue("source", "health-check")
+                            .log("Health: database not reachable within {} ms", timeout.toMillis());
                 }
             }
             lastUp = up;
@@ -76,7 +78,9 @@ public class DatabaseHealthCheck {
 
     private boolean probe() {
         if (inFlight == null || inFlight.isDone()) {
-            inFlight = executor.submit(() -> jdbcTemplate.queryForObject("SELECT 1", Integer.class));
+            // T0-1: anything logged on the health-db-check thread carries jobName=health-check.
+            inFlight = executor.submit(() -> JobContext.call("health-check",
+                    () -> jdbcTemplate.queryForObject("SELECT 1", Integer.class)));
         }
         try {
             return Integer.valueOf(1).equals(inFlight.get(timeout.toMillis(), TimeUnit.MILLISECONDS));

@@ -46,7 +46,7 @@ public class DeviceStore {
 
     /** A credential looked up by token hash, with its device's status. */
     public record Resolved(String credentialId, String deviceId, String deviceName, String credentialStatus,
-                           String deviceStatus, LocalDateTime lastUsed, byte[] tokenHash) {
+                           String deviceStatus, LocalDateTime lastUsed, byte[] tokenHash, String tillCode) {
     }
 
     private static final RowMapper<DeviceRow> DEVICE = (rs, i) -> new DeviceRow(
@@ -74,11 +74,12 @@ public class DeviceStore {
 
     public Optional<Resolved> findByTokenHash(byte[] hash) {
         return jdbc.query("""
-                SELECT c.[id], c.[device_id], d.[name], c.[status], d.[status], COALESCE(c.[last_seen_at], c.[created_at]), c.[token_hash]
+                SELECT c.[id], c.[device_id], d.[name], c.[status], d.[status], COALESCE(c.[last_seen_at], c.[created_at]), c.[token_hash],
+                       d.[till_code]
                 FROM [device_credentials] c JOIN [devices] d ON d.[id] = c.[device_id]
                 WHERE c.[token_hash] = ?
                 """, (rs, i) -> new Resolved(id(rs.getString(1)), id(rs.getString(2)), rs.getString(3), rs.getString(4),
-                        rs.getString(5), rs.getObject(6, LocalDateTime.class), rs.getBytes(7)),
+                        rs.getString(5), rs.getObject(6, LocalDateTime.class), rs.getBytes(7), rs.getString(8)),
                 (Object) hash).stream().findFirst();
     }
 
