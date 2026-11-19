@@ -1,5 +1,6 @@
 package com.beaconculinary.api.auth;
 
+import com.beaconculinary.api.common.logging.RequestLogContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -45,6 +46,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         );
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
+        // T0-1: who made the request, for its log lines (cleared by RequestContextFilter).
+        RequestLogContext.user(jwt.getUserId(), jwt.getRole().name(), jwt.getSessionId());
 
         filterChain.doFilter(request, response);
     }

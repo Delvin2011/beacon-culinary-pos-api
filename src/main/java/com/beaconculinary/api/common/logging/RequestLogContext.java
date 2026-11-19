@@ -15,6 +15,11 @@ public final class RequestLogContext {
     public static final String METHOD = "method";
     public static final String PATH = "path";
     public static final String ROUTE = "route";
+    public static final String USER_ID = "userId";
+    public static final String ROLE = "role";
+    public static final String SESSION_ID = "sessionId";
+    public static final String DEVICE_ID = "deviceId";
+    public static final String TILL_CODE = "tillCode";
 
     /** Reserved for multi-tenancy; a later step sets the real tenant. */
     public static final String DEFAULT_TENANT = "default";
@@ -32,6 +37,20 @@ public final class RequestLogContext {
 
     static void route(String route) {
         put(ROUTE, route);
+    }
+
+    /** Called by JwtAuthenticationFilter once a token is accepted. sessionId is the sid claim: the
+     * session's id, not a credential. */
+    public static void user(Long userId, String role, String sessionId) {
+        put(USER_ID, userId == null ? null : userId.toString());
+        put(ROLE, role);
+        put(SESSION_ID, sessionId);
+    }
+
+    /** Called by DeviceResolutionFilter when the deviceToken cookie matches a till (never the cookie). */
+    public static void device(String deviceId, String tillCode) {
+        put(DEVICE_ID, deviceId);
+        put(TILL_CODE, tillCode);
     }
 
     static void clear() {
