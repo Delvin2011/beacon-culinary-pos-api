@@ -14,7 +14,6 @@ import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.DailyPlanItemStatus;
 import com.beaconculinary.api.menu.Station;
 import com.beaconculinary.api.offline.OfflineGrantStore;
-import com.beaconculinary.api.offline.OfflineProperties;
 import com.beaconculinary.api.offline.OfflineSequenceStore;
 import com.beaconculinary.api.offline.exceptions.SaleExceptionCode;
 import com.beaconculinary.api.offline.exceptions.SaleExceptionStore;
@@ -34,6 +33,7 @@ import com.beaconculinary.api.orders.OrderStatusEvent;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
 import com.beaconculinary.api.orders.PaymentMethod;
 import com.beaconculinary.api.orders.VatRule;
+import com.beaconculinary.api.settings.SiteSettings;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.shifts.ShiftStatus;
 import com.beaconculinary.api.users.UserRepository;
@@ -82,7 +82,7 @@ public class OfflineSaleRecorder {
     private final LightMealStockService lightMealStockService;
     private final ZReadings zReadings;
     private final VatSettings vatSettings;
-    private final OfflineProperties properties;
+    private final SiteSettings siteSettings;
     private final OfflineSequenceStore sequences;
     private final SaleExceptionStore exceptions;
     private final AppLock appLock;
@@ -96,7 +96,7 @@ public class OfflineSaleRecorder {
                                ShiftRepository shiftRepository, UserRepository userRepository,
                                AccountRepository accountRepository, DailyMealOptionRepository optionRepository,
                                DailyComponentStockRepository stockRepository, LightMealStockService lightMealStockService,
-                               ZReadings zReadings, VatSettings vatSettings, OfflineProperties properties,
+                               ZReadings zReadings, VatSettings vatSettings, SiteSettings siteSettings,
                                OfflineSequenceStore sequences, SaleExceptionStore exceptions, AppLock appLock,
                                JdbcTemplate jdbc, ObjectMapper objectMapper, SiteLocale siteLocale, Clock clock) {
         this.orderRepository = orderRepository;
@@ -111,7 +111,7 @@ public class OfflineSaleRecorder {
         this.lightMealStockService = lightMealStockService;
         this.zReadings = zReadings;
         this.vatSettings = vatSettings;
-        this.properties = properties;
+        this.siteSettings = siteSettings;
         this.sequences = sequences;
         this.exceptions = exceptions;
         this.appLock = appLock;
@@ -456,9 +456,9 @@ public class OfflineSaleRecorder {
                     WHERE o.[offline_grant_id] = ? AND p.[method] = 'ACCOUNT' AND p.[account_id] = ?""",
                     BigDecimal.class, grant.id().toString(), account.getId());
             var capTotal = earlier.add(input.amount());
-            if (capTotal.compareTo(properties.getAccountCap()) > 0) {
+            if (capTotal.compareTo(siteSettings.offlineAccountCap()) > 0) {
                 flags.add(flag(SaleExceptionCode.ACCOUNT_OVER_CAP, "accountId", account.getId(), "capTotal", capTotal,
-                        "cap", properties.getAccountCap()));
+                        "cap", siteSettings.offlineAccountCap()));
             }
         }
     }

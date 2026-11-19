@@ -1,6 +1,7 @@
 package com.beaconculinary.api.dashboard;
 
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.settings.SiteSettingsFixture;
 import com.beaconculinary.api.support.TestLocale;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
@@ -11,7 +12,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -34,8 +34,7 @@ class DashboardServiceTest {
     @BeforeEach
     void setUp() {
         var clock = Clock.fixed(Instant.parse("2026-10-05T13:30:00Z"), ZoneOffset.UTC);
-        var settings = new DashboardSettings(new MockEnvironment(), new BigDecimal("50.00"), new BigDecimal("3.0"),
-                new BigDecimal("25"), "12:30", "06:00-15:00", true);
+        var settings = new DashboardSettings(new MockEnvironment(), SiteSettingsFixture.settings(), true);
         var handlers = new ArrayList<SectionHandler>();
         for (var section : DashboardSection.values()) {
             handlers.add(new SectionHandler() {

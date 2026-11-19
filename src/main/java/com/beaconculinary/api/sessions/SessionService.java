@@ -5,10 +5,10 @@ import com.beaconculinary.api.auth.SignIn;
 import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.devices.DeviceContext;
+import com.beaconculinary.api.settings.SiteSettings;
 import com.beaconculinary.api.shifts.OpenShiftConflicts;
 import com.beaconculinary.api.tills.CurrentTill;
 import com.beaconculinary.api.tills.TillException;
-import com.beaconculinary.api.tills.TillProperties;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import org.springframework.stereotype.Service;
@@ -44,20 +44,20 @@ public class SessionService {
     private final OpenShiftConflicts openShifts;
     private final AppLock appLock;
     private final Clock clock;
-    private final TillProperties properties;
+    private final SiteSettings siteSettings;
     private final JwtConfig jwtConfig;
 
     /** R10: at most one last-seen update per session per minute. */
     private static final Duration TOUCH_INTERVAL = Duration.ofMinutes(1);
 
     public SessionService(SessionStore store, CurrentTill currentTill, OpenShiftConflicts openShifts, AppLock appLock,
-                          Clock clock, TillProperties properties, JwtConfig jwtConfig) {
+                          Clock clock, SiteSettings siteSettings, JwtConfig jwtConfig) {
         this.store = store;
         this.currentTill = currentTill;
         this.openShifts = openShifts;
         this.appLock = appLock;
         this.clock = clock;
-        this.properties = properties;
+        this.siteSettings = siteSettings;
         this.jwtConfig = jwtConfig;
     }
 
@@ -128,7 +128,7 @@ public class SessionService {
     }
 
     private LocalDateTime idleCutoff(LocalDateTime now) {
-        return now.minusMinutes(properties.getSession().getIdleExpiryMinutes());
+        return now.minusMinutes(siteSettings.sessionIdleExpiryMinutes());
     }
 
     private boolean isIdle(SessionStore.SessionRow session, LocalDateTime now) {

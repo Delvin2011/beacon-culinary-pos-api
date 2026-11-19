@@ -6,6 +6,7 @@ import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.offline.OfflineGrantStore;
 import com.beaconculinary.api.sessions.SessionEndReason;
+import com.beaconculinary.api.settings.SiteSettings;
 import com.beaconculinary.api.sessions.SessionStore;
 import com.beaconculinary.api.tills.TillCodes;
 import com.beaconculinary.api.tills.TillProperties;
@@ -43,6 +44,7 @@ public class DeviceService {
 
     private final DeviceTrustProperties properties;
     private final TillProperties tillProperties;
+    private final SiteSettings siteSettings;
     private final AppLock appLock;
     private final SessionStore sessionStore;
     private final DeviceStore store;
@@ -56,7 +58,7 @@ public class DeviceService {
     public DeviceService(DeviceTrustProperties properties, TillProperties tillProperties, AppLock appLock,
                          SessionStore sessionStore, DeviceStore store, DeviceCookies cookies, DeviceAlerts alerts,
                          RecentPasswordCheck recentPasswordCheck, ClientIpResolver clientIpResolver,
-                         OfflineGrantStore offlineGrants, Clock clock) {
+                         OfflineGrantStore offlineGrants, SiteSettings siteSettings, Clock clock) {
         this.properties = properties;
         this.tillProperties = tillProperties;
         this.appLock = appLock;
@@ -67,13 +69,14 @@ public class DeviceService {
         this.recentPasswordCheck = recentPasswordCheck;
         this.clientIpResolver = clientIpResolver;
         this.offlineGrants = offlineGrants;
+        this.siteSettings = siteSettings;
         this.clock = clock;
     }
 
     public DeviceDtos.Config config() {
         return new DeviceDtos.Config(properties.getMode().name().toLowerCase(Locale.ROOT),
                 properties.isMultiBrowserEnabled(), properties.isRequireSerial(),
-                tillProperties.getTills().getMaxActive(), tillProperties.getTills().isRequireRegistered());
+                tillProperties.getTills().getMaxActive(), siteSettings.tillsRequireRegistered());
     }
 
     /** Registers the browser making the request (B9, P1, P2). The token goes only into the cookie. */

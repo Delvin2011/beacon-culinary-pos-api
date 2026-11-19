@@ -17,6 +17,7 @@ import com.beaconculinary.api.offline.OfflineDtos.SnapshotPeriod;
 import com.beaconculinary.api.orders.PaymentMethod;
 import com.beaconculinary.api.orders.VatRule;
 import com.beaconculinary.api.receipts.ReceiptSettingsService;
+import com.beaconculinary.api.settings.SiteSettings;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -41,7 +42,7 @@ import java.util.List;
 public class OfflineSnapshotService {
     private static final int VERSION_BYTES = 16;
 
-    private final OfflineProperties properties;
+    private final SiteSettings siteSettings;
     private final DailyPlanningService dailyPlanningService;
     private final MealPeriodRepository mealPeriodRepository;
     private final MealMapper mealMapper;
@@ -51,11 +52,11 @@ public class OfflineSnapshotService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
-    public OfflineSnapshotService(OfflineProperties properties, DailyPlanningService dailyPlanningService,
+    public OfflineSnapshotService(SiteSettings siteSettings, DailyPlanningService dailyPlanningService,
                                   MealPeriodRepository mealPeriodRepository, MealMapper mealMapper,
                                   AccountRepository accountRepository, VatSettings vatSettings,
                                   ReceiptSettingsService receiptSettingsService, ObjectMapper objectMapper, Clock clock) {
-        this.properties = properties;
+        this.siteSettings = siteSettings;
         this.dailyPlanningService = dailyPlanningService;
         this.mealPeriodRepository = mealPeriodRepository;
         this.mealMapper = mealMapper;
@@ -90,7 +91,7 @@ public class OfflineSnapshotService {
                     dto.getBufferRemaining());
         }).toList();
 
-        var accountsEnabled = properties.isAccountsEnabled();
+        var accountsEnabled = siteSettings.offlineAccountsEnabled();
         var tenders = accountsEnabled ? List.of(PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.ACCOUNT)
                 : List.of(PaymentMethod.CASH, PaymentMethod.CARD);
         var accounts = accountsEnabled
@@ -103,8 +104,8 @@ public class OfflineSnapshotService {
 
         var content = new SnapshotContent(tradingDay, periods, options, extras,
                 VatRule.storedRate(vatSettings.standardRate()), receiptSettingsService.forPos(), tenders,
-                accountsEnabled, accountsEnabled ? properties.getAccountCap() : null, accounts,
-                new Limits(properties.getMaxOfflineHours(), properties.getWarnOfflineHours()));
+                accountsEnabled, accountsEnabled ? siteSettings.offlineAccountCap() : null, accounts,
+                new Limits(siteSettings.offlineMaxOfflineHours(), siteSettings.offlineWarnOfflineHours()));
         return Snapshot.of(version(content), now, content);
     }
 

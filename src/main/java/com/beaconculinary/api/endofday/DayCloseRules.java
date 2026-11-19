@@ -28,7 +28,8 @@ public class DayCloseRules {
     private final ShiftSignoffs signoffs;
     private final ZReadings zReadings;
     private final Clock clock;
-    private final LocalDate firstTradingDay;
+    /** T0-4a: the first trading day is a site setting, so it is read on each check, never kept. */
+    private final CloseDaySettings settings;
     private final OfflinePending offlinePending;
     private final SiteLocale siteLocale;
 
@@ -38,7 +39,7 @@ public class DayCloseRules {
         this.signoffs = signoffs;
         this.zReadings = zReadings;
         this.clock = clock;
-        this.firstTradingDay = settings.firstTradingDay();
+        this.settings = settings;
         this.offlinePending = offlinePending;
         this.siteLocale = siteLocale;
     }
@@ -90,6 +91,7 @@ public class DayCloseRules {
             blockers.add(new Blocker("DAY_IN_FUTURE", "This day hasn't happened yet.", null, tradingDay, null));
             return blockers;
         }
+        var firstTradingDay = settings.firstTradingDay();
         if (firstTradingDay != null && tradingDay.isBefore(firstTradingDay)) {
             blockers.add(new Blocker("BEFORE_FIRST_TRADING_DAY",
                     "Days before " + firstTradingDay + " are not closed with a Z reading.", null, tradingDay, null));
@@ -137,6 +139,7 @@ public class DayCloseRules {
 
     /** Earlier trading days with shifts (from the first trading day, when set) that have no Z. */
     private List<LocalDate> unclosedEarlierDays(LocalDate tradingDay) {
+        var firstTradingDay = settings.firstTradingDay();
         var params = new MapSqlParameterSource("day", java.sql.Date.valueOf(tradingDay));
         var sql = "SELECT DISTINCT trading_day FROM v_shift_facts WHERE trading_day < :day";
         if (firstTradingDay != null) {

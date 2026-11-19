@@ -1,17 +1,13 @@
 package com.beaconculinary.api.settings;
 
 import com.beaconculinary.api.support.MutableClock;
-import com.beaconculinary.api.tills.TillProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -19,38 +15,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SiteSettingsCacheTest {
     private static final Instant T0 = Instant.parse("2026-11-19T08:00:00Z");
 
-    /** A store over a list, counting reads. */
-    static class FakeStore extends SiteSettingsStore {
-        final List<Saved> rows = new ArrayList<>();
-        int reads;
-
-        FakeStore() {
-            super(null);
-        }
-
-        @Override
-        public List<Saved> findAll() {
-            reads++;
-            return List.copyOf(rows);
-        }
-
-        void save(String key, String value) {
-            rows.removeIf(row -> row.key().equals(key));
-            rows.add(new Saved(key, value, LocalDateTime.of(2026, 11, 19, 8, 0), "Canteen Admin"));
-        }
-    }
-
-    private FakeStore store;
+    private SiteSettingsFixture.FakeStore store;
     private MutableClock clock;
     private SiteSettings settings;
 
     @BeforeEach
     void setUp() {
-        store = new FakeStore();
+        store = new SiteSettingsFixture.FakeStore();
         clock = new MutableClock(Clock.fixed(T0, ZoneOffset.UTC));
-        var defaults = new SiteSettingDefaults(new TillProperties(), SiteSettingRegistryTest.offline(), "0.15", "2026-10-12",
-                "10", "50.00", "3.0", "25", "12:30", "06:00-15:00");
-        settings = new SiteSettings(store, defaults, clock);
+        settings = SiteSettingsFixture.settings(store, clock);
     }
 
     @Test

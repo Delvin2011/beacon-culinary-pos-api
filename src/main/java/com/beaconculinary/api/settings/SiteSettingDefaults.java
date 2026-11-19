@@ -20,8 +20,10 @@ import java.util.Map;
  */
 @Component
 public class SiteSettingDefaults {
+    /** The @Value defaults, parsed once. */
     private final Map<SiteSetting, Object> values = new EnumMap<>(SiteSetting.class);
-    private final int grantMaxHours;
+    private final TillProperties tillProperties;
+    private final OfflineProperties offlineProperties;
 
     public SiteSettingDefaults(TillProperties tillProperties, OfflineProperties offlineProperties,
                                @Value("${vat.standard-rate:0.15}") String vatStandardRate,
@@ -32,7 +34,8 @@ public class SiteSettingDefaults {
                                @Value("${dashboard.slowMeal.thresholdPercent:25}") String slowMealThresholdPercent,
                                @Value("${dashboard.slowMeal.afterTime:12:30}") String slowMealAfter,
                                @Value("${dashboard.openingHours:06:00-15:00}") String openingHours) {
-        this.grantMaxHours = offlineProperties.getGrantMaxHours();
+        this.tillProperties = tillProperties;
+        this.offlineProperties = offlineProperties;
         parse(SiteSetting.VAT_STANDARD_RATE, vatStandardRate);
         if (firstTradingDay == null || firstTradingDay.isBlank()) {
             values.put(SiteSetting.FIRST_TRADING_DAY, null);
@@ -45,13 +48,6 @@ public class SiteSettingDefaults {
         parse(SiteSetting.DASHBOARD_SLOW_MEAL_THRESHOLD_PERCENT, slowMealThresholdPercent);
         parse(SiteSetting.DASHBOARD_SLOW_MEAL_AFTER_TIME, slowMealAfter);
         parse(SiteSetting.DASHBOARD_OPENING_HOURS, openingHours);
-        values.put(SiteSetting.TILLS_REQUIRE_REGISTERED, tillProperties.getTills().isRequireRegistered());
-        values.put(SiteSetting.SESSION_IDLE_LOCK_MINUTES, tillProperties.getSession().getIdleLockMinutes());
-        values.put(SiteSetting.SESSION_IDLE_EXPIRY_MINUTES, tillProperties.getSession().getIdleExpiryMinutes());
-        values.put(SiteSetting.OFFLINE_MAX_OFFLINE_HOURS, offlineProperties.getMaxOfflineHours());
-        values.put(SiteSetting.OFFLINE_WARN_OFFLINE_HOURS, offlineProperties.getWarnOfflineHours());
-        values.put(SiteSetting.OFFLINE_ACCOUNTS_ENABLED, offlineProperties.isAccountsEnabled());
-        values.put(SiteSetting.OFFLINE_ACCOUNT_CAP, offlineProperties.getAccountCap());
         check();
     }
 
@@ -65,30 +61,46 @@ public class SiteSettingDefaults {
 
     private void check() {
         for (var setting : SiteSetting.values()) {
-            var problem = SiteSettingRules.checkLimits(setting, values.get(setting), grantMaxHours);
+            var problem = SiteSettingRules.checkLimits(setting, get(setting), grantMaxHours());
             if (problem != null) {
-                throw new IllegalStateException(setting.key() + " '" + values.get(setting) + "' is not valid: " + problem);
+                throw new IllegalStateException(setting.key() + " '" + get(setting) + "' is not valid: " + problem);
             }
         }
-        var broken = SiteSettingRules.crossRules(values);
+        var broken = SiteSettingRules.crossRules(all());
         if (!broken.isEmpty()) {
             var first = broken.entrySet().iterator().next();
             throw new IllegalStateException(first.getKey().key() + " is not valid: " + first.getValue());
         }
     }
 
-    /** The default of a setting (null only for an empty first trading day). */
+    /**
+     * The default of a setting (null only for an empty first trading day). The pos.* defaults are
+     * read from the bound property beans on each call, as their consumers did before T0-4a.
+     */
     public Object get(SiteSetting setting) {
-        return values.get(setting);
+        return switch (setting) {
+            case TILLS_REQUIRE_REGISTERED -> tillProperties.getTills().isRequireRegistered();
+            case SESSION_IDLE_LOCK_MINUTES -> tillProperties.getSession().getIdleLockMinutes();
+            case SESSION_IDLE_EXPIRY_MINUTES -> tillProperties.getSession().getIdleExpiryMinutes();
+            case OFFLINE_MAX_OFFLINE_HOURS -> offlineProperties.getMaxOfflineHours();
+            case OFFLINE_WARN_OFFLINE_HOURS -> offlineProperties.getWarnOfflineHours();
+            case OFFLINE_ACCOUNTS_ENABLED -> offlineProperties.isAccountsEnabled();
+            case OFFLINE_ACCOUNT_CAP -> offlineProperties.getAccountCap();
+            default -> values.get(setting);
+        };
     }
 
     /** All defaults (a copy). */
     public Map<SiteSetting, Object> all() {
-        return new EnumMap<>(values);
+        var all = new EnumMap<SiteSetting, Object>(SiteSetting.class);
+        for (var setting : SiteSetting.values()) {
+            all.put(setting, get(setting));
+        }
+        return all;
     }
 
     /** Platform: pos.offline.grant-max-hours, the upper limit for max-offline-hours. */
     public int grantMaxHours() {
-        return grantMaxHours;
+        return offlineProperties.getGrantMaxHours();
     }
 }

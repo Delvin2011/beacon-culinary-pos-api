@@ -1,5 +1,6 @@
 package com.beaconculinary.api.dashboard;
 
+import com.beaconculinary.api.settings.SiteSettings;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
@@ -8,8 +9,9 @@ import java.math.BigDecimal;
 import java.time.LocalTime;
 
 /**
- * Back-office dashboard configuration (no settings screen yet; no tables). Thresholds and opening
- * hours come from {@code dashboard.*} properties; each prerequisite stage has a feature flag,
+ * Back-office dashboard configuration. Thresholds and opening hours are site settings (T0-4a:
+ * GET/PUT /admin/settings; defaults from the {@code dashboard.*} properties), read on every call.
+ * Each prerequisite stage has a feature flag (an entitlement, configuration only),
  * {@code dashboard.features.<name>}, set when that stage ships. A section whose stage is off is
  * left out of the layout.
  */
@@ -37,33 +39,13 @@ public class DashboardSettings {
     }
 
     private final Environment environment;
-    private final BigDecimal varianceThreshold;
-    private final BigDecimal voidRefundWatchPercent;
-    private final BigDecimal slowMealThresholdPercent;
-    private final LocalTime slowMealAfter;
-    private final LocalTime openFrom;
-    private final LocalTime openTo;
+    private final SiteSettings siteSettings;
     private final boolean cacheEnabled;
 
-    public DashboardSettings(Environment environment,
-                             @Value("${dashboard.variance.threshold:50.00}") BigDecimal varianceThreshold,
-                             @Value("${dashboard.voidRefund.watchPercent:3.0}") BigDecimal voidRefundWatchPercent,
-                             @Value("${dashboard.slowMeal.thresholdPercent:25}") BigDecimal slowMealThresholdPercent,
-                             @Value("${dashboard.slowMeal.afterTime:12:30}") String slowMealAfter,
-                             @Value("${dashboard.openingHours:06:00-15:00}") String openingHours,
+    public DashboardSettings(Environment environment, SiteSettings siteSettings,
                              @Value("${dashboard.cache.enabled:true}") boolean cacheEnabled) {
         this.environment = environment;
-        this.varianceThreshold = varianceThreshold;
-        this.voidRefundWatchPercent = voidRefundWatchPercent;
-        this.slowMealThresholdPercent = slowMealThresholdPercent;
-        this.slowMealAfter = LocalTime.parse(slowMealAfter.trim());
-        // "06:00-15:00" (an en dash is accepted too).
-        var hours = openingHours.split("[-–]");
-        if (hours.length != 2) {
-            throw new IllegalStateException("dashboard.openingHours must look like 06:00-15:00, not " + openingHours);
-        }
-        this.openFrom = LocalTime.parse(hours[0].trim());
-        this.openTo = LocalTime.parse(hours[1].trim());
+        this.siteSettings = siteSettings;
         this.cacheEnabled = cacheEnabled;
     }
 
@@ -74,27 +56,27 @@ public class DashboardSettings {
     }
 
     public BigDecimal varianceThreshold() {
-        return varianceThreshold;
+        return siteSettings.dashboardVarianceThreshold();
     }
 
     public BigDecimal voidRefundWatchPercent() {
-        return voidRefundWatchPercent;
+        return siteSettings.dashboardVoidRefundWatchPercent();
     }
 
     public BigDecimal slowMealThresholdPercent() {
-        return slowMealThresholdPercent;
+        return siteSettings.dashboardSlowMealThresholdPercent();
     }
 
     public LocalTime slowMealAfter() {
-        return slowMealAfter;
+        return siteSettings.dashboardSlowMealAfter();
     }
 
     public LocalTime openFrom() {
-        return openFrom;
+        return siteSettings.dashboardOpeningHours().from();
     }
 
     public LocalTime openTo() {
-        return openTo;
+        return siteSettings.dashboardOpeningHours().to();
     }
 
     public boolean cacheEnabled() {
@@ -103,10 +85,11 @@ public class DashboardSettings {
 
     /** The hours of day the hourly charts run across: 06:00-15:00 gives 6..14. */
     public int firstHour() {
-        return openFrom.getHour();
+        return openFrom().getHour();
     }
 
     public int lastHour() {
+        var openTo = openTo();
         return openTo.getMinute() == 0 && openTo.getSecond() == 0 ? openTo.getHour() - 1 : openTo.getHour();
     }
 }

@@ -1,7 +1,7 @@
 package com.beaconculinary.api.devices;
 
 import com.beaconculinary.api.auth.protection.ClientIpResolver;
-import com.beaconculinary.api.tills.TillProperties;
+import com.beaconculinary.api.settings.SiteSettings;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import lombok.extern.slf4j.Slf4j;
@@ -26,12 +26,12 @@ public class DeviceGate {
     private final DeviceTrustProperties properties;
     private final DeviceAlerts alerts;
     private final ClientIpResolver clientIpResolver;
-    private final TillProperties tillProperties;
+    private final SiteSettings siteSettings;
 
     public DeviceGate(DeviceTrustProperties properties, DeviceAlerts alerts, ClientIpResolver clientIpResolver,
-                      TillProperties tillProperties) {
+                      SiteSettings siteSettings) {
         this.properties = properties;
-        this.tillProperties = tillProperties;
+        this.siteSettings = siteSettings;
         this.alerts = alerts;
         this.clientIpResolver = clientIpResolver;
     }
@@ -70,7 +70,7 @@ public class DeviceGate {
             return false;
         }
         // O2 R4: pos.tills.require-registered refuses CASHIER/ADMIN PIN sign-in in every device-trust mode.
-        if (properties.isRequired() || tillProperties.getTills().isRequireRegistered()) {
+        if (properties.isRequired() || siteSettings.tillsRequireRegistered()) {
             alerts.refusal(clientIp());
             alerts.alert("DEVICE_GATE_REFUSED", "method=PIN user=" + (user == null ? "-" : user.getId())
                     + " ip=" + clientIp() + " status=" + context.status());

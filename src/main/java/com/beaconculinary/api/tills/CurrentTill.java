@@ -3,6 +3,7 @@ package com.beaconculinary.api.tills;
 import com.beaconculinary.api.devices.DeviceContext;
 import com.beaconculinary.api.devices.DeviceException;
 import com.beaconculinary.api.devices.DeviceStore;
+import com.beaconculinary.api.settings.SiteSettings;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
@@ -15,11 +16,11 @@ import java.util.UUID;
 @Component
 public class CurrentTill {
     private final DeviceStore store;
-    private final TillProperties properties;
+    private final SiteSettings siteSettings;
 
-    public CurrentTill(DeviceStore store, TillProperties properties) {
+    public CurrentTill(DeviceStore store, SiteSettings siteSettings) {
         this.store = store;
-        this.properties = properties;
+        this.siteSettings = siteSettings;
     }
 
     /** The till's device ID, or null for the unregistered till. No database access. */
@@ -41,12 +42,12 @@ public class CurrentTill {
 
     /** R4: refuses with 403 DEVICE_NOT_REGISTERED when pos.tills.require-registered is on and this isn't a registered till. */
     public void requireRegisteredForPos() {
-        if (properties.getTills().isRequireRegistered() && deviceId() == null) {
+        if (siteSettings.tillsRequireRegistered() && deviceId() == null) {
             throw DeviceException.notRegistered();
         }
     }
 
     public boolean requiresRegistered() {
-        return properties.getTills().isRequireRegistered();
+        return siteSettings.tillsRequireRegistered();
     }
 }

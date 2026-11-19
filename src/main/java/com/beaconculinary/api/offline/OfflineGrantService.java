@@ -3,6 +3,7 @@ package com.beaconculinary.api.offline;
 import com.beaconculinary.api.common.AppLock;
 import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.offline.OfflineDtos.GrantResponse;
+import com.beaconculinary.api.settings.SiteSettings;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,11 +30,12 @@ public class OfflineGrantService {
     private final OfflineGrantSigner signer;
     private final ShiftRepository shiftRepository;
     private final AppLock appLock;
+    private final SiteSettings siteSettings;
     private final Clock clock;
 
     public OfflineGrantService(OfflineProperties properties, OfflineAccess access, OfflineGrantStore grants,
                                OfflineSequenceStore sequences, OfflineGrantSigner signer, ShiftRepository shiftRepository,
-                               AppLock appLock, Clock clock) {
+                               AppLock appLock, SiteSettings siteSettings, Clock clock) {
         this.properties = properties;
         this.access = access;
         this.grants = grants;
@@ -41,6 +43,7 @@ public class OfflineGrantService {
         this.signer = signer;
         this.shiftRepository = shiftRepository;
         this.appLock = appLock;
+        this.siteSettings = siteSettings;
         this.clock = clock;
     }
 
@@ -67,12 +70,14 @@ public class OfflineGrantService {
                 null, null, null));
 
         var tradingDay = LocalDate.now(clock);
+        // T0-4a: offline limits are site settings, read when the grant is issued.
+        var accountsEnabled = siteSettings.offlineAccountsEnabled();
         var signed = signer.sign(new OfflineGrantSigner.Claimed(id, till.deviceId(), till.credentialId(), shift.getId(),
                 owner.getId(), issuedAt, expiresAt));
         return new GrantResponse(id.toString(), signed, till.deviceId().toString(), shift.getTillCode(), shift.getId(),
                 owner.getId(), owner.getName(), issuedAt, expiresAt, tradingDay,
-                sequences.nextFor(till.deviceId(), tradingDay), properties.getMaxOfflineHours(),
-                properties.getWarnOfflineHours(), properties.isAccountsEnabled(),
-                properties.isAccountsEnabled() ? properties.getAccountCap() : null, clock.instant());
+                sequences.nextFor(till.deviceId(), tradingDay), siteSettings.offlineMaxOfflineHours(),
+                siteSettings.offlineWarnOfflineHours(), accountsEnabled, accountsEnabled ? siteSettings.offlineAccountCap() : null,
+                clock.instant());
     }
 }
