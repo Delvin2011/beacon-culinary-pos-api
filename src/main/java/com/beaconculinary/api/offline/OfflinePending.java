@@ -1,12 +1,12 @@
 package com.beaconculinary.api.offline;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -40,9 +40,9 @@ public class OfflinePending {
             return tillName == null ? code : code + " (" + tillName + ")";
         }
 
-        /** "last report 09:15" in Johannesburg time, plus "nothing heard since" when stale. */
-        public String lastReportText() {
-            var time = HOUR_MINUTE.format(lastReportAt.atZone(ClockConfig.BUSINESS_ZONE));
+        /** "last report 09:15" in the business zone, plus "nothing heard since" when stale. */
+        public String lastReportText(ZoneId zone) {
+            var time = HOUR_MINUTE.format(lastReportAt.atZone(zone));
             return "last report " + time + (stale ? ", nothing heard since" : "");
         }
 

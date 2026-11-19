@@ -1,7 +1,6 @@
 package com.beaconculinary.api.oversight;
 
 import com.beaconculinary.api.admin.AuthorizationTokenRepository;
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.inventory.RecipeRepository;
 import com.beaconculinary.api.menu.ComponentCatalogRepository;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
@@ -18,6 +17,7 @@ import com.beaconculinary.api.support.PosFlowHelper;
 import com.beaconculinary.api.support.PosFlowHelper.ExtraReq;
 import com.beaconculinary.api.support.PosFlowHelper.LineReq;
 import com.beaconculinary.api.support.PosFlowHelper.PaymentReq;
+import com.beaconculinary.api.support.TestLocale;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -116,12 +116,12 @@ class ShiftActivityIntegrationTests {
     }
 
     private LocalDate businessToday() {
-        return LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        return LocalDate.ofInstant(clock.instant(), TestLocale.ZONE);
     }
 
     /** The UTC wall-clock value stored in opened_at for a Johannesburg local date and time. */
     private static LocalDateTime utc(LocalDate businessDay, int hour, int minute) {
-        return businessDay.atTime(hour, minute).atZone(ClockConfig.BUSINESS_ZONE)
+        return businessDay.atTime(hour, minute).atZone(TestLocale.ZONE)
                 .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
     }
 
@@ -150,7 +150,7 @@ class ShiftActivityIntegrationTests {
     @Test
     void displayStatus_followsJohannesburgCalendarDay_includingJustAfterLocalMidnight() throws Exception {
         var today = businessToday();
-        clock.setInstant(today.atTime(10, 0).atZone(ClockConfig.BUSINESS_ZONE).toInstant());
+        clock.setInstant(today.atTime(10, 0).atZone(TestLocale.ZONE).toInstant());
         var shiftId = pos.openShift(cashierToken, "200.00");
 
         // 00:30 Johannesburg = 22:30 UTC the previous day: still today locally, so ON_SHIFT.

@@ -1,5 +1,7 @@
 package com.beaconculinary.api.reports;
 
+import com.beaconculinary.api.common.locale.SiteLocale;
+
 import lombok.AllArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -18,6 +20,7 @@ import java.util.List;
 @AllArgsConstructor
 public class AccountFacts {
     private final NamedParameterJdbcTemplate jdbc;
+    private final SiteLocale siteLocale;
 
     /** One account over a range. closingByLedger is computed separately from the parts (every
      * movement up to the end of the range) for the balance-arithmetic check. */
@@ -111,7 +114,7 @@ public class AccountFacts {
                         rs.getString("name") + (rs.getBoolean("active") ? "" : " (inactive)")));
     }
 
-    private static MapSqlParameterSource rangeParams(ReportRange range) {
-        return new MapSqlParameterSource().addValue("from", range.fromUtc()).addValue("to", range.toUtcExclusive());
+    private MapSqlParameterSource rangeParams(ReportRange range) {
+        return new MapSqlParameterSource().addValue("from", range.fromUtc(siteLocale)).addValue("to", range.toUtcExclusive(siteLocale));
     }
 }

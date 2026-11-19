@@ -1,6 +1,6 @@
 package com.beaconculinary.api.reports;
 
-import com.beaconculinary.api.common.ClockConfig;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -28,6 +28,7 @@ public class ReportParamParser {
     static final int MAX_RANGE_DAYS = 366;
 
     private final Clock clock;
+    private final SiteLocale siteLocale;
 
     public ReportParams parse(List<ReportParamSpec> specs, Map<String, String> raw) {
         return parse(specs, raw, false);
@@ -160,7 +161,7 @@ public class ReportParamParser {
     }
 
     private LocalDate today() {
-        return LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        return siteLocale.businessDate(clock.instant());
     }
 
     private static String message(ReportParamSpec spec) {

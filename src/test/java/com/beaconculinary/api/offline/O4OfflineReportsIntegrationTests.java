@@ -1,7 +1,6 @@
 package com.beaconculinary.api.offline;
 
 import com.beaconculinary.api.admin.AuthorizationTokenRepository;
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.inventory.RecipeRepository;
 import com.beaconculinary.api.menu.ComponentCatalogRepository;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
@@ -17,6 +16,7 @@ import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
 import com.beaconculinary.api.support.O3Tills;
 import com.beaconculinary.api.support.PosFlowHelper;
+import com.beaconculinary.api.support.TestLocale;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -163,7 +163,7 @@ class O4OfflineReportsIntegrationTests {
         sync(List.of(sale(1, 20, "50.00")));
 
         clock.setTime(LocalTime.of(9, 0));
-        clock.setInstant(today.plusDays(1).atTime(9, 0).atZone(ClockConfig.BUSINESS_ZONE).toInstant());
+        clock.setInstant(today.plusDays(1).atTime(9, 0).atZone(TestLocale.ZONE).toInstant());
         assertThat(value(report("x-reading", "tradingDay=" + today.plusDays(1)), "offline", "Offline sales").asInt()).isEqualTo(1);
         assertThat(value(report("x-reading", "tradingDay=" + today), "offline", "Offline sales").asInt()).isZero();
     }
@@ -187,7 +187,7 @@ class O4OfflineReportsIntegrationTests {
         sale.put("offlineSeq", seq);
         sale.put("offlineReceiptNumber", "T1-" + today.format(DateTimeFormatter.BASIC_ISO_DATE) + String.format("-%04d", seq));
         sale.put("collectionNumber", "T1-" + seq);
-        sale.put("soldAt", today.atTime(12, minuteAfterNoon).atZone(ClockConfig.BUSINESS_ZONE).toInstant().toString());
+        sale.put("soldAt", today.atTime(12, minuteAfterNoon).atZone(TestLocale.ZONE).toInstant().toString());
         sale.put("tillClockAtSendUtc", clock.instant().toString());
         sale.put("shiftId", shiftId);
         sale.put("cashierId", cashier.id());

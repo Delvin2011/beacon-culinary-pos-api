@@ -1,0 +1,298 @@
+{
+  "actions" : [ {
+    "confirm" : "Sign off shift #<s2> (Canteen Cashier B)?",
+    "disabledReasons" : [ ],
+    "enabled" : true,
+    "fields" : [ {
+      "label" : "Note",
+      "name" : "note",
+      "required" : false
+    } ],
+    "key" : "SIGN_OFF",
+    "label" : "Sign off shift",
+    "method" : "POST",
+    "path" : "/admin/shifts/<s2>/signoff"
+  } ],
+  "checks" : [ {
+    "actual" : 0,
+    "difference" : 0,
+    "expected" : 0,
+    "key" : "agrees-with-cash-up",
+    "label" : "Expected, counted and variance agree with Cash-up & Variance",
+    "status" : "PASS",
+    "unit" : "COUNT"
+  }, {
+    "actual" : 1,
+    "detail" : "The manager hasn't signed this shift off yet.",
+    "difference" : 1,
+    "expected" : 0,
+    "key" : "not-signed-off",
+    "label" : "The shift is signed off",
+    "status" : "WARN",
+    "unit" : "COUNT"
+  } ],
+  "columns" : null,
+  "meta" : {
+    "amountsInclVat" : true,
+    "business" : {
+      "name" : "Beacon Culinary"
+    },
+    "category" : "DAILY_STATEMENTS",
+    "currency" : "ZAR",
+    "definitionVersion" : 2,
+    "exportFormats" : [ "xlsx" ],
+    "generatedAt" : "2026-10-06T11:00:00Z",
+    "interim" : false,
+    "key" : "cashier-reading",
+    "notes" : [ "A cashier reading covers one shift (the cash drawer), whoever rang the sales. Sales rung by someone else on this shift are listed separately.", "Takings are the orders sold in this shift. Reductions after payment are voids, refunds and extras removed on those orders, whenever they were processed.", "Cash refunds processed in this shift come out of this drawer, even for orders sold in an earlier shift.", "An open shift's reading is interim: expected cash is live, and counted cash and variance are empty.", "Complimentary meals are given away with manager approval and no payment. They are not part of sales.", "Amounts include VAT." ],
+    "paramLabels" : {
+      "shiftId" : "Mon 5 Oct · Canteen Cashier B · 11:05–15:00"
+    },
+    "params" : {
+      "shiftId" : "<s2>"
+    },
+    "reference" : "Shift #<s2>",
+    "statementTitle" : "Cashier Reading",
+    "timezone" : "Africa/Johannesburg",
+    "title" : "Cashier Reading"
+  },
+  "page" : null,
+  "rows" : null,
+  "sections" : [ {
+    "items" : [ {
+      "label" : "Business",
+      "type" : "TEXT",
+      "value" : "Beacon Culinary"
+    }, {
+      "label" : "Report",
+      "type" : "TEXT",
+      "value" : "Cashier Reading"
+    }, {
+      "label" : "Cashier",
+      "type" : "TEXT",
+      "value" : "Canteen Cashier B"
+    }, {
+      "label" : "Till",
+      "type" : "TEXT",
+      "value" : "Unregistered till"
+    }, {
+      "label" : "Shift",
+      "type" : "INT",
+      "value" : "<s2>"
+    }, {
+      "label" : "Trading day",
+      "type" : "DATE",
+      "value" : "2026-10-05"
+    }, {
+      "label" : "Opened",
+      "type" : "DATETIME",
+      "value" : "2026-10-05T09:05:00Z"
+    }, {
+      "label" : "Closed",
+      "type" : "DATETIME",
+      "value" : "2026-10-05T13:00:00Z"
+    }, {
+      "label" : "Status",
+      "type" : "TEXT",
+      "value" : "Closed"
+    } ],
+    "key" : "header",
+    "type" : "KEY_VALUE"
+  }, {
+    "items" : [ {
+      "label" : "Orders (sales)",
+      "type" : "INT",
+      "value" : "<admin>"
+    }, {
+      "label" : "Voided/refunded orders",
+      "type" : "INT",
+      "value" : 0
+    }, {
+      "label" : "Gross sales",
+      "type" : "MONEY",
+      "value" : 190.0
+    }, {
+      "label" : "Discounts at sale",
+      "type" : "MONEY",
+      "value" : 10.0
+    }, {
+      "label" : "Reductions after payment on these orders",
+      "type" : "MONEY",
+      "value" : 0.0
+    }, {
+      "emphasis" : "TOTAL",
+      "label" : "Net sales",
+      "type" : "MONEY",
+      "value" : 180.0
+    }, {
+      "label" : "Collected: cash",
+      "type" : "MONEY",
+      "value" : 60.0
+    }, {
+      "label" : "Collected: card",
+      "type" : "MONEY",
+      "value" : 0.0
+    }, {
+      "label" : "Collected: account",
+      "type" : "MONEY",
+      "value" : 120.0
+    }, {
+      "emphasis" : "TOTAL",
+      "label" : "Total collected",
+      "type" : "MONEY",
+      "value" : 180.0
+    } ],
+    "key" : "takings",
+    "title" : "Takings (orders sold in this shift)",
+    "type" : "KEY_VALUE"
+  }, {
+    "items" : [ {
+      "label" : "Opening float",
+      "type" : "MONEY",
+      "value" : 300.0
+    }, {
+      "label" : "Cash sales",
+      "type" : "MONEY",
+      "value" : 60.0
+    }, {
+      "label" : "Cash refunds processed in this shift",
+      "type" : "MONEY",
+      "value" : 90.0
+    }, {
+      "emphasis" : "TOTAL",
+      "label" : "Expected cash",
+      "type" : "MONEY",
+      "value" : 270.0
+    }, {
+      "label" : "Counted cash",
+      "type" : "MONEY",
+      "value" : 260.0
+    }, {
+      "emphasis" : "TOTAL",
+      "label" : "Variance",
+      "type" : "VARIANCE",
+      "value" : -10.0
+    }, {
+      "label" : "Variance reason",
+      "type" : "TEXT",
+      "value" : "Cash counting error"
+    }, {
+      "label" : "Authorised by",
+      "type" : "TEXT",
+      "value" : "Canteen Admin"
+    } ],
+    "key" : "cashUp",
+    "title" : "Cash-up",
+    "type" : "KEY_VALUE"
+  }, {
+    "columns" : [ {
+      "key" : "at",
+      "label" : "Time",
+      "total" : "LABEL",
+      "type" : "DATETIME"
+    }, {
+      "key" : "orderNumber",
+      "label" : "Order #",
+      "total" : "NONE",
+      "type" : "INT"
+    }, {
+      "key" : "type",
+      "label" : "Type",
+      "statusTones" : {
+        "DISCOUNT" : "neutral",
+        "EXTRAS_REMOVED" : "warning",
+        "REFUND" : "warning",
+        "VOID" : "negative"
+      },
+      "total" : "NONE",
+      "type" : "STATUS"
+    }, {
+      "key" : "amount",
+      "label" : "Amount",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "paidOutAs",
+      "label" : "Paid out as",
+      "total" : "NONE",
+      "type" : "TEXT"
+    }, {
+      "key" : "reason",
+      "label" : "Reason",
+      "total" : "NONE",
+      "type" : "TEXT"
+    }, {
+      "key" : "authorisedBy",
+      "label" : "Authorised by",
+      "total" : "NONE",
+      "type" : "TEXT"
+    }, {
+      "key" : "soldInEarlierShift",
+      "label" : "Note",
+      "total" : "NONE",
+      "type" : "TEXT"
+    } ],
+    "key" : "processed",
+    "rows" : [ {
+      "amount" : 90.0,
+      "at" : "2026-10-05T09:20:00Z",
+      "authorisedBy" : "Canteen Admin",
+      "orderNumber" : 5,
+      "paidOutAs" : "Cash",
+      "reason" : "Customer complaint",
+      "soldInEarlierShift" : "Sold in earlier shift",
+      "type" : "REFUND"
+    } ],
+    "slipColumns" : [ "orderNumber", "type", "amount" ],
+    "title" : "Processed in this shift",
+    "totals" : {
+      "amount" : 90.0,
+      "at" : "Total"
+    },
+    "type" : "TABLE"
+  }, {
+    "items" : [ {
+      "label" : "Orders",
+      "type" : "INT",
+      "value" : 0
+    }, {
+      "label" : "Value collected",
+      "type" : "MONEY",
+      "value" : 0.0
+    }, {
+      "label" : "Rung by",
+      "type" : "TEXT",
+      "value" : null
+    } ],
+    "key" : "rungByOthers",
+    "title" : "Sales rung by someone else",
+    "type" : "KEY_VALUE"
+  }, {
+    "items" : [ {
+      "label" : "Complimentary meals",
+      "type" : "INT",
+      "value" : "<thandiwe>"
+    }, {
+      "label" : "Value at list price",
+      "type" : "MONEY",
+      "value" : 45.0
+    } ],
+    "key" : "complimentary",
+    "title" : "Complimentary meals (not part of sales)",
+    "type" : "KEY_VALUE"
+  }, {
+    "items" : [ {
+      "label" : "Status",
+      "type" : "TEXT",
+      "value" : "Not yet signed off"
+    } ],
+    "key" : "signoff",
+    "title" : "Sign-off",
+    "type" : "KEY_VALUE"
+  }, {
+    "key" : "signatures",
+    "labels" : [ "Cashier", "Manager" ],
+    "type" : "SIGNATURE_LINES"
+  } ],
+  "totals" : null
+}

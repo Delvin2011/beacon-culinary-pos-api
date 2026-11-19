@@ -1,8 +1,8 @@
 package com.beaconculinary.api.shifts;
 
 import com.beaconculinary.api.auth.RecentPasswordCheck;
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.offline.OfflineGrantStore;
 import com.beaconculinary.api.endofday.EndOfDayConflictException;
 import com.beaconculinary.api.endofday.ShiftSignoffs;
@@ -39,11 +39,12 @@ public class ShiftAdminService {
     private final ShiftSignoffs signoffs;
     private final OfflineGrantStore offlineGrants;
     private final Clock clock;
+    private final SiteLocale siteLocale;
 
     public ShiftAdminService(ShiftRepository shiftRepository, ShiftCashCalculator shiftCashCalculator, ShiftMapper shiftMapper,
                              ShiftCashCountEvents events, SessionStore sessionStore, RecentPasswordCheck recentPasswordCheck,
                              TradingDayLock tradingDayLock, ZReadings zReadings, ShiftSignoffs signoffs,
-                             OfflineGrantStore offlineGrants, Clock clock) {
+                             OfflineGrantStore offlineGrants, Clock clock, SiteLocale siteLocale) {
         this.shiftRepository = shiftRepository;
         this.shiftCashCalculator = shiftCashCalculator;
         this.shiftMapper = shiftMapper;
@@ -55,6 +56,7 @@ public class ShiftAdminService {
         this.signoffs = signoffs;
         this.offlineGrants = offlineGrants;
         this.clock = clock;
+        this.siteLocale = siteLocale;
     }
 
     /**
@@ -105,7 +107,7 @@ public class ShiftAdminService {
     public ShiftDto lateCount(long id, ShiftAdminRequests.LateCount request) {
         var admin = recentPasswordCheck.require("record a cash count");
         var shift = shiftRepository.findById(id).orElseThrow(ShiftNotFoundException::new);
-        var day = LocalDate.ofInstant(UtcTimestamps.toInstant(shift.getOpenedAt()), ClockConfig.BUSINESS_ZONE);
+        var day = siteLocale.businessDate(UtcTimestamps.toInstant(shift.getOpenedAt()));
         tradingDayLock.lock(day);
         var z = zReadings.forDay(day);
         if (z.isPresent()) {

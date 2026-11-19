@@ -1,0 +1,117 @@
+# Report
+A1	STRING	Cashier Reading Shift #<s1>
+A2	STRING	Beacon Culinary
+A3	STRING	Parameters: shiftId=Mon 5 Oct · Canteen Cashier · 07:00–11:00
+A4	STRING	Generated: 2026-10-06 13:00 (Africa/Johannesburg)
+A5	STRING	Amounts include VAT
+A7	STRING	Business
+B7	STRING	Beacon Culinary
+A8	STRING	Report
+B8	STRING	Cashier Reading
+A9	STRING	Cashier
+B9	STRING	Canteen Cashier
+A10	STRING	Till
+B10	STRING	Unregistered till
+A11	STRING	Shift
+B11	NUMERIC	<s1> [0]
+A12	STRING	Trading day
+B12	NUMERIC	2026-10-05T00:00 [yyyy-mm-dd]
+A13	STRING	Opened
+B13	NUMERIC	2026-10-05T07:00 [yyyy-mm-dd hh:mm]
+A14	STRING	Closed
+B14	NUMERIC	2026-10-05T11:00 [yyyy-mm-dd hh:mm]
+A15	STRING	Status
+B15	STRING	Closed
+A17	STRING	Takings (orders sold in this shift)
+A18	STRING	Orders (sales)
+B18	NUMERIC	5.0 [0]
+A19	STRING	Voided/refunded orders
+B19	NUMERIC	<admin> [0]
+A20	STRING	Gross sales
+B20	NUMERIC	380.0 ["R" #,##0.00;-"R" #,##0.00]
+A21	STRING	Discounts at sale
+B21	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A22	STRING	Reductions after payment on these orders
+B22	NUMERIC	140.0 ["R" #,##0.00;-"R" #,##0.00]
+A23	STRING	Net sales
+B23	NUMERIC	240.0 ["R" #,##0.00;-"R" #,##0.00]
+A24	STRING	Collected: cash
+B24	NUMERIC	290.0 ["R" #,##0.00;-"R" #,##0.00]
+A25	STRING	Collected: card
+B25	NUMERIC	90.0 ["R" #,##0.00;-"R" #,##0.00]
+A26	STRING	Collected: account
+B26	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A27	STRING	Total collected
+B27	NUMERIC	380.0 ["R" #,##0.00;-"R" #,##0.00]
+A29	STRING	Cash-up
+A30	STRING	Opening float
+B30	NUMERIC	200.0 ["R" #,##0.00;-"R" #,##0.00]
+A31	STRING	Cash sales
+B31	NUMERIC	290.0 ["R" #,##0.00;-"R" #,##0.00]
+A32	STRING	Cash refunds processed in this shift
+B32	NUMERIC	50.0 ["R" #,##0.00;-"R" #,##0.00]
+A33	STRING	Expected cash
+B33	NUMERIC	440.0 ["R" #,##0.00;-"R" #,##0.00]
+A34	STRING	Counted cash
+B34	NUMERIC	440.0 ["R" #,##0.00;-"R" #,##0.00]
+A35	STRING	Variance
+B35	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A36	STRING	Variance reason
+B36	STRING	
+A37	STRING	Authorised by
+B37	STRING	
+A39	STRING	Processed in this shift
+A40	STRING	Time
+B40	STRING	Order #
+C40	STRING	Type
+D40	STRING	Amount
+E40	STRING	Paid out as
+F40	STRING	Reason
+G40	STRING	Authorised by
+H40	STRING	Note
+A41	NUMERIC	2026-10-05T09:35 [yyyy-mm-dd hh:mm]
+B41	NUMERIC	4.0 [0]
+C41	STRING	VOID
+D41	NUMERIC	50.0 ["R" #,##0.00;-"R" #,##0.00]
+E41	STRING	Cash
+F41	STRING	Customer complaint
+G41	STRING	Canteen Admin
+A42	STRING	Total
+D42	NUMERIC	50.0 ["R" #,##0.00;-"R" #,##0.00]
+A44	STRING	Sales rung by someone else
+A45	STRING	Orders
+B45	NUMERIC	0.0 [0]
+A46	STRING	Value collected
+B46	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A47	STRING	Rung by
+B47	STRING	
+A49	STRING	Complimentary meals (not part of sales)
+A50	STRING	Complimentary meals
+B50	NUMERIC	0.0 [0]
+A51	STRING	Value at list price
+B51	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A53	STRING	Sign-off
+A54	STRING	Status
+B54	STRING	Not yet signed off
+A56	STRING	Cashier:
+B56	STRING	______________________________
+A58	STRING	Manager:
+B58	STRING	______________________________
+# Checks
+A1	STRING	Check
+B1	STRING	Status
+C1	STRING	Expected
+D1	STRING	Actual
+E1	STRING	Difference
+F1	STRING	Detail
+A2	STRING	Expected, counted and variance agree with Cash-up & Variance
+B2	STRING	PASS
+C2	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+D2	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+E2	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A3	STRING	The shift is signed off
+B3	STRING	WARN
+C3	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+D3	NUMERIC	<thandiwe> ["R" #,##0.00;-"R" #,##0.00]
+E3	NUMERIC	<thandiwe> ["R" #,##0.00;-"R" #,##0.00]
+F3	STRING	The manager hasn't signed this shift off yet.

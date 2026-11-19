@@ -1,0 +1,142 @@
+{
+  "checks" : [ {
+    "actual" : 170.0,
+    "difference" : 0.0,
+    "expected" : 170.0,
+    "key" : "closing-agrees-with-balances-report",
+    "label" : "Closing balance equals Account Balances' closing balance for this account",
+    "status" : "PASS",
+    "unit" : "MONEY"
+  } ],
+  "columns" : [ {
+    "key" : "occurredAt",
+    "label" : "Date/time",
+    "total" : "LABEL",
+    "type" : "DATETIME"
+  }, {
+    "key" : "type",
+    "label" : "Type",
+    "statusTones" : {
+      "CHARGE" : "warning",
+      "CREDIT" : "positive",
+      "OPENING" : "neutral",
+      "PAYMENT" : "positive"
+    },
+    "total" : "NONE",
+    "type" : "STATUS"
+  }, {
+    "key" : "reference",
+    "label" : "Reference",
+    "total" : "NONE",
+    "type" : "TEXT"
+  }, {
+    "key" : "description",
+    "label" : "Description",
+    "total" : "NONE",
+    "type" : "TEXT"
+  }, {
+    "key" : "charge",
+    "label" : "Charge",
+    "total" : "SUM",
+    "type" : "MONEY"
+  }, {
+    "key" : "credit",
+    "label" : "Credit",
+    "total" : "SUM",
+    "type" : "MONEY"
+  }, {
+    "key" : "payment",
+    "label" : "Payment",
+    "total" : "SUM",
+    "type" : "MONEY"
+  }, {
+    "key" : "balance",
+    "label" : "Balance",
+    "total" : "DERIVED",
+    "type" : "MONEY"
+  }, {
+    "key" : "authorizedBy",
+    "label" : "Authorised by",
+    "total" : "NONE",
+    "type" : "TEXT"
+  } ],
+  "meta" : {
+    "amountsInclVat" : true,
+    "category" : "PAYMENTS_ACCOUNTS",
+    "currency" : "ZAR",
+    "definitionVersion" : 2,
+    "exportFormats" : [ "csv", "xlsx" ],
+    "generatedAt" : "2026-10-06T11:00:00Z",
+    "key" : "account-statement",
+    "notes" : [ "Every charge, credit and payment on one account in date order, with a running balance.", "Charges increase what is owed; credits and payments reduce it.", "A movement is in the period by the same day as on Account Balances: charges by the trading day the order was sold, credits by the trading day they were processed, payments by the day recorded.", "Authorised by is the admin who approved a charge or credit, or who recorded a payment. Charges made before admin approval was required show no name.", "Amounts include VAT." ],
+    "paramLabels" : {
+      "accountId" : "Acme Logistics"
+    },
+    "params" : {
+      "accountId" : "<a1>",
+      "from" : "2026-09-26",
+      "to" : "2026-10-06"
+    },
+    "timezone" : "Africa/Johannesburg",
+    "title" : "Account Statement"
+  },
+  "page" : null,
+  "rows" : [ {
+    "authorizedBy" : null,
+    "balance" : 0.0,
+    "charge" : null,
+    "credit" : null,
+    "description" : "Opening balance",
+    "occurredAt" : "2026-09-25T22:00:00Z",
+    "payment" : null,
+    "reference" : null,
+    "type" : "OPENING"
+  }, {
+    "authorizedBy" : null,
+    "balance" : 200.0,
+    "charge" : 200.0,
+    "credit" : null,
+    "description" : "Order paid on account",
+    "occurredAt" : "2026-09-26T07:15:00Z",
+    "payment" : null,
+    "reference" : "Order #<thandiwe>",
+    "type" : "CHARGE"
+  }, {
+    "authorizedBy" : "Canteen Admin",
+    "balance" : 150.0,
+    "charge" : null,
+    "credit" : null,
+    "description" : "Cash",
+    "occurredAt" : "2026-09-27T08:00:00Z",
+    "payment" : 50.0,
+    "reference" : "Payment #<pay1>",
+    "type" : "PAYMENT"
+  }, {
+    "authorizedBy" : "Canteen Admin",
+    "balance" : 270.0,
+    "charge" : 120.0,
+    "credit" : null,
+    "description" : "Order paid on account",
+    "occurredAt" : "2026-10-05T09:30:00Z",
+    "payment" : null,
+    "reference" : "Order #6",
+    "type" : "CHARGE"
+  }, {
+    "authorizedBy" : "Canteen Admin",
+    "balance" : 170.0,
+    "charge" : null,
+    "credit" : null,
+    "description" : "EFT",
+    "occurredAt" : "2026-10-06T12:00:00Z",
+    "payment" : 100.0,
+    "reference" : "Payment #<pay2>",
+    "type" : "PAYMENT"
+  } ],
+  "totals" : {
+    "balance" : 170.0,
+    "charge" : 320.0,
+    "credit" : 0,
+    "occurredAt" : "Closing balance",
+    "payment" : 150.0
+  }
+}

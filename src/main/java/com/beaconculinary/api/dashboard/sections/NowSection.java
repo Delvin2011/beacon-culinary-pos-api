@@ -1,5 +1,6 @@
 package com.beaconculinary.api.dashboard.sections;
 
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.dashboard.DashboardFacts;
 import com.beaconculinary.api.dashboard.DashboardFacts.StationLoad;
 import com.beaconculinary.api.dashboard.DashboardFormat;
@@ -32,6 +33,7 @@ public class NowSection implements SectionHandler {
     private final TradingCalendar calendar;
     private final DashboardSettings settings;
     private final ShiftCashCalculator shiftCashCalculator;
+    private final SiteLocale siteLocale;
 
     @Override
     public DashboardSection section() {
@@ -92,12 +94,12 @@ public class NowSection implements SectionHandler {
             return null;
         }
         var shift = open.get(0);
-        var opened = DashboardFormat.local(shift.openedAtUtc());
+        var opened = DashboardFormat.local(shift.openedAtUtc(), siteLocale.zone());
         var till = new LinkedHashMap<String, Object>();
         till.put("shiftId", shift.shiftId());
         till.put("owner", DashboardFormat.shortName(shift.ownerName()));
-        till.put("since", opened.toLocalDate().equals(calendar.today()) ? DashboardFormat.time(shift.openedAtUtc())
-                : DashboardFormat.day(opened.toLocalDate()) + " " + DashboardFormat.time(shift.openedAtUtc()));
+        till.put("since", opened.toLocalDate().equals(calendar.today()) ? DashboardFormat.time(shift.openedAtUtc(), siteLocale.zone())
+                : DashboardFormat.day(opened.toLocalDate()) + " " + DashboardFormat.time(shift.openedAtUtc(), siteLocale.zone()));
         till.put("expectedCash", DashboardFormat.money(
                 shiftCashCalculator.compute(shift.shiftId(), shift.openingFloat()).expectedCash()));
         return till;

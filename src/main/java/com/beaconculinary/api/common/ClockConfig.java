@@ -1,17 +1,17 @@
 package com.beaconculinary.api.common;
 
+import com.beaconculinary.api.common.locale.SiteLocale;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
-import java.time.ZoneId;
 
 @Configuration
 public class ClockConfig {
-    public static final ZoneId BUSINESS_ZONE = ZoneId.of("Africa/Johannesburg");
-
+    /** The system clock in the site's business zone (site.time-zone). Code that needs the zone
+     * takes it from {@link SiteLocale}, not from {@code clock.getZone()}. */
     @Bean
-    public Clock clock() {
-        return Clock.system(BUSINESS_ZONE);
+    public Clock clock(SiteLocale siteLocale) {
+        return Clock.system(siteLocale.zone());
     }
 }

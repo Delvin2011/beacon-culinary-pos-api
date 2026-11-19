@@ -1,7 +1,7 @@
 package com.beaconculinary.api.reports;
 
 import com.beaconculinary.api.auth.AuthService;
-import com.beaconculinary.api.common.ClockConfig;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.receipts.BusinessName;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -28,15 +28,18 @@ public class ReportService {
     private final AuthService authService;
     private final Clock clock;
     private final BusinessName businessName;
+    private final SiteLocale siteLocale;
 
     public ReportService(ReportRegistry registry, ReportParamParser paramParser, ReportExporter exporter,
-                         AuthService authService, Clock clock, BusinessName businessName) {
+                         AuthService authService, Clock clock, BusinessName businessName,
+                         SiteLocale siteLocale) {
         this.registry = registry;
         this.paramParser = paramParser;
         this.exporter = exporter;
         this.authService = authService;
         this.clock = clock;
         this.businessName = businessName;
+        this.siteLocale = siteLocale;
     }
 
     /** Only the reports the caller may run. */
@@ -79,7 +82,7 @@ public class ReportService {
         var statement = result.statement();
         var isStatement = definition.template() == ReportTemplate.STATEMENT;
         var meta = new ReportEnvelope.Meta(definition.key(), definition.title(), definition.category(),
-                definition.definitionVersion(), clock.instant(), ClockConfig.BUSINESS_ZONE.getId(), "ZAR", true,
+                definition.definitionVersion(), clock.instant(), siteLocale.zone().getId(), siteLocale.currencyCode(), true,
                 echo, paramLabels(specs, echo), notes,
                 isStatement ? STATEMENT_FORMATS : TABLE_FORMATS,
                 statement == null ? null : statement.title(),

@@ -1,5 +1,7 @@
 package com.beaconculinary.api.reports;
 
+import com.beaconculinary.api.common.locale.SiteLocale;
+
 import lombok.AllArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -20,6 +22,7 @@ import java.util.List;
 @AllArgsConstructor
 public class ItemSalesFacts {
     private final NamedParameterJdbcTemplate jdbc;
+    private final SiteLocale siteLocale;
 
     /** One catalog item in one meal period: offered in the range, sold in it, or both. rung,
      * voided, refundedOrRemoved and gross cover sales orders; complimentary portions and their
@@ -40,7 +43,7 @@ public class ItemSalesFacts {
      */
     public List<ItemFacts> items(ReportRange range, String itemType, Long mealPeriodId) {
         var params = new MapSqlParameterSource()
-                .addValue("from", range.fromUtc()).addValue("to", range.toUtcExclusive())
+                .addValue("from", range.fromUtc(siteLocale)).addValue("to", range.toUtcExclusive(siteLocale))
                 .addValue("fromDay", Date.valueOf(range.from())).addValue("toDay", Date.valueOf(range.to()));
         var filters = "";
         if (itemType != null) {
@@ -118,7 +121,7 @@ public class ItemSalesFacts {
     public BigDecimal grossAsRung(ReportRange range) {
         return jdbc.queryForObject("SELECT COALESCE(SUM(gross), 0) FROM v_order_line_facts"
                         + " WHERE shift_opened_at_utc >= :from AND shift_opened_at_utc < :to AND unit_bucket <> 'COMPLIMENTARY'",
-                new MapSqlParameterSource().addValue("from", range.fromUtc()).addValue("to", range.toUtcExclusive()),
+                new MapSqlParameterSource().addValue("from", range.fromUtc(siteLocale)).addValue("to", range.toUtcExclusive(siteLocale)),
                 BigDecimal.class);
     }
 

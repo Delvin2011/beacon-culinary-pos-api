@@ -1,7 +1,6 @@
 package com.beaconculinary.api.offline;
 
 import com.beaconculinary.api.admin.AuthorizationTokenRepository;
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.inventory.IngredientRepository;
 import com.beaconculinary.api.inventory.IngredientStockMovement;
 import com.beaconculinary.api.inventory.IngredientStockMovementRepository;
@@ -24,6 +23,7 @@ import com.beaconculinary.api.support.O3Tills;
 import com.beaconculinary.api.support.O3Tills.Cashier;
 import com.beaconculinary.api.support.O3Tills.Till;
 import com.beaconculinary.api.support.PosFlowHelper;
+import com.beaconculinary.api.support.TestLocale;
 import com.beaconculinary.api.users.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -633,7 +633,7 @@ class O4OfflineSyncIntegrationTests {
     }
 
     private static Instant local(LocalDate day, int hour, int minute) {
-        return day.atTime(hour, minute).atZone(ClockConfig.BUSINESS_ZONE).toInstant();
+        return day.atTime(hour, minute).atZone(TestLocale.ZONE).toInstant();
     }
 
     private String receipt(int seq) {

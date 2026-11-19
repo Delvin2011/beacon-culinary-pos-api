@@ -1,0 +1,68 @@
+{
+  "asOf" : "2026-10-05T13:30:00Z",
+  "data" : {
+    "compareDay" : "2026-09-28",
+    "compareLabel" : "vs last Mon, same time",
+    "day" : "2026-10-05",
+    "tiles" : [ {
+      "delta" : null,
+      "key" : "netSales",
+      "label" : "Net sales",
+      "secondary" : "vs last Mon, same time",
+      "tone" : "NEUTRAL",
+      "type" : "MONEY",
+      "value" : 420.0
+    }, {
+      "delta" : null,
+      "key" : "orders",
+      "label" : "Orders",
+      "secondary" : "vs last Mon, same time",
+      "tone" : "NEUTRAL",
+      "type" : "COUNT",
+      "value" : 7
+    }, {
+      "delta" : null,
+      "key" : "averageOrder",
+      "label" : "Average order",
+      "secondary" : "vs last Mon, same time",
+      "tone" : "NEUTRAL",
+      "type" : "MONEY",
+      "value" : 84.0
+    }, {
+      "delta" : null,
+      "key" : "voidsRefunds",
+      "label" : "Voids & refunds",
+      "secondary" : "24.6% of gross sales · 2 orders",
+      "tone" : "WATCH",
+      "type" : "MONEY",
+      "value" : 140.0
+    }, {
+      "delta" : null,
+      "key" : "complimentary",
+      "label" : "Complimentary",
+      "secondary" : "R 45,00 at list price",
+      "tone" : "NEUTRAL",
+      "type" : "COUNT",
+      "value" : "<thandiwe>"
+    }, {
+      "delta" : null,
+      "key" : "discounts",
+      "label" : "Discounts at sale",
+      "secondary" : "1 order",
+      "tone" : "NEUTRAL",
+      "type" : "MONEY",
+      "value" : 10.0
+    } ]
+  },
+  "definitionVersion" : 1,
+  "key" : "today",
+  "range" : "7d",
+  "reportLink" : {
+    "key" : "sales-summary",
+    "params" : {
+      "from" : "2026-10-05",
+      "groupBy" : "DAY",
+      "to" : "2026-10-05"
+    }
+  }
+}

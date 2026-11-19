@@ -1,10 +1,10 @@
 package com.beaconculinary.api.dashboard;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
 import com.beaconculinary.api.support.ReportFixture;
+import com.beaconculinary.api.support.TestLocale;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,7 +99,7 @@ class DashboardIntegrationTests {
     }
 
     private void at(LocalDate day, int hour, int minute) {
-        clock.setInstant(day.atTime(hour, minute).atZone(ClockConfig.BUSINESS_ZONE).toInstant());
+        clock.setInstant(day.atTime(hour, minute).atZone(TestLocale.ZONE).toInstant());
     }
 
     private ResultActions as(String token, String path) throws Exception {

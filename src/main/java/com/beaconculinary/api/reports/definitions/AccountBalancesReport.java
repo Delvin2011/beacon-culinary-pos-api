@@ -1,8 +1,8 @@
 package com.beaconculinary.api.reports.definitions;
 
 import com.beaconculinary.api.accounts.AccountService;
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.reports.AccountFacts;
 import com.beaconculinary.api.reports.AccountFacts.AccountBalance;
 import com.beaconculinary.api.reports.CheckStatus;
@@ -44,6 +44,7 @@ public class AccountBalancesReport implements ReportDefinition {
     private final ReportFacts facts;
     private final AccountService accountService;
     private final Clock clock;
+    private final SiteLocale siteLocale;
 
     @Override
     public String key() {
@@ -163,7 +164,7 @@ public class AccountBalancesReport implements ReportDefinition {
                 failing, failing == 0 ? null : failing + (failing == 1 ? " account doesn't" : " accounts don't") + " add up"));
 
         // The account screen shows today's balance, so this only compares when the period runs to today.
-        var today = LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        var today = siteLocale.businessDate(clock.instant());
         if (!range.to().isBefore(today)) {
             var screen = accounts.stream()
                     .map(account -> accountService.getBalance(account.accountId()).getOutstandingBalance())

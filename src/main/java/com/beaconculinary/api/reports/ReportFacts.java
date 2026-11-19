@@ -1,5 +1,6 @@
 package com.beaconculinary.api.reports;
 
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.tills.Till;
 import lombok.AllArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -25,6 +26,7 @@ import java.util.Map;
 @AllArgsConstructor
 public class ReportFacts {
     private final NamedParameterJdbcTemplate jdbc;
+    private final SiteLocale siteLocale;
 
     /** Gross, discounts at sale, reductions after payment and net by day of sale (or by the
      * order's hour), plus Σ orders.total for the net-agrees-with-orders check. A null bucket
@@ -282,8 +284,8 @@ public class ReportFacts {
         return result;
     }
 
-    private static MapSqlParameterSource rangeParams(ReportRange range) {
-        return new MapSqlParameterSource().addValue("from", range.fromUtc()).addValue("to", range.toUtcExclusive());
+    private MapSqlParameterSource rangeParams(ReportRange range) {
+        return new MapSqlParameterSource().addValue("from", range.fromUtc(siteLocale)).addValue("to", range.toUtcExclusive(siteLocale));
     }
 
     private static SalesFacts salesFacts(ResultSet rs, String bucket) throws SQLException {

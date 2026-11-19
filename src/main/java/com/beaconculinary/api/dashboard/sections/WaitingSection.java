@@ -1,5 +1,6 @@
 package com.beaconculinary.api.dashboard.sections;
 
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.dashboard.DashboardFacts;
 import com.beaconculinary.api.dashboard.DashboardFormat;
 import com.beaconculinary.api.dashboard.DashboardSection;
@@ -30,6 +31,7 @@ public class WaitingSection implements SectionHandler {
     private final DashboardFacts dashboardFacts;
     private final TradingCalendar calendar;
     private final DashboardSettings settings;
+    private final SiteLocale siteLocale;
 
     @Override
     public DashboardSection section() {
@@ -76,7 +78,7 @@ public class WaitingSection implements SectionHandler {
         } else {
             var map = new LinkedHashMap<String, Object>();
             map.put("minutes", longest);
-            map.put("at", DashboardFormat.time(longestAt));
+            map.put("at", DashboardFormat.time(longestAt, siteLocale.zone()));
             data.put("longest", map);
         }
         return new Result(data, null);

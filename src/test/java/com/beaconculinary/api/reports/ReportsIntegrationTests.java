@@ -1,10 +1,10 @@
 package com.beaconculinary.api.reports;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
 import com.beaconculinary.api.support.ReportFixture;
+import com.beaconculinary.api.support.TestLocale;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,7 +54,7 @@ class ReportsIntegrationTests {
     @BeforeEach
     void setUp() throws Exception {
         // Tuesday 13:00 Johannesburg: S3 (opened Tuesday 08:00) is still OPEN, not OVERDUE.
-        clock.setInstant(TUESDAY.atTime(13, 0).atZone(ClockConfig.BUSINESS_ZONE).toInstant());
+        clock.setInstant(TUESDAY.atTime(13, 0).atZone(TestLocale.ZONE).toInstant());
         adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
         ReportFixture.clear(jdbc);
         fixture = ReportFixture.seed(jdbc, AuthTestHelper.cashierAId(mockMvc), AuthTestHelper.cashierBId(mockMvc),
@@ -296,7 +296,7 @@ class ReportsIntegrationTests {
 
     @Test
     void cashUpVariance_shiftOpenFromAnEarlierDay_isOverdue() throws Exception {
-        clock.setInstant(TUESDAY.plusDays(1).atTime(9, 0).atZone(ClockConfig.BUSINESS_ZONE).toInstant());
+        clock.setInstant(TUESDAY.plusDays(1).atTime(9, 0).atZone(TestLocale.ZONE).toInstant());
         run("cash-up-variance", RANGE).andExpect(jsonPath("$.rows[2].status").value("OVERDUE"));
     }
 

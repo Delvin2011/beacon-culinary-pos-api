@@ -1,6 +1,7 @@
 package com.beaconculinary.api.reports;
 
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import lombok.AllArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -24,6 +25,7 @@ import java.util.Map;
 @AllArgsConstructor
 public class EndOfDayFacts {
     private final NamedParameterJdbcTemplate jdbc;
+    private final SiteLocale siteLocale;
 
     /** Sales orders sold in one shift (its takings). */
     public record ShiftTakings(long orders, long voidedOrRefunded, BigDecimal gross, BigDecimal discountsAtSale,
@@ -193,7 +195,7 @@ public class EndOfDayFacts {
         return checkNumber == null ? "" : " AND o.order_number = :checkNumber";
     }
 
-    private static MapSqlParameterSource checkParams(ReportRange range, Integer checkNumber) {
+    private MapSqlParameterSource checkParams(ReportRange range, Integer checkNumber) {
         var params = rangeParams(range);
         if (checkNumber != null) {
             params.addValue("checkNumber", checkNumber);
@@ -207,7 +209,7 @@ public class EndOfDayFacts {
                 rs.getBigDecimal("cash"), rs.getBigDecimal("card"), rs.getBigDecimal("account"), rs.getBigDecimal("collected"));
     }
 
-    private static MapSqlParameterSource rangeParams(ReportRange range) {
-        return new MapSqlParameterSource().addValue("from", range.fromUtc()).addValue("to", range.toUtcExclusive());
+    private MapSqlParameterSource rangeParams(ReportRange range) {
+        return new MapSqlParameterSource().addValue("from", range.fromUtc(siteLocale)).addValue("to", range.toUtcExclusive(siteLocale));
     }
 }

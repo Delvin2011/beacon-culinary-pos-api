@@ -1,10 +1,10 @@
 package com.beaconculinary.api.reports;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
 import com.beaconculinary.api.support.ReportFixture;
+import com.beaconculinary.api.support.TestLocale;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,7 +62,7 @@ class EndOfDayIntegrationTests {
 
     @BeforeEach
     void setUp() throws Exception {
-        clock.setInstant(TUESDAY.atTime(13, 0).atZone(ClockConfig.BUSINESS_ZONE).toInstant());
+        clock.setInstant(TUESDAY.atTime(13, 0).atZone(TestLocale.ZONE).toInstant());
         adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
         ReportFixture.clear(jdbc);
         fixture = ReportFixture.seed(jdbc, AuthTestHelper.cashierAId(mockMvc), AuthTestHelper.cashierBId(mockMvc),
@@ -374,7 +374,7 @@ class EndOfDayIntegrationTests {
                 .andExpect(jsonPath("$.checks[?(@.key == 'x-agrees-with-reports')].status", contains("FAIL")));
 
         // 8. No shift can open on a closed day.
-        clock.setInstant(MONDAY.atTime(16, 0).atZone(ClockConfig.BUSINESS_ZONE).toInstant());
+        clock.setInstant(MONDAY.atTime(16, 0).atZone(TestLocale.ZONE).toInstant());
         as(AuthTestHelper.loginAsCashier(mockMvc), post("/shifts/open").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"openingFloat\":100.00}"))
                 .andExpect(status().isConflict())
@@ -417,7 +417,7 @@ class EndOfDayIntegrationTests {
         closeDay("2026-10-08").andExpect(status().isConflict()).andExpect(jsonPath("$.blockers[0].code").value("DAY_IN_FUTURE"));
         closeDay("2026-09-30").andExpect(status().isConflict())
                 .andExpect(jsonPath("$.blockers[0].code").value("BEFORE_FIRST_TRADING_DAY"));
-        clock.setInstant(TUESDAY.plusDays(5).atTime(9, 0).atZone(ClockConfig.BUSINESS_ZONE).toInstant());
+        clock.setInstant(TUESDAY.plusDays(5).atTime(9, 0).atZone(TestLocale.ZONE).toInstant());
         closeDay("2026-10-09").andExpect(status().isConflict())
                 .andExpect(jsonPath("$.blockers[*].code", hasItem("NO_SHIFTS_FOR_DAY")));
     }

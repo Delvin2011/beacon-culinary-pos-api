@@ -1,6 +1,5 @@
 package com.beaconculinary.api.offline;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
@@ -8,6 +7,7 @@ import com.beaconculinary.api.support.O3Tills;
 import com.beaconculinary.api.support.O3Tills.Cashier;
 import com.beaconculinary.api.support.O3Tills.Till;
 import com.beaconculinary.api.support.ReportFixture;
+import com.beaconculinary.api.support.TestLocale;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -64,7 +64,7 @@ class O3OfflineBlockingIntegrationTests {
 
     @BeforeEach
     void setUp() throws Exception {
-        clock.setInstant(TUESDAY.atTime(13, 0).atZone(ClockConfig.BUSINESS_ZONE).toInstant());
+        clock.setInstant(TUESDAY.atTime(13, 0).atZone(TestLocale.ZONE).toInstant());
         adminPwd = AuthTestHelper.loginAsAdmin(mockMvc);
         ReportFixture.clear(jdbc);
         fixture = ReportFixture.seed(jdbc, AuthTestHelper.cashierAId(mockMvc), AuthTestHelper.cashierBId(mockMvc),

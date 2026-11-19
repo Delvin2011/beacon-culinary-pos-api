@@ -1,0 +1,311 @@
+{
+  "checks" : [ {
+    "actual" : 0,
+    "difference" : 0,
+    "expected" : 0,
+    "key" : "expected-arithmetic",
+    "label" : "Opening float + cash sales − cash refunds equals expected cash, for every shift",
+    "status" : "PASS",
+    "unit" : "COUNT"
+  }, {
+    "actual" : 0,
+    "difference" : 0,
+    "expected" : 0,
+    "key" : "variance-arithmetic",
+    "label" : "Counted cash − expected cash equals variance, for closed shifts",
+    "status" : "PASS",
+    "unit" : "COUNT"
+  }, {
+    "actual" : 250.0,
+    "difference" : 0.0,
+    "expected" : 250.0,
+    "key" : "matches-tender",
+    "label" : "Cash-ups (expected cash − opening float) equal Tender Summary's net cash movement",
+    "status" : "PASS",
+    "unit" : "MONEY"
+  }, {
+    "actual" : 1,
+    "detail" : "1 shift is still open, so expected cash is live.",
+    "difference" : 1,
+    "expected" : 0,
+    "key" : "open-shifts",
+    "label" : "No shift in the range is still open",
+    "status" : "WARN",
+    "unit" : "COUNT"
+  } ],
+  "columns" : [ {
+    "key" : "tradingDay",
+    "label" : "Trading day",
+    "total" : "LABEL",
+    "type" : "DATE"
+  }, {
+    "key" : "shiftId",
+    "label" : "Shift #",
+    "total" : "NONE",
+    "type" : "INT"
+  }, {
+    "key" : "owner",
+    "label" : "Owner",
+    "total" : "LABEL",
+    "type" : "TEXT"
+  }, {
+    "key" : "till",
+    "label" : "Till",
+    "total" : "NONE",
+    "type" : "TEXT"
+  }, {
+    "key" : "openedAt",
+    "label" : "Opened",
+    "total" : "NONE",
+    "type" : "DATETIME"
+  }, {
+    "key" : "closedAt",
+    "label" : "Closed",
+    "total" : "NONE",
+    "type" : "DATETIME"
+  }, {
+    "key" : "openingFloat",
+    "label" : "Opening float",
+    "total" : "SUM",
+    "type" : "MONEY"
+  }, {
+    "key" : "cashSales",
+    "label" : "Cash sales",
+    "total" : "SUM",
+    "type" : "MONEY"
+  }, {
+    "key" : "cashRefunds",
+    "label" : "Cash refunds processed",
+    "total" : "SUM",
+    "type" : "MONEY"
+  }, {
+    "key" : "expectedCash",
+    "label" : "Expected cash",
+    "total" : "SUM",
+    "type" : "MONEY"
+  }, {
+    "key" : "countedCash",
+    "label" : "Counted cash",
+    "total" : "SUM",
+    "type" : "MONEY"
+  }, {
+    "key" : "variance",
+    "label" : "Variance",
+    "total" : "SUM",
+    "type" : "VARIANCE"
+  }, {
+    "key" : "reason",
+    "label" : "Reason",
+    "total" : "LABEL",
+    "type" : "TEXT"
+  }, {
+    "key" : "authorisedBy",
+    "label" : "Authorised by",
+    "total" : "NONE",
+    "type" : "TEXT"
+  }, {
+    "key" : "closedBy",
+    "label" : "Closed by",
+    "total" : "NONE",
+    "type" : "TEXT"
+  }, {
+    "key" : "complimentaryMeals",
+    "label" : "Complimentary meals",
+    "total" : "SUM",
+    "type" : "INT"
+  }, {
+    "key" : "complimentaryValue",
+    "label" : "Complimentary value",
+    "total" : "SUM",
+    "type" : "MONEY"
+  }, {
+    "key" : "signedOffBy",
+    "label" : "Signed off by",
+    "total" : "NONE",
+    "type" : "TEXT"
+  }, {
+    "key" : "signedOffAt",
+    "label" : "Signed off at",
+    "total" : "NONE",
+    "type" : "DATETIME"
+  }, {
+    "key" : "status",
+    "label" : "Status",
+    "statusTones" : {
+      "CLOSED" : "neutral",
+      "OPEN" : "positive",
+      "OVERDUE" : "negative"
+    },
+    "total" : "NONE",
+    "type" : "STATUS"
+  } ],
+  "meta" : {
+    "amountsInclVat" : true,
+    "category" : "DAILY_STATEMENTS",
+    "currency" : "ZAR",
+    "definitionVersion" : 5,
+    "exportFormats" : [ "csv", "xlsx" ],
+    "generatedAt" : "2026-10-06T11:00:00Z",
+    "key" : "cash-up-variance",
+    "notes" : [ "One row per shift, on the trading day the shift opened.", "Expected cash is the opening float plus cash sales, minus cash refunds processed.", "Cash refunds processed is cash handed back by voids and refunds during the shift. Discounts given at sale are not included, because no cash was involved.", "A closed shift shows the figures stored when it was closed. An open shift's expected cash is live and changes as it trades. Overdue means a shift is still open from an earlier day.", "Variance is counted cash minus expected cash: negative means the drawer was short, positive means over.", "Counted cash and variance totals cover closed shifts only.", "A shift force-closed without a cash count shows \"Not counted\": its counted cash and variance are blank and left out of the totals.", "Complimentary meals are counted in the shift they were rung in.", "Complimentary meals are given away with manager approval and no payment. They are shown separately and are not part of sales or net sales. Value is at list price.", "Amounts include VAT." ],
+    "params" : {
+      "from" : "2026-09-26",
+      "ownerId" : null,
+      "signoff" : "ALL",
+      "status" : null,
+      "to" : "2026-10-06",
+      "varianceOnly" : false
+    },
+    "timezone" : "Africa/Johannesburg",
+    "title" : "Cash-up & Variance"
+  },
+  "page" : null,
+  "rows" : [ {
+    "_actions" : [ {
+      "key" : "OPEN_READING",
+      "label" : "Cashier reading",
+      "onSuccess" : "OPEN_REPORT",
+      "params" : {
+        "shiftId" : "<sPreRange>"
+      },
+      "report" : "cashier-reading"
+    } ],
+    "authorisedBy" : null,
+    "cashRefunds" : 0.0,
+    "cashSales" : 0.0,
+    "closedAt" : "2026-09-26T12:00:00Z",
+    "closedBy" : "Canteen Cashier",
+    "complimentaryMeals" : 0,
+    "complimentaryValue" : 0.0,
+    "countedCash" : 100.0,
+    "expectedCash" : 100.0,
+    "openedAt" : "2026-09-26T06:00:00Z",
+    "openingFloat" : 100.0,
+    "owner" : "Canteen Cashier",
+    "reason" : null,
+    "shiftId" : "<sPreRange>",
+    "signedOffAt" : null,
+    "signedOffBy" : null,
+    "status" : "CLOSED",
+    "till" : "Unregistered till",
+    "tradingDay" : "2026-09-26",
+    "variance" : 0.0
+  }, {
+    "_actions" : [ {
+      "confirm" : "Sign off shift #<s1> (Canteen Cashier)?",
+      "key" : "SIGN_OFF",
+      "label" : "Sign off",
+      "method" : "POST",
+      "onSuccess" : "RELOAD",
+      "path" : "/admin/shifts/<s1>/signoff"
+    }, {
+      "key" : "OPEN_READING",
+      "label" : "Cashier reading",
+      "onSuccess" : "OPEN_REPORT",
+      "params" : {
+        "shiftId" : "<s1>"
+      },
+      "report" : "cashier-reading"
+    } ],
+    "authorisedBy" : null,
+    "cashRefunds" : 50.0,
+    "cashSales" : 290.0,
+    "closedAt" : "2026-10-05T09:00:00Z",
+    "closedBy" : "Canteen Cashier",
+    "complimentaryMeals" : 0,
+    "complimentaryValue" : 0.0,
+    "countedCash" : 440.0,
+    "expectedCash" : 440.0,
+    "openedAt" : "2026-10-05T05:00:00Z",
+    "openingFloat" : 200.0,
+    "owner" : "Canteen Cashier",
+    "reason" : null,
+    "shiftId" : "<s1>",
+    "signedOffAt" : null,
+    "signedOffBy" : null,
+    "status" : "CLOSED",
+    "till" : "Unregistered till",
+    "tradingDay" : "2026-10-05",
+    "variance" : 0.0
+  }, {
+    "_actions" : [ {
+      "confirm" : "Sign off shift #<s2> (Canteen Cashier B)?",
+      "key" : "SIGN_OFF",
+      "label" : "Sign off",
+      "method" : "POST",
+      "onSuccess" : "RELOAD",
+      "path" : "/admin/shifts/<s2>/signoff"
+    }, {
+      "key" : "OPEN_READING",
+      "label" : "Cashier reading",
+      "onSuccess" : "OPEN_REPORT",
+      "params" : {
+        "shiftId" : "<s2>"
+      },
+      "report" : "cashier-reading"
+    } ],
+    "authorisedBy" : "Canteen Admin",
+    "cashRefunds" : 90.0,
+    "cashSales" : 60.0,
+    "closedAt" : "2026-10-05T13:00:00Z",
+    "closedBy" : "Canteen Cashier B",
+    "complimentaryMeals" : 1,
+    "complimentaryValue" : 45.0,
+    "countedCash" : 260.0,
+    "expectedCash" : 270.0,
+    "openedAt" : "2026-10-05T09:05:00Z",
+    "openingFloat" : 300.0,
+    "owner" : "Canteen Cashier B",
+    "reason" : "Cash counting error",
+    "shiftId" : "<s2>",
+    "signedOffAt" : null,
+    "signedOffBy" : null,
+    "status" : "CLOSED",
+    "till" : "Unregistered till",
+    "tradingDay" : "2026-10-05",
+    "variance" : -10.0
+  }, {
+    "_actions" : [ {
+      "key" : "OPEN_READING",
+      "label" : "Cashier reading",
+      "onSuccess" : "OPEN_REPORT",
+      "params" : {
+        "shiftId" : "<s3>"
+      },
+      "report" : "cashier-reading"
+    } ],
+    "authorisedBy" : null,
+    "cashRefunds" : 0.0,
+    "cashSales" : 40.0,
+    "closedAt" : null,
+    "closedBy" : null,
+    "complimentaryMeals" : 0,
+    "complimentaryValue" : 0.0,
+    "countedCash" : null,
+    "expectedCash" : 140.0,
+    "openedAt" : "2026-10-06T06:00:00Z",
+    "openingFloat" : 100.0,
+    "owner" : "Canteen Admin",
+    "reason" : null,
+    "shiftId" : "<s3>",
+    "signedOffAt" : null,
+    "signedOffBy" : null,
+    "status" : "OPEN",
+    "till" : "Unregistered till",
+    "tradingDay" : "2026-10-06",
+    "variance" : null
+  } ],
+  "totals" : {
+    "cashRefunds" : 140.0,
+    "cashSales" : 390.0,
+    "complimentaryMeals" : 1,
+    "complimentaryValue" : 45.0,
+    "countedCash" : 800.0,
+    "expectedCash" : 950.0,
+    "openingFloat" : 700.0,
+    "owner" : "4 shifts",
+    "reason" : "1 with a variance",
+    "tradingDay" : "Total",
+    "variance" : -10.0
+  }
+}

@@ -1,7 +1,7 @@
 package com.beaconculinary.api.dashboard;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.reports.ReportRange;
 import lombok.AllArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -20,7 +20,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Trading days (R1): the Johannesburg dates on which at least one shift opened, from
+ * Trading days (R1): the business-zone dates on which at least one shift opened, from
  * v_shift_facts. Everything is "as of now" on the injected clock, so a shift that opens later
  * (or a test fixture's later day) never counts yet.
  */
@@ -29,18 +29,19 @@ import java.util.TreeSet;
 public class TradingCalendar {
     private final NamedParameterJdbcTemplate jdbc;
     private final Clock clock;
+    private final SiteLocale siteLocale;
 
     public Instant now() {
         return clock.instant();
     }
 
     public LocalDate today() {
-        return LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        return siteLocale.businessDate(clock.instant());
     }
 
-    /** The Johannesburg date-time now. */
+    /** The business-zone date-time now. */
     public LocalDateTime localNow() {
-        return LocalDateTime.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        return siteLocale.localDateTime(clock.instant());
     }
 
     /** The n most recent trading days up to and including a day, oldest first. */
@@ -94,10 +95,10 @@ public class TradingCalendar {
         return lastTradingDays(today, 7);
     }
 
-    /** The UTC instant at which a Johannesburg date and the current time of day fall: "the same
+    /** The UTC instant at which a business-zone date and the current time of day fall: "the same
      * time" on an earlier day. */
     public Timestamp sameTimeOn(LocalDate day) {
-        var at = day.atTime(localNow().toLocalTime()).atZone(ClockConfig.BUSINESS_ZONE).toInstant();
+        var at = day.atTime(localNow().toLocalTime()).atZone(siteLocale.zone()).toInstant();
         return Timestamp.valueOf(UtcTimestamps.toUtc(at));
     }
 
@@ -105,7 +106,7 @@ public class TradingCalendar {
         return Timestamp.valueOf(UtcTimestamps.nowUtc(clock));
     }
 
-    public static Timestamp startUtc(LocalDate day) {
-        return Timestamp.valueOf(UtcTimestamps.toUtc(day.atStartOfDay(ClockConfig.BUSINESS_ZONE).toInstant()));
+    public Timestamp startUtc(LocalDate day) {
+        return ReportRange.startOfDayUtc(day, siteLocale);
     }
 }

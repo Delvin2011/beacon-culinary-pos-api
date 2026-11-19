@@ -1,7 +1,7 @@
 package com.beaconculinary.api.dashboard;
 
 import com.beaconculinary.api.auth.AuthService;
-import com.beaconculinary.api.common.ClockConfig;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -29,10 +29,12 @@ public class DashboardService {
     private final DashboardCache cache;
     private final AuthService authService;
     private final Clock clock;
+    private final SiteLocale siteLocale;
     private final TransactionTemplate readOnly;
 
     public DashboardService(List<SectionHandler> handlers, DashboardSettings settings, DashboardCache cache,
-                            AuthService authService, Clock clock, PlatformTransactionManager transactionManager) {
+                            AuthService authService, Clock clock, SiteLocale siteLocale,
+                            PlatformTransactionManager transactionManager) {
         handlers.forEach(handler -> {
             if (this.handlers.put(handler.section(), handler) != null) {
                 throw new IllegalStateException("Two handlers for dashboard section " + handler.section().key());
@@ -47,6 +49,7 @@ public class DashboardService {
         this.cache = cache;
         this.authService = authService;
         this.clock = clock;
+        this.siteLocale = siteLocale;
         this.readOnly = new TransactionTemplate(transactionManager);
         this.readOnly.setReadOnly(true);
     }
@@ -72,7 +75,7 @@ public class DashboardService {
                 .filter(section -> caller.has(section.permission()))
                 .map(section -> new LayoutSection(section.key(), section.title(), section.usesRange(), section.refreshSeconds()))
                 .toList();
-        return new Layout(clock.instant(), ClockConfig.BUSINESS_ZONE.getId(), sections);
+        return new Layout(clock.instant(), siteLocale.zone().getId(), sections);
     }
 
     /** 404 unknown (or switched off), 403 not permitted, 400 bad range or parameter, 500 when

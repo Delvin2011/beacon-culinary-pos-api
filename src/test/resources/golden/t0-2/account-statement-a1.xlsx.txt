@@ -1,0 +1,62 @@
+# Report
+A1	STRING	Account Statement
+A2	STRING	Parameters: accountId=Acme Logistics, from=2026-09-26, to=2026-10-06
+A3	STRING	Generated: 2026-10-06 13:00 (Africa/Johannesburg)
+A4	STRING	Amounts include VAT
+A6	STRING	Date/time
+B6	STRING	Type
+C6	STRING	Reference
+D6	STRING	Description
+E6	STRING	Charge
+F6	STRING	Credit
+G6	STRING	Payment
+H6	STRING	Balance
+I6	STRING	Authorised by
+A7	NUMERIC	2026-09-26T00:00 [yyyy-mm-dd hh:mm]
+B7	STRING	OPENING
+D7	STRING	Opening balance
+H7	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A8	NUMERIC	2026-09-26T09:15 [yyyy-mm-dd hh:mm]
+B8	STRING	CHARGE
+C8	STRING	Order #<thandiwe>
+D8	STRING	Order paid on account
+E8	NUMERIC	200.0 ["R" #,##0.00;-"R" #,##0.00]
+H8	NUMERIC	200.0 ["R" #,##0.00;-"R" #,##0.00]
+A9	NUMERIC	2026-09-27T10:00 [yyyy-mm-dd hh:mm]
+B9	STRING	PAYMENT
+C9	STRING	Payment #<pay1>
+D9	STRING	Cash
+G9	NUMERIC	50.0 ["R" #,##0.00;-"R" #,##0.00]
+H9	NUMERIC	150.0 ["R" #,##0.00;-"R" #,##0.00]
+I9	STRING	Canteen Admin
+A10	NUMERIC	2026-10-05T11:30 [yyyy-mm-dd hh:mm]
+B10	STRING	CHARGE
+C10	STRING	Order #6
+D10	STRING	Order paid on account
+E10	NUMERIC	120.0 ["R" #,##0.00;-"R" #,##0.00]
+H10	NUMERIC	270.0 ["R" #,##0.00;-"R" #,##0.00]
+I10	STRING	Canteen Admin
+A11	NUMERIC	2026-10-06T14:00 [yyyy-mm-dd hh:mm]
+B11	STRING	PAYMENT
+C11	STRING	Payment #<pay2>
+D11	STRING	EFT
+G11	NUMERIC	100.0 ["R" #,##0.00;-"R" #,##0.00]
+H11	NUMERIC	170.0 ["R" #,##0.00;-"R" #,##0.00]
+I11	STRING	Canteen Admin
+A12	STRING	Closing balance
+E12	NUMERIC	320.0 ["R" #,##0.00;-"R" #,##0.00]
+F12	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+G12	NUMERIC	150.0 ["R" #,##0.00;-"R" #,##0.00]
+H12	NUMERIC	170.0 ["R" #,##0.00;-"R" #,##0.00]
+# Checks
+A1	STRING	Check
+B1	STRING	Status
+C1	STRING	Expected
+D1	STRING	Actual
+E1	STRING	Difference
+F1	STRING	Detail
+A2	STRING	Closing balance equals Account Balances' closing balance for this account
+B2	STRING	PASS
+C2	NUMERIC	170.0 ["R" #,##0.00;-"R" #,##0.00]
+D2	NUMERIC	170.0 ["R" #,##0.00;-"R" #,##0.00]
+E2	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
