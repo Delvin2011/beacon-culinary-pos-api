@@ -33,7 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Staff management (/admin/staff): role-driven credentials, validation, role changes,
- * deactivation, resets, access, and the lock-down of the old /users endpoints. */
+ * deactivation, resets and access. The old /users endpoints were removed in T0-3 (see
+ * users/LegacyCleanupIntegrationTests). */
 @SpringBootTest
 @AutoConfigureMockMvc
 class StaffManagementIntegrationTests {
@@ -165,8 +166,10 @@ class StaffManagementIntegrationTests {
                 .andExpect(jsonPath("$.password").value("Password must be between 6 and 25 characters."));
         create(Map.of("name", "X", "role", "STOCK_CLERK", "email", "not-an-email", "password", "secret12"))
                 .andExpect(jsonPath("$.email").value("Email must be a valid email address."));
+        // USER is no longer a role at all (T0-3), so the body doesn't parse: the generic 400.
         create(Map.of("name", "X", "role", "USER", "email", "x@canteen.local", "password", "secret12"))
-                .andExpect(jsonPath("$.role").exists());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Invalid request body"));
         create(Map.of("role", "CASHIER", "pin", "123456"))
                 .andExpect(jsonPath("$.name").value("Name is required."));
     }
@@ -283,20 +286,23 @@ class StaffManagementIntegrationTests {
     }
 
     @Test
-    void oldUsersEndpointsAreLockedDown() throws Exception {
+    void oldUsersEndpointsAreGone() throws Exception {
         var cashier = AuthTestHelper.loginAsCashier(mockMvc);
         var someoneElse = AuthTestHelper.adminId(mockMvc);
 
-        mockMvc.perform(get("/users").header("Authorization", "Bearer " + cashier)).andExpect(status().isForbidden());
-        mockMvc.perform(get("/users/" + someoneElse).header("Authorization", "Bearer " + cashier)).andExpect(status().isForbidden());
-        mockMvc.perform(put("/users/" + someoneElse).header("Authorization", "Bearer " + cashier)
+        // Removed in T0-3: a signed-in caller finds nothing there.
+        mockMvc.perform(get("/users").header("Authorization", "Bearer " + cashier)).andExpect(status().isNotFound());
+        mockMvc.perform(get("/users/" + someoneElse).header("Authorization", "Bearer " + cashier)).andExpect(status().isNotFound());
+        assertThat(mockMvc.perform(put("/users/" + someoneElse).header("Authorization", "Bearer " + cashier)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Hacked\"}"))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(delete("/users/" + someoneElse).header("Authorization", "Bearer " + cashier)).andExpect(status().isForbidden());
-        // The old public sign-up is gone.
+                .andReturn().getResponse().getStatus()).isIn(404, 405);
+        assertThat(mockMvc.perform(delete("/users/" + someoneElse).header("Authorization", "Bearer " + cashier))
+                .andReturn().getResponse().getStatus()).isIn(404, 405);
+        // The old public sign-up: anonymous callers are stopped by the global sign-in rule.
         assertThat(mockMvc.perform(post("/users").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"X\",\"email\":\"signup@canteen.local\",\"password\":\"secret12\"}"))
-                .andReturn().getResponse().getStatus()).isIn(401, 403);
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
+        assertThat(userRepository.findById(someoneElse)).get().extracting(u -> u.getName()).isNotEqualTo("Hacked");
     }
 
     @Test

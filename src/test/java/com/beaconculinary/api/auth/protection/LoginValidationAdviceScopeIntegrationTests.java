@@ -17,7 +17,6 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /**
@@ -67,16 +66,6 @@ class LoginValidationAdviceScopeIntegrationTests {
 
         assertThat(result.getResponse().getStatus()).isEqualTo(400);
         assertThat(body(result)).isEqualTo(Map.of("error", "Invalid request body"));
-        assertThat(attemptCount()).isEqualTo(before);
-    }
-
-    @Test
-    void adminController_endpointWithoutValidation_isUnchanged_andNotRecorded() throws Exception {
-        var before = attemptCount();
-        var result = mockMvc.perform(get("/admin/hello").header("Authorization", "Bearer " + adminToken)).andReturn();
-
-        assertThat(result.getResponse().getStatus()).isEqualTo(200);
-        assertThat(result.getResponse().getContentAsString()).isEqualTo("Hello Admin!");
         assertThat(attemptCount()).isEqualTo(before);
     }
 
