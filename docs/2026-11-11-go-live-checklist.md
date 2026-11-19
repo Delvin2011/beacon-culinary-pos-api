@@ -12,14 +12,14 @@ Paths are relative to the repository root. Java paths are under `src/main/java/c
 | 2 | Datasource credentials in config files and git history | Blocker | Config fixed in WS1-1 0-A/0-B; history and rotation open | TBD |
 | 3 | Flyway `clean` enabled in the Maven plugin | Blocker | Fixed in WS1-1 0-A | TBD |
 | 4 | Swagger UI and API docs public | High | Fixed for the prod profile in WS1-1 0-C | TBD |
-| 5 | `Role.USER` can log in by password | High | Open | TBD |
-| 6 | `DELETE /users/{id}` hard-deletes staff | High | Open | TBD |
-| 7 | Template leftovers reachable after login | Low | Open | TBD |
+| 5 | `Role.USER` can log in by password | High | Closed in T0-3 (V112; `USER` role removed) | TBD |
+| 6 | `DELETE /users/{id}` hard-deletes staff | High | Closed in T0-3 (endpoint removed) | TBD |
+| 7 | Template leftovers reachable after login | Low | Closed in T0-3 | TBD |
 | 8 | Public login-tile endpoints list every PIN user | Medium | Open (WS1-1 Phase 2 context) | TBD |
 | 9 | Access tokens ignore deactivation for up to 15 minutes | Medium | Open | TBD |
 | 10 | Production profile not confirmed for Azure | Medium | Open | TBD |
 | 11 | Frontend and API on separate default Azure hostnames (cookies are cross-site) | Blocker | Open (WS1-1b decision K1) | TBD |
-| 12 | No foreign keys on the device audit columns | Low | Waits on item 6 | TBD |
+| 12 | No foreign keys on the device audit columns | Low | Open; unblocked by T0-3 (item 6 closed) | TBD |
 | 13 | Two error response shapes (`ErrorDto`, `LoginProtectionErrorDto`) | Low | Tidy-up, not in WS1-1b | TBD |
 | 14 | Refresh tokens can't be revoked (logout only clears the cookie) | Medium | Open | TBD |
 
@@ -119,6 +119,8 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 
 **Proposed fix.** Refuse login for `USER`, remove `POST /users`, and migrate or deactivate any `USER` rows. Separate ticket.
 
+**Status: closed in T0-3** (`docs/2026-11-19-t0-3-legacy-cleanup-change-report.md`). `V112__t0_3_legacy_cleanup.sql` turns every `USER` row into an inactive `CASHIER` with password and PIN cleared, never deleting it; each one is recorded in `legacy_role_conversions` and its id printed to the Flyway log. `USER` is gone from the role CHECK, the `'USER'` column default and `Role`, and `POST /users` is removed. A converted user keeps their email, and emails are unique across active and inactive users, so that email can't be given to new staff until an admin changes or clears it.
+
 ## 6. `DELETE /users/{id}` hard delete
 
 **What.** `users/UserController.java:63-66` → `users/UserService.java:68-71` deletes the user row. Admin only (`users/UserSecurityRules.java:20`).
@@ -126,6 +128,8 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 **Why it matters.** Staff management promises "deactivate, never delete" (`staff/StaffService.java:26-27`). A hard delete fails on foreign keys for any user with orders or shifts, or removes history for one without. It also bypasses the last-admin check.
 
 **Proposed fix.** Remove the endpoint (staff are managed through `/admin/staff`) or make it deactivate. Separate ticket.
+
+**Status: closed in T0-3.** `DELETE /users/{id}` is removed, together with `GET /users`, `GET /users/{id}`, `POST /users` and `PUT /users/{id}`. Staff are listed, created, edited and deactivated only through `/admin/staff`. `GET /users/cashiers`, `GET /users/login-tiles` and `POST /users/{id}/change-password` stay.
 
 ## 7. Template leftovers reachable after login
 
@@ -135,6 +139,8 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 | `GET /admin/hello` | `admin/AdminController.java:16-19` | ADMIN | Remove |
 | `Address` entity and repository | `users/Address.java`, `users/AddressRepository.java`, `users/User.java:43-55` | no endpoint | Remove with a migration that drops the table |
 | `PUT /users/{id}`, `GET /users` | `users/UserController.java:20-61` | ADMIN | Fold into `/admin/staff` |
+
+**Status: closed in T0-3.** All four rows are removed: `HomeController`, `templates/index.html` and both Thymeleaf dependencies; `GET /admin/hello`; `Address` and `Profile` with their repositories and the mapping in `User`, after V112 drops the `addresses` and `profiles` tables (it refuses to run if either holds rows); and the legacy `/users` endpoints (item 6). A signed-in caller of a removed route gets 404 (405 for some methods); an anonymous one gets 401.
 
 ## 8. Public login-tile endpoints
 
@@ -173,6 +179,8 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 **What.** `devices.registered_by`, `devices.revoked_by`, `device_credentials.created_by` and `device_credentials.revoked_by` (WS1-1b) have no foreign key to `users`. Name snapshots are stored instead, because `DELETE /users/{id}` hard-deletes users (item 6).
 
 **Proposed fix.** Add the foreign keys once item 6 turns the delete into a deactivation.
+
+**Status:** still open, but unblocked: T0-3 removed the hard delete (item 6). Adding the foreign keys is a separate task.
 
 ## 13. One error response shape
 
