@@ -56,7 +56,8 @@ final class Golden {
 
     /** A JSON response, ids replaced, keys sorted, pretty-printed. */
     void json(String file, String body) throws IOException {
-        compare(file, MAPPER.writeValueAsString(normalise(MAPPER.readTree(body), null)) + "\n");
+        // Jackson's pretty printer uses the platform line separator; the golden files use \n.
+        compare(file, MAPPER.writeValueAsString(normalise(MAPPER.readTree(body), null)).replace("\r\n", "\n") + "\n");
     }
 
     /** A CSV export, byte for byte apart from ids in id columns (none of the chosen exports have any). */
