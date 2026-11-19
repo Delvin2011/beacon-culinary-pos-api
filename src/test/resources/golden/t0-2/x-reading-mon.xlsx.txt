@@ -1,0 +1,212 @@
+# Report
+A1	STRING	X Reading
+A2	STRING	Beacon Culinary
+A3	STRING	Parameters: tradingDay=2026-10-05
+A4	STRING	Generated: 2026-10-06 13:00 (Africa/Johannesburg)
+A5	STRING	Amounts include VAT
+A7	STRING	Business
+B7	STRING	Beacon Culinary
+A8	STRING	Report
+B8	STRING	X Reading
+A9	STRING	Trading day
+B9	NUMERIC	2026-10-05T00:00 [yyyy-mm-dd]
+A10	STRING	Generated at
+B10	NUMERIC	2026-10-06T13:00 [yyyy-mm-dd hh:mm]
+A11	STRING	Day status
+B11	STRING	Open
+A12	STRING	Z numbering starts
+B12	NUMERIC	2026-10-05T00:00 [yyyy-mm-dd]
+A14	STRING	Sales
+A15	STRING	Orders (sales)
+B15	NUMERIC	7.0 [0]
+A16	STRING	Voided/refunded orders
+B16	NUMERIC	<admin> [0]
+A17	STRING	Net orders
+B17	NUMERIC	5.0 [0]
+A18	STRING	Gross sales
+B18	NUMERIC	570.0 ["R" #,##0.00;-"R" #,##0.00]
+A19	STRING	Discounts at sale
+B19	NUMERIC	10.0 ["R" #,##0.00;-"R" #,##0.00]
+A20	STRING	Voids
+B20	NUMERIC	50.0 ["R" #,##0.00;-"R" #,##0.00]
+A21	STRING	Refunds
+B21	NUMERIC	90.0 ["R" #,##0.00;-"R" #,##0.00]
+A22	STRING	Extras removed
+B22	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A23	STRING	Net sales
+B23	NUMERIC	420.0 ["R" #,##0.00;-"R" #,##0.00]
+A24	STRING	Average order value
+B24	NUMERIC	84.0 ["R" #,##0.00;-"R" #,##0.00]
+A26	STRING	Complimentary meals (not part of sales)
+A27	STRING	Complimentary meals
+B27	NUMERIC	<thandiwe> [0]
+A28	STRING	Value at list price
+B28	NUMERIC	45.0 ["R" #,##0.00;-"R" #,##0.00]
+A30	STRING	Complimentary meals by reason
+A31	STRING	Reason
+B31	STRING	Meals
+C31	STRING	Value
+A32	STRING	Staff meal
+B32	NUMERIC	<thandiwe> [0]
+C32	NUMERIC	45.0 ["R" #,##0.00;-"R" #,##0.00]
+A33	STRING	Total
+B33	NUMERIC	<thandiwe> [0]
+C33	NUMERIC	45.0 ["R" #,##0.00;-"R" #,##0.00]
+A35	STRING	Tender collected
+A36	STRING	Cash
+B36	NUMERIC	350.0 ["R" #,##0.00;-"R" #,##0.00]
+A37	STRING	Card
+B37	NUMERIC	90.0 ["R" #,##0.00;-"R" #,##0.00]
+A38	STRING	Account
+B38	NUMERIC	120.0 ["R" #,##0.00;-"R" #,##0.00]
+A39	STRING	Total collected
+B39	NUMERIC	560.0 ["R" #,##0.00;-"R" #,##0.00]
+A41	STRING	Paid out
+A42	STRING	Cash paid out
+B42	NUMERIC	140.0 ["R" #,##0.00;-"R" #,##0.00]
+A43	STRING	Account credits
+B43	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A45	STRING	Cash
+A46	STRING	Opening floats
+B46	NUMERIC	500.0 ["R" #,##0.00;-"R" #,##0.00]
+A47	STRING	Net cash movement
+B47	NUMERIC	210.0 ["R" #,##0.00;-"R" #,##0.00]
+A48	STRING	Expected cash
+B48	NUMERIC	710.0 ["R" #,##0.00;-"R" #,##0.00]
+A49	STRING	Counted cash (closed shifts)
+B49	NUMERIC	700.0 ["R" #,##0.00;-"R" #,##0.00]
+A50	STRING	Variance
+B50	NUMERIC	-10.0 ["R" #,##0.00;-"R" #,##0.00]
+A52	STRING	Offline sales
+A53	STRING	Offline sales
+B53	NUMERIC	0.0 [0]
+A54	STRING	Offline sales total
+B54	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A55	STRING	Late offline cash after close
+B55	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A56	STRING	Late offline cash sales
+B56	NUMERIC	0.0 [0]
+A57	STRING	Open exceptions to review
+B57	NUMERIC	0.0 [0]
+A59	STRING	Shifts
+A60	STRING	Shift
+B60	STRING	Cashier
+C60	STRING	Till
+D60	STRING	Opened
+E60	STRING	Closed
+F60	STRING	Float
+G60	STRING	Cash sales
+H60	STRING	Cash refunds
+I60	STRING	Expected
+J60	STRING	Counted
+K60	STRING	Variance
+L60	STRING	Signed off
+M60	STRING	Signed off at
+A61	NUMERIC	<s1> [0]
+B61	STRING	Canteen Cashier
+C61	STRING	Unregistered till
+D61	NUMERIC	2026-10-05T07:00 [yyyy-mm-dd hh:mm]
+E61	NUMERIC	2026-10-05T11:00 [yyyy-mm-dd hh:mm]
+F61	NUMERIC	200.0 ["R" #,##0.00;-"R" #,##0.00]
+G61	NUMERIC	290.0 ["R" #,##0.00;-"R" #,##0.00]
+H61	NUMERIC	50.0 ["R" #,##0.00;-"R" #,##0.00]
+I61	NUMERIC	440.0 ["R" #,##0.00;-"R" #,##0.00]
+J61	NUMERIC	440.0 ["R" #,##0.00;-"R" #,##0.00]
+K61	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+L61	STRING	Not signed off
+A62	NUMERIC	<s2> [0]
+B62	STRING	Canteen Cashier B
+C62	STRING	Unregistered till
+D62	NUMERIC	2026-10-05T11:05 [yyyy-mm-dd hh:mm]
+E62	NUMERIC	2026-10-05T15:00 [yyyy-mm-dd hh:mm]
+F62	NUMERIC	300.0 ["R" #,##0.00;-"R" #,##0.00]
+G62	NUMERIC	60.0 ["R" #,##0.00;-"R" #,##0.00]
+H62	NUMERIC	90.0 ["R" #,##0.00;-"R" #,##0.00]
+I62	NUMERIC	270.0 ["R" #,##0.00;-"R" #,##0.00]
+J62	NUMERIC	260.0 ["R" #,##0.00;-"R" #,##0.00]
+K62	NUMERIC	-10.0 ["R" #,##0.00;-"R" #,##0.00]
+L62	STRING	Not signed off
+A63	STRING	Total
+F63	NUMERIC	500.0 ["R" #,##0.00;-"R" #,##0.00]
+G63	NUMERIC	350.0 ["R" #,##0.00;-"R" #,##0.00]
+H63	NUMERIC	140.0 ["R" #,##0.00;-"R" #,##0.00]
+I63	NUMERIC	710.0 ["R" #,##0.00;-"R" #,##0.00]
+J63	NUMERIC	960.0 ["R" #,##0.00;-"R" #,##0.00]
+K63	NUMERIC	-20.0 ["R" #,##0.00;-"R" #,##0.00]
+A65	STRING	Tills
+A66	STRING	Till
+B66	STRING	Shifts
+C66	STRING	Float
+D66	STRING	Cash sales
+E66	STRING	Cash refunds
+F66	STRING	of which other tills' sales
+G66	STRING	Expected
+H66	STRING	Counted
+I66	STRING	Variance
+J66	STRING	Not counted
+A67	STRING	Unregistered till
+B67	NUMERIC	<admin> [0]
+C67	NUMERIC	500.0 ["R" #,##0.00;-"R" #,##0.00]
+D67	NUMERIC	350.0 ["R" #,##0.00;-"R" #,##0.00]
+E67	NUMERIC	140.0 ["R" #,##0.00;-"R" #,##0.00]
+F67	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+G67	NUMERIC	710.0 ["R" #,##0.00;-"R" #,##0.00]
+H67	NUMERIC	700.0 ["R" #,##0.00;-"R" #,##0.00]
+I67	NUMERIC	-10.0 ["R" #,##0.00;-"R" #,##0.00]
+J67	NUMERIC	0.0 [0]
+A68	STRING	Total
+B68	NUMERIC	<admin> [0]
+C68	NUMERIC	500.0 ["R" #,##0.00;-"R" #,##0.00]
+D68	NUMERIC	350.0 ["R" #,##0.00;-"R" #,##0.00]
+E68	NUMERIC	140.0 ["R" #,##0.00;-"R" #,##0.00]
+F68	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+G68	NUMERIC	710.0 ["R" #,##0.00;-"R" #,##0.00]
+H68	NUMERIC	700.0 ["R" #,##0.00;-"R" #,##0.00]
+I68	NUMERIC	-10.0 ["R" #,##0.00;-"R" #,##0.00]
+J68	NUMERIC	0.0 [0]
+A70	STRING	Cashier readings vs X reading
+A71	STRING	Tender
+B71	STRING	Cashier readings
+C71	STRING	X reading
+D71	STRING	Difference
+A72	STRING	Cash
+B72	NUMERIC	350.0 ["R" #,##0.00;-"R" #,##0.00]
+C72	NUMERIC	350.0 ["R" #,##0.00;-"R" #,##0.00]
+D72	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A73	STRING	Card
+B73	NUMERIC	90.0 ["R" #,##0.00;-"R" #,##0.00]
+C73	NUMERIC	90.0 ["R" #,##0.00;-"R" #,##0.00]
+D73	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A74	STRING	Account
+B74	NUMERIC	120.0 ["R" #,##0.00;-"R" #,##0.00]
+C74	NUMERIC	120.0 ["R" #,##0.00;-"R" #,##0.00]
+D74	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A75	STRING	Total
+B75	NUMERIC	560.0 ["R" #,##0.00;-"R" #,##0.00]
+C75	NUMERIC	560.0 ["R" #,##0.00;-"R" #,##0.00]
+D75	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A77	STRING	Manager:
+B77	STRING	______________________________
+# Checks
+A1	STRING	Check
+B1	STRING	Status
+C1	STRING	Expected
+D1	STRING	Actual
+E1	STRING	Difference
+F1	STRING	Detail
+A2	STRING	The shifts' readings add up to the day's tender figures, per tender and in total
+B2	STRING	PASS
+C2	NUMERIC	560.0 ["R" #,##0.00;-"R" #,##0.00]
+D2	NUMERIC	560.0 ["R" #,##0.00;-"R" #,##0.00]
+E2	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A3	STRING	Net sales, total collected and net cash movement agree with Sales Summary, Tender Summary and Cash-up
+B3	STRING	PASS
+C3	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+D3	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+E3	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+A4	STRING	Every shift of the day is signed off
+B4	STRING	WARN
+C4	NUMERIC	0.0 ["R" #,##0.00;-"R" #,##0.00]
+D4	NUMERIC	<admin> ["R" #,##0.00;-"R" #,##0.00]
+E4	NUMERIC	<admin> ["R" #,##0.00;-"R" #,##0.00]
+F4	STRING	2 shifts are not yet signed off.

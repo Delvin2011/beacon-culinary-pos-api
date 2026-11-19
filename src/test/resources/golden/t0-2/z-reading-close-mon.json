@@ -1,0 +1,528 @@
+{
+  "checks" : [ {
+    "actual" : 560.0,
+    "difference" : 0.0,
+    "expected" : 560.0,
+    "key" : "cashier-readings-agree-with-x",
+    "label" : "The shifts' readings add up to the day's tender figures, per tender and in total",
+    "status" : "PASS",
+    "unit" : "MONEY"
+  }, {
+    "actual" : 0,
+    "difference" : 0,
+    "expected" : 0,
+    "key" : "x-agrees-with-reports",
+    "label" : "Net sales, total collected and net cash movement agree with Sales Summary, Tender Summary and Cash-up",
+    "status" : "PASS",
+    "unit" : "COUNT"
+  } ],
+  "columns" : null,
+  "meta" : {
+    "amountsInclVat" : true,
+    "business" : {
+      "name" : "Beacon Culinary"
+    },
+    "category" : "DAILY_STATEMENTS",
+    "currency" : "ZAR",
+    "definitionVersion" : 3,
+    "exportFormats" : [ "xlsx" ],
+    "generatedAt" : "2026-10-06T11:00:00Z",
+    "interim" : false,
+    "key" : "z-reading",
+    "notes" : [ "A trading day is the day a shift opened: every shift that opened that day is included, even if it closed after midnight.", "Sales, discounts, voids, refunds and net sales are the Sales Summary figures for the day.", "Tender collected is what was taken by payment method; paid out is cash handed back and account credits.", "Cashier readings vs X reading adds up each shift's takings by tender and compares them with the day's figures.", "Complimentary meals are given away with manager approval and no payment. They are shown separately and are not part of sales or net sales. Value is at list price.", "Close Day needs every shift closed and signed off. It produces a numbered Z Reading that can't be changed.", "Amounts include VAT." ],
+    "params" : {
+      "zNumber" : 1
+    },
+    "reference" : "Z-0001",
+    "statementTitle" : "Z Reading",
+    "timezone" : "Africa/Johannesburg",
+    "title" : "Z Reading"
+  },
+  "page" : null,
+  "rows" : null,
+  "sections" : [ {
+    "items" : [ {
+      "label" : "Business",
+      "type" : "TEXT",
+      "value" : "Beacon Culinary"
+    }, {
+      "label" : "Report",
+      "type" : "TEXT",
+      "value" : "Z Reading"
+    }, {
+      "label" : "Z number",
+      "type" : "TEXT",
+      "value" : "Z-0001"
+    }, {
+      "label" : "Trading day",
+      "type" : "DATE",
+      "value" : "2026-10-05"
+    }, {
+      "label" : "Closed by",
+      "type" : "TEXT",
+      "value" : "Canteen Admin"
+    }, {
+      "label" : "Closed at",
+      "type" : "DATETIME",
+      "value" : "2026-10-06T11:00:00Z"
+    } ],
+    "key" : "header",
+    "type" : "KEY_VALUE"
+  }, {
+    "items" : [ {
+      "label" : "Orders (sales)",
+      "type" : "INT",
+      "value" : 7
+    }, {
+      "label" : "Voided/refunded orders",
+      "type" : "INT",
+      "value" : "<admin>"
+    }, {
+      "label" : "Net orders",
+      "type" : "INT",
+      "value" : 5
+    }, {
+      "label" : "Gross sales",
+      "type" : "MONEY",
+      "value" : 570.0
+    }, {
+      "label" : "Discounts at sale",
+      "type" : "MONEY",
+      "value" : 10.0
+    }, {
+      "label" : "Voids",
+      "type" : "MONEY",
+      "value" : 50.0
+    }, {
+      "label" : "Refunds",
+      "type" : "MONEY",
+      "value" : 90.0
+    }, {
+      "label" : "Extras removed",
+      "type" : "MONEY",
+      "value" : 0.0
+    }, {
+      "emphasis" : "TOTAL",
+      "label" : "Net sales",
+      "type" : "MONEY",
+      "value" : 420.0
+    }, {
+      "label" : "Average order value",
+      "type" : "MONEY",
+      "value" : 84.0
+    } ],
+    "key" : "sales",
+    "title" : "Sales",
+    "type" : "KEY_VALUE"
+  }, {
+    "items" : [ {
+      "label" : "Complimentary meals",
+      "type" : "INT",
+      "value" : "<thandiwe>"
+    }, {
+      "label" : "Value at list price",
+      "type" : "MONEY",
+      "value" : 45.0
+    } ],
+    "key" : "complimentary",
+    "title" : "Complimentary meals (not part of sales)",
+    "type" : "KEY_VALUE"
+  }, {
+    "columns" : [ {
+      "key" : "reason",
+      "label" : "Reason",
+      "total" : "LABEL",
+      "type" : "TEXT"
+    }, {
+      "key" : "meals",
+      "label" : "Meals",
+      "total" : "SUM",
+      "type" : "INT"
+    }, {
+      "key" : "value",
+      "label" : "Value",
+      "total" : "SUM",
+      "type" : "MONEY"
+    } ],
+    "key" : "complimentaryByReason",
+    "rows" : [ {
+      "meals" : 1,
+      "reason" : "Staff meal",
+      "value" : 45.0
+    } ],
+    "slipColumns" : [ "reason", "meals", "value" ],
+    "title" : "Complimentary meals by reason",
+    "totals" : {
+      "meals" : 1,
+      "reason" : "Total",
+      "value" : 45.0
+    },
+    "type" : "TABLE"
+  }, {
+    "items" : [ {
+      "label" : "Cash",
+      "type" : "MONEY",
+      "value" : 350.0
+    }, {
+      "label" : "Card",
+      "type" : "MONEY",
+      "value" : 90.0
+    }, {
+      "label" : "Account",
+      "type" : "MONEY",
+      "value" : 120.0
+    }, {
+      "emphasis" : "TOTAL",
+      "label" : "Total collected",
+      "type" : "MONEY",
+      "value" : 560.0
+    } ],
+    "key" : "tender",
+    "title" : "Tender collected",
+    "type" : "KEY_VALUE"
+  }, {
+    "items" : [ {
+      "label" : "Cash paid out",
+      "type" : "MONEY",
+      "value" : 140.0
+    }, {
+      "label" : "Account credits",
+      "type" : "MONEY",
+      "value" : 0.0
+    } ],
+    "key" : "paidOut",
+    "title" : "Paid out",
+    "type" : "KEY_VALUE"
+  }, {
+    "items" : [ {
+      "label" : "Opening floats",
+      "type" : "MONEY",
+      "value" : 500.0
+    }, {
+      "label" : "Net cash movement",
+      "type" : "MONEY",
+      "value" : 210.0
+    }, {
+      "label" : "Expected cash",
+      "type" : "MONEY",
+      "value" : 710.0
+    }, {
+      "label" : "Counted cash (closed shifts)",
+      "type" : "MONEY",
+      "value" : 700.0
+    }, {
+      "emphasis" : "TOTAL",
+      "label" : "Variance",
+      "type" : "VARIANCE",
+      "value" : -10.0
+    } ],
+    "key" : "cash",
+    "title" : "Cash",
+    "type" : "KEY_VALUE"
+  }, {
+    "items" : [ {
+      "label" : "Offline sales",
+      "type" : "INT",
+      "value" : 0
+    }, {
+      "label" : "Offline sales total",
+      "type" : "MONEY",
+      "value" : 0.0
+    }, {
+      "label" : "Late offline cash after close",
+      "type" : "MONEY",
+      "value" : 0.0
+    }, {
+      "label" : "Late offline cash sales",
+      "type" : "INT",
+      "value" : 0
+    }, {
+      "label" : "Open exceptions to review",
+      "type" : "INT",
+      "value" : 0
+    } ],
+    "key" : "offline",
+    "title" : "Offline sales",
+    "type" : "KEY_VALUE"
+  }, {
+    "columns" : [ {
+      "key" : "shiftId",
+      "label" : "Shift",
+      "total" : "LABEL",
+      "type" : "INT"
+    }, {
+      "key" : "cashier",
+      "label" : "Cashier",
+      "total" : "NONE",
+      "type" : "TEXT"
+    }, {
+      "key" : "till",
+      "label" : "Till",
+      "total" : "NONE",
+      "type" : "TEXT"
+    }, {
+      "key" : "openedAt",
+      "label" : "Opened",
+      "total" : "NONE",
+      "type" : "DATETIME"
+    }, {
+      "key" : "closedAt",
+      "label" : "Closed",
+      "total" : "NONE",
+      "type" : "DATETIME"
+    }, {
+      "key" : "openingFloat",
+      "label" : "Float",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "cashSales",
+      "label" : "Cash sales",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "cashRefunds",
+      "label" : "Cash refunds",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "expectedCash",
+      "label" : "Expected",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "countedCash",
+      "label" : "Counted",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "variance",
+      "label" : "Variance",
+      "total" : "SUM",
+      "type" : "VARIANCE"
+    }, {
+      "key" : "signedOffBy",
+      "label" : "Signed off",
+      "total" : "NONE",
+      "type" : "TEXT"
+    }, {
+      "key" : "signedOffAt",
+      "label" : "Signed off at",
+      "total" : "NONE",
+      "type" : "DATETIME"
+    } ],
+    "key" : "shifts",
+    "rows" : [ {
+      "cashRefunds" : 50.0,
+      "cashSales" : 290.0,
+      "cashier" : "Canteen Cashier",
+      "closedAt" : "2026-10-05T09:00:00Z",
+      "countedCash" : 440.0,
+      "expectedCash" : 440.0,
+      "openedAt" : "2026-10-05T05:00:00Z",
+      "openingFloat" : 200.0,
+      "shiftId" : "<s1>",
+      "signedOffAt" : "<database time>",
+      "signedOffBy" : "Canteen Admin",
+      "till" : "Unregistered till",
+      "variance" : 0.0
+    }, {
+      "cashRefunds" : 90.0,
+      "cashSales" : 60.0,
+      "cashier" : "Canteen Cashier B",
+      "closedAt" : "2026-10-05T13:00:00Z",
+      "countedCash" : 260.0,
+      "expectedCash" : 270.0,
+      "openedAt" : "2026-10-05T09:05:00Z",
+      "openingFloat" : 300.0,
+      "shiftId" : "<s2>",
+      "signedOffAt" : "<database time>",
+      "signedOffBy" : "Canteen Admin",
+      "till" : "Unregistered till",
+      "variance" : -10.0
+    } ],
+    "slipColumns" : [ "shiftId", "cashier", "variance" ],
+    "title" : "Shifts",
+    "totals" : {
+      "cashRefunds" : 140.0,
+      "cashSales" : 350.0,
+      "countedCash" : 960.0,
+      "expectedCash" : 710.0,
+      "openingFloat" : 500.0,
+      "shiftId" : "Total",
+      "variance" : -20.0
+    },
+    "type" : "TABLE"
+  }, {
+    "columns" : [ {
+      "key" : "till",
+      "label" : "Till",
+      "total" : "LABEL",
+      "type" : "TEXT"
+    }, {
+      "key" : "shifts",
+      "label" : "Shifts",
+      "total" : "SUM",
+      "type" : "INT"
+    }, {
+      "key" : "openingFloat",
+      "label" : "Float",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "cashSales",
+      "label" : "Cash sales",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "cashRefunds",
+      "label" : "Cash refunds",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "refundsOfOtherTills",
+      "label" : "of which other tills' sales",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "expectedCash",
+      "label" : "Expected",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "countedCash",
+      "label" : "Counted",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "variance",
+      "label" : "Variance",
+      "total" : "SUM",
+      "type" : "VARIANCE"
+    }, {
+      "key" : "uncounted",
+      "label" : "Not counted",
+      "total" : "SUM",
+      "type" : "INT"
+    } ],
+    "key" : "tills",
+    "rows" : [ {
+      "cashRefunds" : 140.0,
+      "cashSales" : 350.0,
+      "countedCash" : 700.0,
+      "expectedCash" : 710.0,
+      "openingFloat" : 500.0,
+      "refundsOfOtherTills" : 0.0,
+      "shifts" : 2,
+      "till" : "Unregistered till",
+      "uncounted" : 0,
+      "variance" : -10.0
+    } ],
+    "slipColumns" : [ "till", "expectedCash", "variance" ],
+    "title" : "Tills",
+    "totals" : {
+      "cashRefunds" : 140.0,
+      "cashSales" : 350.0,
+      "countedCash" : 700.0,
+      "expectedCash" : 710.0,
+      "openingFloat" : 500.0,
+      "refundsOfOtherTills" : 0.0,
+      "shifts" : 2,
+      "till" : "Total",
+      "uncounted" : 0,
+      "variance" : -10.0
+    },
+    "type" : "TABLE"
+  }, {
+    "columns" : [ {
+      "key" : "tender",
+      "label" : "Tender",
+      "total" : "LABEL",
+      "type" : "TEXT"
+    }, {
+      "key" : "cashierReadings",
+      "label" : "Cashier readings",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "xReading",
+      "label" : "X reading",
+      "total" : "SUM",
+      "type" : "MONEY"
+    }, {
+      "key" : "difference",
+      "label" : "Difference",
+      "total" : "SUM",
+      "type" : "VARIANCE"
+    } ],
+    "key" : "cashierReadingsVsX",
+    "rows" : [ {
+      "cashierReadings" : 350.0,
+      "difference" : 0.0,
+      "tender" : "Cash",
+      "xReading" : 350.0
+    }, {
+      "cashierReadings" : 90.0,
+      "difference" : 0.0,
+      "tender" : "Card",
+      "xReading" : 90.0
+    }, {
+      "cashierReadings" : 120.0,
+      "difference" : 0.0,
+      "tender" : "Account",
+      "xReading" : 120.0
+    } ],
+    "slipColumns" : [ "tender", "cashierReadings", "difference" ],
+    "title" : "Cashier readings vs X reading",
+    "totals" : {
+      "cashierReadings" : 560.0,
+      "difference" : 0.0,
+      "tender" : "Total",
+      "xReading" : 560.0
+    },
+    "type" : "TABLE"
+  }, {
+    "columns" : [ {
+      "key" : "shiftId",
+      "label" : "Shift",
+      "total" : "NONE",
+      "type" : "INT"
+    }, {
+      "key" : "cashier",
+      "label" : "Cashier",
+      "total" : "NONE",
+      "type" : "TEXT"
+    }, {
+      "key" : "signedOffBy",
+      "label" : "Signed off by",
+      "total" : "NONE",
+      "type" : "TEXT"
+    }, {
+      "key" : "signedOffAt",
+      "label" : "Signed off at",
+      "total" : "NONE",
+      "type" : "DATETIME"
+    } ],
+    "key" : "signoffs",
+    "printOn" : [ "A4" ],
+    "rows" : [ {
+      "cashier" : "Canteen Cashier",
+      "shiftId" : "<s1>",
+      "signedOffAt" : "<database time>",
+      "signedOffBy" : "Canteen Admin"
+    }, {
+      "cashier" : "Canteen Cashier B",
+      "shiftId" : "<s2>",
+      "signedOffAt" : "<database time>",
+      "signedOffBy" : "Canteen Admin"
+    } ],
+    "title" : "Sign-offs",
+    "totals" : null,
+    "type" : "TABLE"
+  }, {
+    "key" : "signatures",
+    "labels" : [ "Manager" ],
+    "type" : "SIGNATURE_LINES"
+  } ],
+  "totals" : null
+}

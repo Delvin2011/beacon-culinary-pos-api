@@ -1,0 +1,23 @@
+{
+  "asOf" : "2026-10-05T13:30:00Z",
+  "data" : {
+    "items" : [ {
+      "action" : {
+        "label" : "Sign off shifts",
+        "path" : "/end-of-day"
+      },
+      "count" : 2,
+      "detail" : "Waiting: Canteen C. (Mon 5 Oct), Canteen B. (Mon 5 Oct).",
+      "key" : "UNSIGNED_SHIFTS",
+      "severity" : "AMBER",
+      "since" : "2026-10-05T09:00:00Z",
+      "tag" : "Sign-off",
+      "title" : "2 closed shifts are not signed off"
+    } ],
+    "moreCount" : 0
+  },
+  "definitionVersion" : 1,
+  "key" : "attention",
+  "range" : "7d",
+  "reportLink" : null
+}

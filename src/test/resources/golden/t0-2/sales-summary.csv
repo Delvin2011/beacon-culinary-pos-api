@@ -1,0 +1,4 @@
+﻿Date,Orders,Voided/refunded orders,Net orders,Gross sales,Discounts at sale,Voids,Refunds,Extras removed,Net sales,Average order value,Complimentary orders,Complimentary value (at list price)
+2026-09-26,<thandiwe>,0,<thandiwe>,200.00,0.00,0.00,0.00,0.00,200.00,200.00,0,0.00
+2026-10-05,7,<admin>,5,570.00,10.00,50.00,90.00,0.00,420.00,84.00,<thandiwe>,45.00
+2026-10-06,<admin>,0,<admin>,90.00,0.00,0.00,0.00,15.00,75.00,37.50,0,0.00

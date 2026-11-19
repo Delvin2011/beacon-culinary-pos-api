@@ -1,0 +1,75 @@
+{
+  "asOf" : "2026-10-05T13:30:00Z",
+  "sections" : [ {
+    "key" : "attention",
+    "refreshSeconds" : 30,
+    "title" : "Needs attention",
+    "usesRange" : false
+  }, {
+    "key" : "now",
+    "refreshSeconds" : 30,
+    "title" : "Right now",
+    "usesRange" : false
+  }, {
+    "key" : "today",
+    "refreshSeconds" : 60,
+    "title" : "Today",
+    "usesRange" : false
+  }, {
+    "key" : "sales-trend",
+    "refreshSeconds" : 60,
+    "title" : "Net sales trend",
+    "usesRange" : true
+  }, {
+    "key" : "sales-mix",
+    "refreshSeconds" : 60,
+    "title" : "Where sales come from",
+    "usesRange" : true
+  }, {
+    "key" : "busy-hours",
+    "refreshSeconds" : 60,
+    "title" : "Busy hours",
+    "usesRange" : false
+  }, {
+    "key" : "heatmap",
+    "refreshSeconds" : 300,
+    "title" : "When customers come",
+    "usesRange" : false
+  }, {
+    "key" : "top-sellers",
+    "refreshSeconds" : 60,
+    "title" : "What sells",
+    "usesRange" : true
+  }, {
+    "key" : "sell-through",
+    "refreshSeconds" : 60,
+    "title" : "Planned meals today",
+    "usesRange" : false
+  }, {
+    "key" : "light-meal-stock",
+    "refreshSeconds" : 60,
+    "title" : "Light meals: kitchen stock",
+    "usesRange" : false
+  }, {
+    "key" : "payment-mix",
+    "refreshSeconds" : 60,
+    "title" : "How customers pay",
+    "usesRange" : true
+  }, {
+    "key" : "basket",
+    "refreshSeconds" : 60,
+    "title" : "The basket",
+    "usesRange" : true
+  }, {
+    "key" : "waiting",
+    "refreshSeconds" : 60,
+    "title" : "Waiting",
+    "usesRange" : false
+  }, {
+    "key" : "account-customers",
+    "refreshSeconds" : 60,
+    "title" : "Account customers",
+    "usesRange" : true
+  } ],
+  "timezone" : "Africa/Johannesburg"
+}
