@@ -1,6 +1,7 @@
 package com.beaconculinary.api.auth.protection;
 
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.logging.LogMarkers;
 import com.beaconculinary.api.devices.DeviceContext;
 import com.beaconculinary.api.devices.DeviceTrustProperties;
 import lombok.extern.slf4j.Slf4j;
@@ -222,7 +223,7 @@ public class LoginAttemptService {
                     attempt.request().clientIp(), primary, secondary, describeConsequence(decision));
         }
         if (decision.alert() != null) {
-            log.warn("{} type={} mode={} method={} user={} id={} ip={} failures={}/{}",
+            log.warn(LogMarkers.LOGIN_PROTECTION_ALERT, "{} type={} mode={} method={} user={} id={} ip={} failures={}/{}",
                     ALERT_MARKER, decision.alert(), properties.getMode(), attempt.method(), userId == null ? "-" : userId,
                     safeIdentifier(attempt), attempt.request().clientIp(), primary, secondary);
         }
@@ -332,7 +333,7 @@ public class LoginAttemptService {
             }
             attempt = new LoginAttempt(true, method, identifier, request, decision, lockRule, lockFailures);
             if (alert != null) {
-                log.warn("{} type={} mode={} method={} user={} id={} ip={} failures={}/{}",
+                log.warn(LogMarkers.LOGIN_PROTECTION_ALERT, "{} type={} mode={} method={} user={} id={} ip={} failures={}/{}",
                         ALERT_MARKER, alert, properties.getMode(), method, userId == null ? "-" : userId,
                         safeIdentifier(attempt), request.clientIp(), primary, secondary);
             }
@@ -410,11 +411,11 @@ public class LoginAttemptService {
                     attempt.method(), rule, lock.level(), userId == null ? "-" : userId, safeIdentifier(attempt),
                     attempt.request().clientIp(), lock.level() >= LoginRuleEvaluator.ADMIN_UNLOCK_LEVEL ? "admin unlock" : lock.lockedUntil());
             if (rule.alerts()) {
-                log.warn("{} type={} mode={} method={} user={} id={} ip={} level={}", ALERT_MARKER, rule, properties.getMode(),
+                log.warn(LogMarkers.LOGIN_PROTECTION_ALERT, "{} type={} mode={} method={} user={} id={} ip={} level={}", ALERT_MARKER, rule, properties.getMode(),
                         attempt.method(), userId == null ? "-" : userId, safeIdentifier(attempt), attempt.request().clientIp(), lock.level());
             }
             if (lock.level() >= LoginRuleEvaluator.ADMIN_UNLOCK_LEVEL) {
-                log.warn("{} type=ADMIN_UNLOCK_REQUIRED mode={} rule={} method={} user={} id={} ip={}", ALERT_MARKER,
+                log.warn(LogMarkers.LOGIN_PROTECTION_ALERT, "{} type=ADMIN_UNLOCK_REQUIRED mode={} rule={} method={} user={} id={} ip={}", ALERT_MARKER,
                         properties.getMode(), rule, attempt.method(), userId == null ? "-" : userId, safeIdentifier(attempt),
                         attempt.request().clientIp());
             }
@@ -445,7 +446,7 @@ public class LoginAttemptService {
      */
     public void unlock(Long userId, Collection<LoginMethod> scopes, Long unlockedBy, String reason) {
         var wereLocked = store.unlock(userId, scopes, unlockedBy, UtcTimestamps.nowUtc(clock));
-        log.warn("{} type=UNLOCK reason={} user={} scopes={} by={} wereLocked={}", ALERT_MARKER, reason, userId,
+        log.warn(LogMarkers.LOGIN_PROTECTION_ALERT, "{} type=UNLOCK reason={} user={} scopes={} by={} wereLocked={}", ALERT_MARKER, reason, userId,
                 scopes, unlockedBy == null ? "-" : unlockedBy, wereLocked);
     }
 
@@ -482,7 +483,7 @@ public class LoginAttemptService {
 
     /** Logs a refused attempt to clear your own lock, for alerting. Changes nothing. */
     public void selfUnlockRefused(Long userId, String reason) {
-        log.warn("{} type=SELF_UNLOCK_REFUSED reason={} user={}", ALERT_MARKER, reason, userId);
+        log.warn(LogMarkers.LOGIN_PROTECTION_ALERT, "{} type=SELF_UNLOCK_REFUSED reason={} user={}", ALERT_MARKER, reason, userId);
     }
 
     /** Active PASSWORD and PIN locks by user, for the staff page. Empty on error. */

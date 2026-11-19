@@ -1,13 +1,19 @@
 package com.beaconculinary.api.common;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -28,6 +34,32 @@ class DatabaseHealthCheckTest {
         if (check != null) {
             check.shutdown();
         }
+    }
+
+    @Test
+    void theCheckRunsAsAJob_andItsStateLineSaysWhereItComesFrom() {
+        var jobName = new AtomicReference<String>();
+        when(jdbc.queryForObject("SELECT 1", Integer.class)).thenAnswer(call -> {
+            jobName.set(MDC.get("jobName"));
+            return 1;
+        });
+        var logger = (Logger) LoggerFactory.getLogger(DatabaseHealthCheck.class);
+        var events = new ListAppender<ILoggingEvent>();
+        events.start();
+        logger.addAppender(events);
+        try {
+            check = new DatabaseHealthCheck(jdbc, Duration.ofSeconds(2), Duration.ZERO);
+            assertThat(check.databaseUp()).isTrue();
+        } finally {
+            logger.detachAppender(events);
+        }
+
+        assertThat(jobName.get()).isEqualTo("health-check");
+        assertThat(events.list).singleElement().satisfies(event ->
+                assertThat(event.getKeyValuePairs()).anySatisfy(pair -> {
+                    assertThat(pair.key).isEqualTo("source");
+                    assertThat(pair.value).isEqualTo("health-check");
+                }));
     }
 
     @Test

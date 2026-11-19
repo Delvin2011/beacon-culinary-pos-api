@@ -1,5 +1,6 @@
 package com.beaconculinary.api.devices;
 
+import com.beaconculinary.api.common.logging.LogMarkers;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import jakarta.servlet.FilterChain;
@@ -51,8 +52,8 @@ public class DeviceUnboundRequestFilter extends OncePerRequestFilter {
                     && authentication.getAuthorities().stream().anyMatch(a -> "ROLE_CASHIER".equals(a.getAuthority()))
                     && !DeviceContext.current().valid()
                     && recentlyLogged.asMap().putIfAbsent(userId, Boolean.TRUE) == null) {
-                log.info("{} user={} method={} path={} status={}", MARKER, userId, request.getMethod(),
-                        request.getRequestURI(), DeviceContext.current().status());
+                log.info(LogMarkers.DEVICE_UNBOUND_TILL_REQUEST, "{} user={} method={} path={} status={}", MARKER, userId,
+                        request.getMethod(), request.getRequestURI(), DeviceContext.current().status());
             }
         } catch (RuntimeException e) {
             log.error("Device trust could not check an order or shift request", e);

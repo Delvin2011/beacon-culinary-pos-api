@@ -32,8 +32,8 @@ logging:
     root: INFO
     com.beaconculinary: INFO
   pattern:
-    # Adds the request id and user id to each text line (blank outside a request).
-    level: "%5p [%X{requestId:-}] [%X{userId:-}]"
+    # Adds the request id (or the job name) and user id to each text line.
+    level: "%5p [%X{requestId:-}%X{jobName:-}] [%X{userId:-}]"
   # Paths with no request log line (Ant patterns): /health polls and the SSE streams.
   request:
     skip-paths: ${LOGGING_REQUEST_SKIP_PATHS:/health,/**/stream}

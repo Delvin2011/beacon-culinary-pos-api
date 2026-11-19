@@ -1,6 +1,7 @@
 package com.beaconculinary.api.auth.protection;
 
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.logging.JobContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -30,14 +31,17 @@ public class LoginAttemptRetentionJob {
 
     @Scheduled(cron = "${security.login-protection.retention-cron:0 30 3 * * *}", zone = "Africa/Johannesburg")
     public void scheduledPurge() {
-        try {
-            var deleted = purge();
-            if (deleted > 0) {
-                log.info("Login attempt retention: deleted {} rows older than {} days", deleted, properties.getRetentionDays());
+        // T0-1: every line of the run carries jobName and runId.
+        JobContext.run("login-attempt-retention", () -> {
+            try {
+                var deleted = purge();
+                if (deleted > 0) {
+                    log.info("Login attempt retention: deleted {} rows older than {} days", deleted, properties.getRetentionDays());
+                }
+            } catch (RuntimeException e) {
+                log.error("Login attempt retention failed", e);
             }
-        } catch (RuntimeException e) {
-            log.error("Login attempt retention failed", e);
-        }
+        });
     }
 
     /** Deletes every row older than the retention period; returns how many were deleted. */
