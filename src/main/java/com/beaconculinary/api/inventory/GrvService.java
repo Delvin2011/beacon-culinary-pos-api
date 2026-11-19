@@ -1,6 +1,8 @@
 package com.beaconculinary.api.inventory;
 
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.users.User;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -11,7 +13,6 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +40,7 @@ public class GrvService {
     private final InventoryMapper inventoryMapper;
     private final VatSettings vatSettings;
     private final Clock clock;
+    private final SiteLocale siteLocale;
 
     @Transactional
     public GrvDto create(CreateGrvRequest request) {
@@ -171,12 +173,10 @@ public class GrvService {
 
         // grv.receivedAt is stored in UTC (SYSUTCDATETIME() at insert) — comparing its raw date
         // against LocalDate.now() would silently use the wrong calendar day for any receipt near
-        // midnight in the business's actual timezone, so both sides are resolved through the same
-        // business-zone clock before comparing.
-        var receivedDate = grv.getReceivedAt().atZone(ZoneOffset.UTC)
-                .withZoneSameInstant(clock.getZone())
-                .toLocalDate();
-        if (!receivedDate.equals(LocalDate.now(clock))) {
+        // midnight in the business's actual timezone, so both sides are resolved in the business
+        // zone (SiteLocale) before comparing.
+        var receivedDate = siteLocale.businessDate(UtcTimestamps.toInstant(grv.getReceivedAt()));
+        if (!receivedDate.equals(siteLocale.businessDate(clock.instant()))) {
             throw new GrvEditWindowClosedException();
         }
 

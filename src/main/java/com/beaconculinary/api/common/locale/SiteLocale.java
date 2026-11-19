@@ -14,8 +14,10 @@ import java.util.Currency;
  * Built from {@link SiteLocaleProperties} (see {@link SiteLocaleConfig}); invalid settings stop
  * the app at startup with a message naming the setting.
  *
- * <p>Code takes the zone from here, never from {@code Clock.getZone()}: the Clock bean is built
- * from this zone in production, but tests replace the Clock with one in the machine's zone.
+ * <p>New code takes the zone from here ({@code businessDate(clock.instant())}), not from the
+ * Clock's own zone: the Clock bean is built in this zone in production (ClockConfig), so the
+ * existing {@code LocalDate.now(clock)} / {@code LocalTime.now(clock)} calls agree with it, but
+ * tests replace the Clock with one in the machine's zone.
  */
 public final class SiteLocale {
     private final ZoneId zone;

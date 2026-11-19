@@ -45,6 +45,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -88,6 +89,7 @@ public class OfflineSaleRecorder {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final SiteLocale siteLocale;
+    private final Clock clock;
 
     public OfflineSaleRecorder(OrderRepository orderRepository, OrderMapper orderMapper,
                                OrderNumberAllocator orderNumberAllocator, OrderStatusEventRepository statusEvents,
@@ -96,7 +98,7 @@ public class OfflineSaleRecorder {
                                DailyComponentStockRepository stockRepository, LightMealStockService lightMealStockService,
                                ZReadings zReadings, VatSettings vatSettings, OfflineProperties properties,
                                OfflineSequenceStore sequences, SaleExceptionStore exceptions, AppLock appLock,
-                               JdbcTemplate jdbc, ObjectMapper objectMapper, SiteLocale siteLocale) {
+                               JdbcTemplate jdbc, ObjectMapper objectMapper, SiteLocale siteLocale, Clock clock) {
         this.orderRepository = orderRepository;
         this.orderMapper = orderMapper;
         this.orderNumberAllocator = orderNumberAllocator;
@@ -116,6 +118,7 @@ public class OfflineSaleRecorder {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.siteLocale = siteLocale;
+        this.clock = clock;
     }
 
     /** Where the batch came from and when it arrived. */
@@ -260,7 +263,7 @@ public class OfflineSaleRecorder {
         } else {
             flags.add(flag(SaleExceptionCode.OFFLINE_NUMBER_CLASH, "offlineSeq", seq, "otherOrderId", clash.get(0)));
         }
-        sequences.recordSeen(grant.deviceId(), saleDay, seq, LocalDateTime.ofInstant(Instant.now(), java.time.ZoneOffset.UTC));
+        sequences.recordSeen(grant.deviceId(), saleDay, seq, UtcTimestamps.nowUtc(clock));
     }
 
     /** Builds the lines as charged; returns what they add up to (lines and extras). */
@@ -498,7 +501,7 @@ public class OfflineSaleRecorder {
             orderRepository.save(existing);
             if (sale.offlineSeq() != null) {
                 sequences.recordSeen(grant.deviceId(), siteLocale.businessDate(sale.soldAt()),
-                        sale.offlineSeq(), LocalDateTime.ofInstant(Instant.now(), java.time.ZoneOffset.UTC));
+                        sale.offlineSeq(), UtcTimestamps.nowUtc(clock));
             }
         }
         var differences = differences(sale, existing);
