@@ -1,7 +1,6 @@
 # Site settings API contract (T0-4a)
 
-Branch `feature/t0-4a-site-settings`. Status: **draft for the frontend**. Section 4.2 (first trading
-day) is pending a final confirmation; everything else is agreed.
+Branch `feature/t0-4a-site-settings`. Status: **agreed; the frontend builds against it.**
 
 An admin changes the customer's own settings from the app. Values are stored in the customer's
 database (`site_settings`, V113) and apply without a restart or redeploy. With nothing saved, every
@@ -229,7 +228,7 @@ Checked on the values that would result from the request (saved + sent + default
 | max-offline-hours ≤ `pos.offline.grant-max-hours` (platform) | max-offline-hours |
 | opening hours: start before end | `dashboard.openingHours` |
 
-### 4.2 First trading day *(pending final confirmation)*
+### 4.2 First trading day
 
 What it does: Z numbering starts on this day. Days before it are outside the end-of-day process:
 Close Day refuses them (`BEFORE_FIRST_TRADING_DAY`), they don't block later days
@@ -243,7 +242,7 @@ A change is refused (400 on the key) when:
    process. Message: "Must be on or before 12 Oct 2026, the first day with a Z reading."
 2. **It is before the trading day of the earliest order**, or empty while orders exist.
    Message: "Must be on or after 12 Oct 2026, the first day with sales."
-3. *(Proposed in addition, awaiting confirmation)* **A Z reading exists, and a day with shifts but
+3. **A Z reading exists, and a day with shifts but
    no Z would fall on or after the new value and before the earliest Z.** Such a day would become
    one that must be closed, yet it comes before Z 1: every later Close Day would be blocked by
    `PREVIOUS_DAY_NOT_CLOSED`. Message: "Must be after 10 Oct 2026, a trading day before the first Z
