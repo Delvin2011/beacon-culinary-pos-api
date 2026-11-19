@@ -44,19 +44,23 @@ public class AuthTestHelper {
         return userId(mockMvc, KITCHEN_EMAIL);
     }
 
-    /** Resolved once per test JVM via GET /users as admin — the kitchen user is PIN-only, so
-     * its id can't come from an email login. Seeded users are never deleted, so caching is safe. */
+    /** Resolved once per test JVM via GET /admin/staff as admin — the kitchen user is PIN-only, so
+     * its id can't come from an email login. Seeded users are never deleted, so caching is safe.
+     * Staff without an email (PIN-only staff created by tests) are skipped. */
     public static long userId(MockMvc mockMvc, String email) throws Exception {
         if (USER_IDS_BY_EMAIL.isEmpty()) {
-            var response = mockMvc.perform(get("/users").header("Authorization", "Bearer " + loginAsAdmin(mockMvc)))
+            var response = mockMvc.perform(get("/admin/staff").header("Authorization", "Bearer " + loginAsAdmin(mockMvc)))
                     .andReturn().getResponse().getContentAsString();
             for (var node : MAPPER.readTree(response)) {
-                USER_IDS_BY_EMAIL.put(node.get("email").asText().toLowerCase(), node.get("id").asLong());
+                var nodeEmail = node.get("email");
+                if (nodeEmail != null && !nodeEmail.isNull()) {
+                    USER_IDS_BY_EMAIL.put(nodeEmail.asText().toLowerCase(), node.get("id").asLong());
+                }
             }
         }
         var id = USER_IDS_BY_EMAIL.get(email.toLowerCase());
         if (id == null) {
-            throw new IllegalStateException("Seeded user " + email + " not found in GET /users");
+            throw new IllegalStateException("Seeded user " + email + " not found in GET /admin/staff");
         }
         return id;
     }
