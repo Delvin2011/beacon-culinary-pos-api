@@ -6,13 +6,11 @@ import com.beaconculinary.api.auth.protection.LoginMethod;
 import com.beaconculinary.api.auth.protection.LoginOutcome;
 import com.beaconculinary.api.devices.DeviceGate;
 import lombok.AllArgsConstructor;
-import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Set;
 
 @AllArgsConstructor
 @Service
@@ -23,21 +21,6 @@ public class UserService {
     private final AuthService authService;
     private final LoginAttemptService loginAttempts;
     private final DeviceGate deviceGate;
-
-    public Iterable<UserDto> getAllUsers(String sortBy) {
-        if (!Set.of("name", "email").contains(sortBy))
-            sortBy = "name";
-
-        return userRepository.findAll(Sort.by(sortBy))
-                .stream()//to map user objects to user Dto
-                .map(userMapper::toDto)//:: similar to using lambda function, e.g user =>
-                .toList();
-    }
-
-    public UserDto getUser(Long userId) {
-        var user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
-        return userMapper.toDto(user);
-    }
 
     /** Public, pre-login list for the POS login screen's cashier tile grid. */
     /** The active users who log in by PIN on the given screen. The kitchen screen lists only users
@@ -55,32 +38,6 @@ public class UserService {
                 .filter(user -> !hideAdmins || user.getRole() != Role.ADMIN)
                 .map(userMapper::toCashierSummaryDto)
                 .toList();
-    }
-
-    public UserDto registerUser(RegisterUserRequest request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new DuplicateUserException();
-        }
-
-        var user = userMapper.toEntity(request);
-        user.setPassword(passwordEncoder.encode(user.getPassword()));
-        user.setRole(Role.USER);
-        userRepository.save(user);
-
-        return userMapper.toDto(user);
-    }
-
-    public UserDto updateUser(Long userId, UpdateUserRequest request) {
-        var user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
-        userMapper.update(request, user);
-        userRepository.save(user);
-
-        return userMapper.toDto(user);
-    }
-
-    public void deleteUser(Long userId) {
-        var user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
-        userRepository.delete(user);
     }
 
     /** Changes the caller's own password. Admins reset other people's through /admin/staff. */

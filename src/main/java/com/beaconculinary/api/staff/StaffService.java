@@ -57,7 +57,6 @@ public class StaffService {
         var locks = loginAttempts.activeAccountLocks();
         var blocks = loginAttempts.activeBlocks();
         return userRepository.findAll().stream()
-                .filter(user -> user.getRole() != Role.USER)
                 .sorted(Comparator.comparing(User::getName, String.CASE_INSENSITIVE_ORDER))
                 .map(user -> toDto(user, locks, blocks))
                 .toList();
@@ -257,9 +256,6 @@ public class StaffService {
 
     private User load(Long id) {
         var user = userRepository.findById(id).orElseThrow(StaffExceptions.NotFound::new);
-        if (user.getRole() == Role.USER) {
-            throw new StaffExceptions.NotFound();
-        }
         return user;
     }
 
