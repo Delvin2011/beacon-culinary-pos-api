@@ -1,6 +1,6 @@
 package com.beaconculinary.api.reports.definitions;
 
-import com.beaconculinary.api.common.ClockConfig;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.reports.EndOfDayFacts;
 import com.beaconculinary.api.reports.EndOfDayStatements;
 import com.beaconculinary.api.reports.ParamOption;
@@ -33,6 +33,7 @@ public class CashierReadingReport implements ReportDefinition {
     private final EndOfDayStatements statements;
     private final EndOfDayFacts endOfDayFacts;
     private final Clock clock;
+    private final SiteLocale siteLocale;
 
     @Override
     public String key() {
@@ -67,16 +68,16 @@ public class CashierReadingReport implements ReportDefinition {
     /** Shifts from the last 14 trading days, newest first: "Mon 5 Oct · Sipho N. · 11:05–15:00". */
     @Override
     public List<ReportParamSpec> params() {
-        var since = LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE).minusDays(OPTION_DAYS - 1);
+        var since = siteLocale.businessDate(clock.instant()).minusDays(OPTION_DAYS - 1);
         var options = endOfDayFacts.shiftsSince(since).stream()
                 .map(shift -> ParamOption.of(shift.shiftId(), label(shift)))
                 .toList();
         return List.of(ReportParamSpec.requiredId("shiftId", "Shift", options));
     }
 
-    private static String label(EndOfDayFacts.ShiftOption shift) {
-        var opened = shift.openedAt().atZone(ClockConfig.BUSINESS_ZONE);
-        var closed = shift.closedAt() == null ? "open" : TIME.format(shift.closedAt().atZone(ClockConfig.BUSINESS_ZONE));
+    private String label(EndOfDayFacts.ShiftOption shift) {
+        var opened = shift.openedAt().atZone(siteLocale.zone());
+        var closed = shift.closedAt() == null ? "open" : TIME.format(shift.closedAt().atZone(siteLocale.zone()));
         return DAY.format(opened) + " · " + shift.ownerName() + " · " + TIME.format(opened) + "–" + closed;
     }
 

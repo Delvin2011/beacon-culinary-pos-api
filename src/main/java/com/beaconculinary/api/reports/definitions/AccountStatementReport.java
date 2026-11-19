@@ -1,7 +1,7 @@
 package com.beaconculinary.api.reports.definitions;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.reports.AccountFacts;
 import com.beaconculinary.api.reports.AccountFacts.AccountBalance;
 import com.beaconculinary.api.reports.ColumnTotal;
@@ -33,6 +33,7 @@ public class AccountStatementReport implements ReportDefinition {
             "OPENING", "neutral", "CHARGE", "warning", "CREDIT", "positive", "PAYMENT", "positive");
 
     private final AccountFacts accountFacts;
+    private final SiteLocale siteLocale;
 
     @Override
     public String key() {
@@ -99,7 +100,7 @@ public class AccountStatementReport implements ReportDefinition {
 
         var balance = ReportValues.money(accountFacts.openingBalance(accountId, range));
         var rows = new ArrayList<Map<String, Object>>();
-        rows.add(row(range.from().atStartOfDay(ClockConfig.BUSINESS_ZONE).toInstant(), "OPENING", null,
+        rows.add(row(siteLocale.startOfDay(range.from()), "OPENING", null,
                 "Opening balance", null, null, null, balance, null));
 
         var charges = BigDecimal.ZERO;

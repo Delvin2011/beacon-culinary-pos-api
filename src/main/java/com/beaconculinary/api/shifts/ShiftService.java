@@ -2,8 +2,8 @@ package com.beaconculinary.api.shifts;
 
 import com.beaconculinary.api.admin.AdminAuthorizationService;
 import com.beaconculinary.api.auth.AuthService;
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.offline.OfflineGrantStore;
 import com.beaconculinary.api.offline.OfflinePending;
 import com.beaconculinary.api.endofday.EndOfDayConflictException;
@@ -33,6 +33,7 @@ public class ShiftService {
     private final AuthService authService;
     private final ShiftMapper shiftMapper;
     private final Clock clock;
+    private final SiteLocale siteLocale;
     private final TradingDayLock tradingDayLock;
     private final ZReadings zReadings;
     private final CurrentTill currentTill;
@@ -53,7 +54,7 @@ public class ShiftService {
         // Reports R3: a shift opens on today's trading day, which may already be closed by a Z.
         // The trading-day lock serialises this with Close Day, so a shift can't slip in while the
         // Z is being built.
-        var tradingDay = LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        var tradingDay = siteLocale.businessDate(clock.instant());
         tradingDayLock.lock(tradingDay);
         var closed = zReadings.forDay(tradingDay);
         if (closed.isPresent()) {

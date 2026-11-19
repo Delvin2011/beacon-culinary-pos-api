@@ -1,6 +1,6 @@
 package com.beaconculinary.api.reports;
 
-import com.beaconculinary.api.common.ClockConfig;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Row;
@@ -33,9 +33,11 @@ public class ReportExporter {
     private static final DateTimeFormatter LOCAL_DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final int maxRows;
+    private final SiteLocale siteLocale;
 
-    public ReportExporter(@Value("${reports.export.max-rows:50000}") int maxRows) {
+    public ReportExporter(@Value("${reports.export.max-rows:50000}") int maxRows, SiteLocale siteLocale) {
         this.maxRows = maxRows;
+        this.siteLocale = siteLocale;
     }
 
     public enum Format {
@@ -94,7 +96,7 @@ public class ReportExporter {
             }
             textCell(sheet.createRow(r++), 0, "Parameters: " + describe(meta.params(), meta.paramLabels()), null);
             textCell(sheet.createRow(r++), 0, "Generated: "
-                    + LOCAL_DATE_TIME.format(LocalDateTime.ofInstant(meta.generatedAt(), ClockConfig.BUSINESS_ZONE))
+                    + LOCAL_DATE_TIME.format(siteLocale.localDateTime(meta.generatedAt()))
                     + " (" + meta.timezone() + ")", null);
             textCell(sheet.createRow(r++), 0, "Amounts include VAT", null);
 
@@ -215,7 +217,7 @@ public class ReportExporter {
             textCell(sheet.createRow(r++), 0, meta.title(), styles.title);
             textCell(sheet.createRow(r++), 0, "Parameters: " + describe(meta.params(), meta.paramLabels()), null);
             textCell(sheet.createRow(r++), 0, "Generated: "
-                    + LOCAL_DATE_TIME.format(LocalDateTime.ofInstant(meta.generatedAt(), ClockConfig.BUSINESS_ZONE))
+                    + LOCAL_DATE_TIME.format(siteLocale.localDateTime(meta.generatedAt()))
                     + " (" + meta.timezone() + ")", null);
             textCell(sheet.createRow(r++), 0, "Amounts include VAT", null);
             r++;
@@ -268,7 +270,7 @@ public class ReportExporter {
                 cell.setCellValue(date);
                 cell.setCellStyle(styles.date(totals));
             } else if (value instanceof Instant instant) {
-                cell.setCellValue(LocalDateTime.ofInstant(instant, ClockConfig.BUSINESS_ZONE));
+                cell.setCellValue(siteLocale.localDateTime(instant));
                 cell.setCellStyle(styles.dateTime(totals));
             } else {
                 cell.setCellValue(value.toString());

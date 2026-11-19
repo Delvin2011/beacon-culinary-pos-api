@@ -1,6 +1,6 @@
 package com.beaconculinary.api.dashboard.sections;
 
-import com.beaconculinary.api.common.ClockConfig;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.dashboard.DashboardCaller;
 import com.beaconculinary.api.dashboard.DashboardFacts;
 import com.beaconculinary.api.offline.exceptions.SaleExceptionStore;
@@ -51,6 +51,7 @@ public class AttentionSection implements SectionHandler {
     private final SellThroughSection sellThrough;
     private final LightMealStockSection lightMealStock;
     private final SaleExceptionStore saleExceptions;
+    private final SiteLocale siteLocale;
 
     @Override
     public DashboardSection section() {
@@ -138,7 +139,7 @@ public class AttentionSection implements SectionHandler {
             var from = shift.tradingDay().equals(today.minusDays(1)) ? "yesterday" : DashboardFormat.day(shift.tradingDay());
             items.add(new Item("OVERDUE_SHIFT", "AMBER", "Shift",
                     DashboardFormat.shortName(shift.ownerName()) + "’s shift is still open from " + from,
-                    "Opened " + DashboardFormat.day(shift.tradingDay()) + " at " + DashboardFormat.time(shift.openedAtUtc())
+                    "Opened " + DashboardFormat.day(shift.tradingDay()) + " at " + DashboardFormat.time(shift.openedAtUtc(), siteLocale.zone())
                             + ". No new shift can start until it is closed.",
                     "Open POS Activity", "/pos-activity", null, DashboardFormat.instant(shift.openedAtUtc())));
         }
@@ -210,10 +211,10 @@ public class AttentionSection implements SectionHandler {
         var oldest = own.get(0);
         var title = own.size() == 1 ? "Your " + kindLabel(oldest) + " is waiting for approval"
                 : own.size() + " of your requests are waiting for approval";
-        var sent = DashboardFormat.local(oldest.requestedAtUtc());
+        var sent = DashboardFormat.local(oldest.requestedAtUtc(), siteLocale.zone());
         items.add(new Item("OWN_REQUESTS_WAITING", "BLUE", "Stock", title,
                 (own.size() == 1 ? "Sent " : "The oldest was sent ") + DashboardFormat.day(sent.toLocalDate()) + " at "
-                        + DashboardFormat.time(oldest.requestedAtUtc()) + ".",
+                        + DashboardFormat.time(oldest.requestedAtUtc(), siteLocale.zone()) + ".",
                 "View my requests", "/stock/requests", own.size(), DashboardFormat.instant(oldest.requestedAtUtc())));
     }
 
@@ -260,14 +261,14 @@ public class AttentionSection implements SectionHandler {
             return;
         }
         var latest = shifts.get(0);
-        var closed = latest.closedAtUtc() == null ? latest.tradingDay() : DashboardFormat.local(latest.closedAtUtc()).toLocalDate();
+        var closed = latest.closedAtUtc() == null ? latest.tradingDay() : DashboardFormat.local(latest.closedAtUtc(), siteLocale.zone()).toLocalDate();
         items.add(new Item("CASH_VARIANCE", "NEUTRAL", "Cash",
-                "Cash variance of " + DashboardFormat.rand(latest.variance()) + " on "
+                "Cash variance of " + siteLocale.formatMoney(latest.variance()) + " on "
                         + DashboardFormat.shortName(latest.ownerName()) + "’s shift",
                 "Closed " + DashboardFormat.day(closed)
-                        + (latest.closedAtUtc() == null ? "" : " at " + DashboardFormat.time(latest.closedAtUtc())) + ". "
+                        + (latest.closedAtUtc() == null ? "" : " at " + DashboardFormat.time(latest.closedAtUtc(), siteLocale.zone())) + ". "
                         + DashboardFormat.count(shifts.size(), "shift", "shifts") + " in the last 7 trading days had a variance of "
-                        + DashboardFormat.rand(threshold) + " or more.",
+                        + siteLocale.formatMoney(threshold) + " or more.",
                 "Open Cash-up & Variance", "/reports/cash-up-variance", shifts.size(),
                 latest.closedAtUtc() == null ? null : DashboardFormat.instant(latest.closedAtUtc())));
     }
@@ -299,8 +300,8 @@ public class AttentionSection implements SectionHandler {
         return values.size() > 3 ? text + " and " + (values.size() - 3) + " more" : text;
     }
 
-    private static Instant startOf(LocalDate day) {
-        return day.atStartOfDay(ClockConfig.BUSINESS_ZONE).toInstant();
+    private Instant startOf(LocalDate day) {
+        return siteLocale.startOfDay(day);
     }
 
     /** "45 min", "3 h 10 min", "2 days". */

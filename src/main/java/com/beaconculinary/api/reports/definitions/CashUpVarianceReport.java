@@ -1,7 +1,7 @@
 package com.beaconculinary.api.reports.definitions;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.endofday.CloseDaySettings;
 import com.beaconculinary.api.endofday.ShiftSignoffs;
 import com.beaconculinary.api.reports.CheckStatus;
@@ -46,6 +46,7 @@ public class CashUpVarianceReport implements ReportDefinition {
     private final ReportFacts facts;
     private final ShiftCashFigures shiftCashFigures;
     private final Clock clock;
+    private final SiteLocale siteLocale;
     private final ShiftSignoffs signoffs;
     private final CloseDaySettings closeDaySettings;
 
@@ -122,7 +123,7 @@ public class CashUpVarianceReport implements ReportDefinition {
                 : allShifts;
         var figures = shiftCashFigures.figures(shifts);
         var complimentaryByShift = facts.complimentaryByShift(range);
-        var today = LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        var today = siteLocale.businessDate(clock.instant());
 
         var columns = List.of(
                 ReportColumn.of("tradingDay", "Trading day", ColumnType.DATE, ColumnTotal.LABEL),

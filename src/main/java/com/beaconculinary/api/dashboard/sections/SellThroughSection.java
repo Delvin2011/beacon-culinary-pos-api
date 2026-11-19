@@ -1,5 +1,6 @@
 package com.beaconculinary.api.dashboard.sections;
 
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.dashboard.DashboardFacts;
 import com.beaconculinary.api.dashboard.DashboardFormat;
 import com.beaconculinary.api.dashboard.DashboardSection;
@@ -30,6 +31,7 @@ public class SellThroughSection implements SectionHandler {
     private final DashboardFacts dashboardFacts;
     private final TradingCalendar calendar;
     private final DashboardSettings settings;
+    private final SiteLocale siteLocale;
 
     @Override
     public DashboardSection section() {
@@ -78,7 +80,7 @@ public class SellThroughSection implements SectionHandler {
             var total = sold.merge(key, units.units(), Long::sum);
             var target = planned.get(key);
             if (target != null && target > 0 && total >= target && !soldOutAt.containsKey(key)) {
-                soldOutAt.put(key, DashboardFormat.time(units.createdAtUtc()));
+                soldOutAt.put(key, DashboardFormat.time(units.createdAtUtc(), siteLocale.zone()));
             }
         }
 

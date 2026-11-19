@@ -2,8 +2,8 @@ package com.beaconculinary.api.offline.sync;
 
 import com.beaconculinary.api.accounts.AccountRepository;
 import com.beaconculinary.api.common.AppLock;
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.endofday.ZReadings;
 import com.beaconculinary.api.inventory.LightMealStockService;
 import com.beaconculinary.api.inventory.VatSettings;
@@ -87,6 +87,7 @@ public class OfflineSaleRecorder {
     private final AppLock appLock;
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final SiteLocale siteLocale;
 
     public OfflineSaleRecorder(OrderRepository orderRepository, OrderMapper orderMapper,
                                OrderNumberAllocator orderNumberAllocator, OrderStatusEventRepository statusEvents,
@@ -95,7 +96,7 @@ public class OfflineSaleRecorder {
                                DailyComponentStockRepository stockRepository, LightMealStockService lightMealStockService,
                                ZReadings zReadings, VatSettings vatSettings, OfflineProperties properties,
                                OfflineSequenceStore sequences, SaleExceptionStore exceptions, AppLock appLock,
-                               JdbcTemplate jdbc, ObjectMapper objectMapper) {
+                               JdbcTemplate jdbc, ObjectMapper objectMapper, SiteLocale siteLocale) {
         this.orderRepository = orderRepository;
         this.orderMapper = orderMapper;
         this.orderNumberAllocator = orderNumberAllocator;
@@ -114,6 +115,7 @@ public class OfflineSaleRecorder {
         this.appLock = appLock;
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.siteLocale = siteLocale;
     }
 
     /** Where the batch came from and when it arrived. */
@@ -145,7 +147,7 @@ public class OfflineSaleRecorder {
         var cashier = userRepository.findById(grant.cashierId()).orElseThrow();
         var soldAt = sale.soldAt();
         var soldAtUtc = UtcTimestamps.toUtc(soldAt);
-        var saleDay = LocalDate.ofInstant(soldAt, ClockConfig.BUSINESS_ZONE);
+        var saleDay = siteLocale.businessDate(soldAt);
 
         checkTimes(sale, grant, context, flags);
         if (context.deviceRevoked()) {
@@ -263,7 +265,7 @@ public class OfflineSaleRecorder {
 
     /** Builds the lines as charged; returns what they add up to (lines and extras). */
     private BigDecimal lines(Sale sale, LocalDate saleDay, Instant soldAt, Order order, List<Flag> flags) {
-        var soldAtLocal = soldAt.atZone(ClockConfig.BUSINESS_ZONE).toLocalTime();
+        var soldAtLocal = soldAt.atZone(siteLocale.zone()).toLocalTime();
         var total = BigDecimal.ZERO;
         for (int i = 0; i < sale.lines().size(); i++) {
             var input = sale.lines().get(i);
@@ -495,7 +497,7 @@ public class OfflineSaleRecorder {
             existing.setCollectionNumber(sale.collectionNumber());
             orderRepository.save(existing);
             if (sale.offlineSeq() != null) {
-                sequences.recordSeen(grant.deviceId(), LocalDate.ofInstant(sale.soldAt(), ClockConfig.BUSINESS_ZONE),
+                sequences.recordSeen(grant.deviceId(), siteLocale.businessDate(sale.soldAt()),
                         sale.offlineSeq(), LocalDateTime.ofInstant(Instant.now(), java.time.ZoneOffset.UTC));
             }
         }

@@ -1,10 +1,10 @@
 package com.beaconculinary.api.shifts;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.endofday.DayCloseRules;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
+import com.beaconculinary.api.support.TestLocale;
 import com.beaconculinary.api.support.TestStaffCleanup;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -214,7 +214,7 @@ class O2ForceCloseIntegrationTests {
     @Test
     void closeDay_blocksAnUncountedShift_untilItsNoCountIsConfirmed() throws Exception {
         var shiftId = uncountedShift();
-        var day = LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        var day = LocalDate.ofInstant(clock.instant(), TestLocale.ZONE);
 
         var before = dayCloseRules.blockers(day).stream().filter(b -> Long.valueOf(shiftId).equals(b.shiftId())).toList();
         assertThat(before).extracting(DayCloseRules.Blocker::code).containsExactly("SHIFT_NOT_SIGNED_OFF");

@@ -2,8 +2,8 @@ package com.beaconculinary.api.endofday;
 
 import com.beaconculinary.api.auth.AuthService;
 import com.beaconculinary.api.auth.RecentPasswordCheck;
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.shifts.ShiftCashCount;
 import com.beaconculinary.api.shifts.ShiftCashCountEvents;
 import com.beaconculinary.api.shifts.ShiftNotFoundException;
@@ -37,6 +37,7 @@ public class ShiftSignoffService {
     private final RecentPasswordCheck recentPasswordCheck;
     private final ShiftCashCountEvents cashCountEvents;
     private final Clock clock;
+    private final SiteLocale siteLocale;
 
     public record SignoffDto(long shiftId, boolean signedOff, String by, java.time.Instant at, String note) {
     }
@@ -102,8 +103,8 @@ public class ShiftSignoffService {
         return new SignoffDto(shiftId, state.signedOff(), state.byName(), state.at(), state.note());
     }
 
-    static LocalDate tradingDay(java.time.LocalDateTime openedAtUtc) {
-        return LocalDate.ofInstant(UtcTimestamps.toInstant(openedAtUtc), ClockConfig.BUSINESS_ZONE);
+    LocalDate tradingDay(java.time.LocalDateTime openedAtUtc) {
+        return siteLocale.businessDate(UtcTimestamps.toInstant(openedAtUtc));
     }
 
     private static String blankToNull(String value) {

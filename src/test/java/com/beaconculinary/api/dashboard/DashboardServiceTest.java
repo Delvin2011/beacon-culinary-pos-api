@@ -1,6 +1,7 @@
 package com.beaconculinary.api.dashboard;
 
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.support.TestLocale;
 import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.User;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,7 +61,8 @@ class DashboardServiceTest {
         when(auth.getCurrentUser()).thenAnswer(invocation -> user);
         var transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
-        service = new DashboardService(handlers, settings, new DashboardCache(clock, settings), auth, clock, transactions);
+        service = new DashboardService(handlers, settings, new DashboardCache(clock, settings), auth, clock,
+                TestLocale.SITE, transactions);
     }
 
     @Test

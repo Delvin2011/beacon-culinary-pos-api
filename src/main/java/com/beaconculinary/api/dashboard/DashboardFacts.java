@@ -1,5 +1,6 @@
 package com.beaconculinary.api.dashboard;
 
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.reports.ReportRange;
 import lombok.AllArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -25,9 +26,10 @@ import java.util.List;
 @AllArgsConstructor
 public class DashboardFacts {
     private final NamedParameterJdbcTemplate jdbc;
+    private final SiteLocale siteLocale;
 
-    private static MapSqlParameterSource range(ReportRange range) {
-        return new MapSqlParameterSource().addValue("from", range.fromUtc()).addValue("to", range.toUtcExclusive());
+    private MapSqlParameterSource range(ReportRange range) {
+        return new MapSqlParameterSource().addValue("from", range.fromUtc(siteLocale)).addValue("to", range.toUtcExclusive(siteLocale));
     }
 
     // --- Sales ---------------------------------------------------------------------------------
@@ -314,7 +316,7 @@ public class DashboardFacts {
                   AND (so.action IS NULL OR so.action <> 'SIGNED_OFF')""";
         if (fromDay != null) {
             sql += " AND s.opened_at >= :fromUtc";
-            params.addValue("fromUtc", TradingCalendar.startUtc(fromDay));
+            params.addValue("fromUtc", ReportRange.startOfDayUtc(fromDay, siteLocale));
         }
         return jdbc.query(sql + " ORDER BY s.closed_at, s.id", params,
                 (rs, i) -> new UnsignedShift(rs.getLong("id"), rs.getString("name"), rs.getObject("trading_day", LocalDate.class),
@@ -323,14 +325,14 @@ public class DashboardFacts {
 
     /** Trading days before a day (and from a day on, when set) with no Z reading, oldest first. */
     public List<LocalDate> unclosedDays(LocalDate before, LocalDate fromDay, Timestamp nowUtc) {
-        var params = new MapSqlParameterSource().addValue("before", TradingCalendar.startUtc(before)).addValue("now", nowUtc);
+        var params = new MapSqlParameterSource().addValue("before", ReportRange.startOfDayUtc(before, siteLocale)).addValue("now", nowUtc);
         var sql = """
                 SELECT DISTINCT sf.trading_day FROM v_shift_facts sf
                 WHERE sf.opened_at_utc < :before AND sf.opened_at_utc <= :now
                   AND NOT EXISTS (SELECT 1 FROM z_readings z WHERE z.trading_day = sf.trading_day)""";
         if (fromDay != null) {
             sql += " AND sf.opened_at_utc >= :fromUtc";
-            params.addValue("fromUtc", TradingCalendar.startUtc(fromDay));
+            params.addValue("fromUtc", ReportRange.startOfDayUtc(fromDay, siteLocale));
         }
         return jdbc.queryForList(sql + " ORDER BY sf.trading_day", params, java.sql.Date.class).stream()
                 .map(java.sql.Date::toLocalDate).toList();

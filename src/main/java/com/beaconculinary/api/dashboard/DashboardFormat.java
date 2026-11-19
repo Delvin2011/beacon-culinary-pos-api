@@ -1,6 +1,5 @@
 package com.beaconculinary.api.dashboard;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
 
 import java.math.BigDecimal;
@@ -8,6 +7,7 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
@@ -17,7 +17,8 @@ import java.util.Locale;
 import java.util.stream.IntStream;
 
 /** Numbers and labels as the dashboard shows them. Money stays a 2-decimal number in JSON; only
- * the human-readable "secondary" lines use the rand format ("R 1 240,00"). */
+ * the human-readable "secondary" lines are money text, from SiteLocale.formatMoney ("R 1 240,00").
+ * Local times take the business zone from SiteLocale. */
 public final class DashboardFormat {
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH);
@@ -29,23 +30,6 @@ public final class DashboardFormat {
 
     public static BigDecimal money(BigDecimal value) {
         return (value == null ? BigDecimal.ZERO : value).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    /** "R 1 240,00" (South African style: space thousands, comma decimals). */
-    public static String rand(BigDecimal value) {
-        var amount = money(value);
-        var negative = amount.signum() < 0;
-        var digits = amount.abs().toPlainString();
-        var whole = digits.substring(0, digits.indexOf('.'));
-        var cents = digits.substring(digits.indexOf('.') + 1);
-        var grouped = new StringBuilder();
-        for (int i = 0; i < whole.length(); i++) {
-            if (i > 0 && (whole.length() - i) % 3 == 0) {
-                grouped.append(' ');
-            }
-            grouped.append(whole.charAt(i));
-        }
-        return (negative ? "-R " : "R ") + grouped + "," + cents;
     }
 
     /** a ÷ b × 100 to one decimal; null when b is zero. */
@@ -117,13 +101,14 @@ public final class DashboardFormat {
         return day.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH);
     }
 
-    /** Johannesburg "HH:mm" of a stored UTC value. */
-    public static String time(LocalDateTime utc) {
-        return utc == null ? null : TIME.format(local(utc));
+    /** "HH:mm" in the business zone of a stored UTC value. */
+    public static String time(LocalDateTime utc, ZoneId zone) {
+        return utc == null ? null : TIME.format(local(utc, zone));
     }
 
-    public static LocalDateTime local(LocalDateTime utc) {
-        return LocalDateTime.ofInstant(UtcTimestamps.toInstant(utc), ClockConfig.BUSINESS_ZONE);
+    /** A stored UTC value as a local date-time in the business zone. */
+    public static LocalDateTime local(LocalDateTime utc, ZoneId zone) {
+        return LocalDateTime.ofInstant(UtcTimestamps.toInstant(utc), zone);
     }
 
     public static Instant instant(LocalDateTime utc) {

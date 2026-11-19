@@ -10,8 +10,8 @@ import java.time.Duration;
 
 /**
  * Deletes login_attempts rows older than {@code retention-days} (decision D5), in batches so a large
- * backlog never holds a long lock. Runs daily at 03:30 business time. With more than one app
- * instance every instance runs it; the delete is idempotent, so that is harmless.
+ * backlog never holds a long lock. Runs daily at 03:30 business time (site.time-zone). With more
+ * than one app instance every instance runs it; the delete is idempotent, so that is harmless.
  */
 @Slf4j
 @Component
@@ -28,7 +28,7 @@ public class LoginAttemptRetentionJob {
         this.clock = clock;
     }
 
-    @Scheduled(cron = "${security.login-protection.retention-cron:0 30 3 * * *}", zone = "Africa/Johannesburg")
+    @Scheduled(cron = "${security.login-protection.retention-cron:0 30 3 * * *}", zone = "${site.time-zone:Africa/Johannesburg}")
     public void scheduledPurge() {
         try {
             var deleted = purge();

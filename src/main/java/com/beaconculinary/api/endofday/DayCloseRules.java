@@ -1,7 +1,7 @@
 package com.beaconculinary.api.endofday;
 
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.offline.OfflinePending;
-import com.beaconculinary.api.common.ClockConfig;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -30,15 +30,17 @@ public class DayCloseRules {
     private final Clock clock;
     private final LocalDate firstTradingDay;
     private final OfflinePending offlinePending;
+    private final SiteLocale siteLocale;
 
     public DayCloseRules(NamedParameterJdbcTemplate jdbc, ShiftSignoffs signoffs, ZReadings zReadings, Clock clock,
-                         CloseDaySettings settings, OfflinePending offlinePending) {
+                         CloseDaySettings settings, OfflinePending offlinePending, SiteLocale siteLocale) {
         this.jdbc = jdbc;
         this.signoffs = signoffs;
         this.zReadings = zReadings;
         this.clock = clock;
         this.firstTradingDay = settings.firstTradingDay();
         this.offlinePending = offlinePending;
+        this.siteLocale = siteLocale;
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -83,7 +85,7 @@ public class DayCloseRules {
                     null, tradingDay, z.zNumber()));
             return blockers;
         }
-        var today = LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        var today = siteLocale.businessDate(clock.instant());
         if (tradingDay.isAfter(today)) {
             blockers.add(new Blocker("DAY_IN_FUTURE", "This day hasn't happened yet.", null, tradingDay, null));
             return blockers;
@@ -118,7 +120,7 @@ public class DayCloseRules {
         // O3: a till that reported unsynced sales for this day blocks it, even if it has gone silent since.
         for (var till : offlinePending.forDay(tradingDay)) {
             blockers.add(new Blocker(OFFLINE_SALES_PENDING, till.label() + " has " + till.pendingCount() + " unsynced "
-                    + OfflinePending.sales(till.pendingCount()) + " for this day (" + till.lastReportText() + ").",
+                    + OfflinePending.sales(till.pendingCount()) + " for this day (" + till.lastReportText(siteLocale.zone()) + ").",
                     null, tradingDay, null, till.tillCode()));
         }
         for (var earlier : unclosedEarlierDays(tradingDay)) {

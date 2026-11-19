@@ -1,6 +1,5 @@
 package com.beaconculinary.api.support;
 
-import com.beaconculinary.api.common.ClockConfig;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
@@ -292,7 +291,7 @@ public final class ReportFixture {
 
     /** The stored UTC value for a Johannesburg local date and time. */
     public static Timestamp utc(LocalDate day, int hour, int minute) {
-        return Timestamp.valueOf(day.atTime(hour, minute).atZone(ClockConfig.BUSINESS_ZONE)
+        return Timestamp.valueOf(day.atTime(hour, minute).atZone(TestLocale.ZONE)
                 .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime());
     }
 

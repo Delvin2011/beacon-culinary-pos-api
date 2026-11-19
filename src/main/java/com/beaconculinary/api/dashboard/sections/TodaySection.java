@@ -1,5 +1,6 @@
 package com.beaconculinary.api.dashboard.sections;
 
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.dashboard.DashboardFacts;
 import com.beaconculinary.api.dashboard.DashboardFormat;
 import com.beaconculinary.api.dashboard.DashboardSection;
@@ -35,6 +36,7 @@ public class TodaySection implements SectionHandler {
     private final TradingCalendar calendar;
     private final DashboardSettings settings;
     private final ZReadings zReadings;
+    private final SiteLocale siteLocale;
 
     @Override
     public DashboardSection section() {
@@ -68,7 +70,7 @@ public class TodaySection implements SectionHandler {
         if (settings.enabled(Feature.COMPLIMENTARY)) {
             var complimentary = facts.complimentaryTotals(range);
             tiles.add(tile("complimentary", "Complimentary", complimentary.orders(), "COUNT",
-                    DashboardFormat.rand(complimentary.value()) + " at list price", null, "NEUTRAL"));
+                    siteLocale.formatMoney(complimentary.value()) + " at list price", null, "NEUTRAL"));
         }
         tiles.add(tile("discounts", "Discounts at sale", money(sales.discountsAtSale()), "MONEY",
                 DashboardFormat.count(dashboardFacts.discountedOrders(range), "order", "orders"), null, "NEUTRAL"));

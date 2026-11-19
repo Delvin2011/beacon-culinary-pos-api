@@ -1,7 +1,6 @@
 package com.beaconculinary.api.reports;
 
 import com.beaconculinary.api.admin.AuthorizationTokenRepository;
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.endofday.DayCloseRules;
 import com.beaconculinary.api.inventory.RecipeRepository;
 import com.beaconculinary.api.menu.ComponentCatalogRepository;
@@ -17,6 +16,7 @@ import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
 import com.beaconculinary.api.support.MutableClock;
 import com.beaconculinary.api.support.PosFlowHelper;
+import com.beaconculinary.api.support.TestLocale;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
@@ -249,7 +249,7 @@ class O2TillReportsIntegrationTests {
     // ---- helpers ----
 
     private LocalDate today() {
-        return LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        return LocalDate.ofInstant(clock.instant(), TestLocale.ZONE);
     }
 
     private Till registerTill() throws Exception {

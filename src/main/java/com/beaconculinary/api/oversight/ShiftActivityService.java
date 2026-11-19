@@ -1,7 +1,7 @@
 package com.beaconculinary.api.oversight;
 
-import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.orders.Order;
 import com.beaconculinary.api.orders.OrderAdjustment;
 import com.beaconculinary.api.orders.OrderAdjustmentRepository;
@@ -62,6 +62,7 @@ public class ShiftActivityService {
     private final OrderAdjustmentRepository orderAdjustmentRepository;
     private final ShiftCashCalculator shiftCashCalculator;
     private final Clock clock;
+    private final SiteLocale siteLocale;
 
     @Transactional(readOnly = true)
     public PageDto<ShiftListRowDto> listShifts(LocalDate from, LocalDate to, Long ownerId,
@@ -165,7 +166,7 @@ public class ShiftActivityService {
         if (shift.getStatus() == ShiftStatus.CLOSED) {
             return ShiftDisplayStatus.CLOSED;
         }
-        var openedOn = LocalDate.ofInstant(UtcTimestamps.toInstant(shift.getOpenedAt()), ClockConfig.BUSINESS_ZONE);
+        var openedOn = siteLocale.businessDate(UtcTimestamps.toInstant(shift.getOpenedAt()));
         return openedOn.isBefore(today) ? ShiftDisplayStatus.OVERDUE : ShiftDisplayStatus.ON_SHIFT;
     }
 
@@ -283,12 +284,12 @@ public class ShiftActivityService {
     }
 
     private LocalDate today() {
-        return LocalDate.ofInstant(clock.instant(), ClockConfig.BUSINESS_ZONE);
+        return siteLocale.businessDate(clock.instant());
     }
 
     /** The UTC wall-clock value (as stored in opened_at) at which a Johannesburg calendar day starts. */
-    private static LocalDateTime startOfDayUtc(LocalDate businessDay) {
-        return UtcTimestamps.toUtc(businessDay.atStartOfDay(ClockConfig.BUSINESS_ZONE).toInstant());
+    private LocalDateTime startOfDayUtc(LocalDate businessDay) {
+        return UtcTimestamps.toUtc(siteLocale.startOfDay(businessDay));
     }
 
     private static Specification<Shift> openedOnOrAfter(LocalDateTime utc) {
