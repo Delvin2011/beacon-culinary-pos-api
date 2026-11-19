@@ -1,5 +1,6 @@
 package com.beaconculinary.api.endofday;
 
+import com.beaconculinary.api.offline.OfflinePending;
 import com.beaconculinary.api.common.ClockConfig;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -20,23 +21,32 @@ import java.util.List;
  */
 @Component
 public class DayCloseRules {
+    /** O3: a till reported unsynced offline sales for the day (contract 10.3). */
+    public static final String OFFLINE_SALES_PENDING = "OFFLINE_SALES_PENDING";
+
     private final NamedParameterJdbcTemplate jdbc;
     private final ShiftSignoffs signoffs;
     private final ZReadings zReadings;
     private final Clock clock;
     private final LocalDate firstTradingDay;
+    private final OfflinePending offlinePending;
 
     public DayCloseRules(NamedParameterJdbcTemplate jdbc, ShiftSignoffs signoffs, ZReadings zReadings, Clock clock,
-                         CloseDaySettings settings) {
+                         CloseDaySettings settings, OfflinePending offlinePending) {
         this.jdbc = jdbc;
         this.signoffs = signoffs;
         this.zReadings = zReadings;
         this.clock = clock;
         this.firstTradingDay = settings.firstTradingDay();
+        this.offlinePending = offlinePending;
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record Blocker(String code, String message, Long shiftId, LocalDate date, Integer zNumber) {
+    public record Blocker(String code, String message, Long shiftId, LocalDate date, Integer zNumber, String tillCode) {
+        /** The blockers before O3, which name no till. */
+        public Blocker(String code, String message, Long shiftId, LocalDate date, Integer zNumber) {
+            this(code, message, shiftId, date, zNumber, null);
+        }
     }
 
     /** A shift that opened on a trading day, with its owner. */
@@ -105,11 +115,22 @@ public class DayCloseRules {
                         null, null));
             }
         }
+        // O3: a till that reported unsynced sales for this day blocks it, even if it has gone silent since.
+        for (var till : offlinePending.forDay(tradingDay)) {
+            blockers.add(new Blocker(OFFLINE_SALES_PENDING, till.label() + " has " + till.pendingCount() + " unsynced "
+                    + OfflinePending.sales(till.pendingCount()) + " for this day (" + till.lastReportText() + ").",
+                    null, tradingDay, null, till.tillCode()));
+        }
         for (var earlier : unclosedEarlierDays(tradingDay)) {
             blockers.add(new Blocker("PREVIOUS_DAY_NOT_CLOSED", "The earlier trading day " + earlier + " is not closed yet.",
                     null, earlier, null));
         }
         return blockers;
+    }
+
+    /** O3: the tills with unsynced sales for the day, as the OFFLINE_SALES_PENDING blockers name them. */
+    public List<OfflinePending.TillPending> offlinePending(LocalDate tradingDay) {
+        return offlinePending.forDay(tradingDay);
     }
 
     /** Earlier trading days with shifts (from the first trading day, when set) that have no Z. */

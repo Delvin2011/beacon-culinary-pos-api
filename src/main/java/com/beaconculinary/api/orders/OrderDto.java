@@ -3,6 +3,7 @@ package com.beaconculinary.api.orders;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -11,8 +12,14 @@ import java.util.List;
 public class OrderDto {
     private Long id;
     private Integer orderNumber;
-    // O2b: the receipt's unique serial, yyyyMMdd-NNNN (ReceiptNumbers); derived, on every order.
+    // O2b: the receipt's unique serial, yyyyMMdd-NNNN (ReceiptNumbers); for an offline sale (O4) the
+    // till's own receipt number, as printed on the customer's slip.
     private String receiptNumber;
+    // O4: offline sales only (null / false otherwise).
+    private boolean recordedOffline;
+    private Instant soldAt;
+    private String collectionNumber;
+    private LocalDate bookedTradingDay;
     private LocalDate orderDate;
     private Long shiftId;
     // O2: the till the sale was rung up on (its shift's code); null for the unregistered till and sales before O2.

@@ -3,6 +3,7 @@ package com.beaconculinary.api.dashboard.sections;
 import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.dashboard.DashboardCaller;
 import com.beaconculinary.api.dashboard.DashboardFacts;
+import com.beaconculinary.api.offline.exceptions.SaleExceptionStore;
 import com.beaconculinary.api.dashboard.DashboardFacts.PendingApproval;
 import com.beaconculinary.api.dashboard.DashboardFormat;
 import com.beaconculinary.api.dashboard.DashboardPermission;
@@ -49,6 +50,7 @@ public class AttentionSection implements SectionHandler {
     private final CloseDaySettings closeDaySettings;
     private final SellThroughSection sellThrough;
     private final LightMealStockSection lightMealStock;
+    private final SaleExceptionStore saleExceptions;
 
     @Override
     public DashboardSection section() {
@@ -97,6 +99,9 @@ public class AttentionSection implements SectionHandler {
         if (caller.has(DashboardPermission.REPORTS_CASH)) {
             cashVariance(items);
         }
+        if (caller.has(DashboardPermission.RUN_EOD)) {
+            offlineExceptions(items);
+        }
         if (caller.has(DashboardPermission.DAILY_PLANNING) && settings.enabled(Feature.REPORT_DEFINITIONS)) {
             slowPlannedMeals(items);
         }
@@ -108,6 +113,18 @@ public class AttentionSection implements SectionHandler {
         data.put("items", items.stream().limit(LIMIT).map(Item::toMap).toList());
         data.put("moreCount", Math.max(0, items.size() - LIMIT));
         return new Result(data, null);
+    }
+
+    /** O4: open REVIEW exceptions on offline sales, since the oldest. */
+    private void offlineExceptions(List<Item> items) {
+        var open = saleExceptions.openReviewSummary();
+        if (open.count() == 0) {
+            return;
+        }
+        items.add(new Item("OFFLINE_EXCEPTIONS", "AMBER", "Offline",
+                open.count() + " offline sale " + (open.count() == 1 ? "exception" : "exceptions") + " to review",
+                "Sales recorded while a till was offline need a manager's check.",
+                "Review exceptions", "/sale-exceptions", open.count(), DashboardFormat.instant(open.oldest())));
     }
 
     /** A shift still open that opened on an earlier trading day. */

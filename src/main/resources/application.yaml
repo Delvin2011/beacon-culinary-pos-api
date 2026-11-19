@@ -49,6 +49,21 @@ pos:
   session:
     idle-lock-minutes: ${POS_SESSION_IDLELOCKMINUTES:5}
     idle-expiry-minutes: ${POS_SESSION_IDLEEXPIRYMINUTES:30}
+  # O3 offline foundation (OfflineProperties): docs/2026-11-17-o3-offline-foundation-api-contract.md section 2.
+  # grant-signing-key: Base64, at least 32 bytes, required when enabled; a dedicated secret, never JWT_SECRET.
+  offline:
+    enabled: ${POS_OFFLINE_ENABLED:false}
+    max-offline-hours: ${POS_OFFLINE_MAXOFFLINEHOURS:6}
+    warn-offline-hours: ${POS_OFFLINE_WARNOFFLINEHOURS:5}
+    accounts-enabled: ${POS_OFFLINE_ACCOUNTSENABLED:true}
+    account-cap: ${POS_OFFLINE_ACCOUNTCAP:150.00}
+    grant-max-hours: ${POS_OFFLINE_GRANTMAXHOURS:18}
+    status-stale-minutes: ${POS_OFFLINE_STATUSSTALEMINUTES:10}
+    grant-signing-key: ${POS_OFFLINE_GRANTSIGNINGKEY:}
+    grant-key-id: ${POS_OFFLINE_GRANTKEYID:k1}
+    # O4: optional previous key, verify-only, for rotating grant-signing-key without refusing older grants.
+    grant-previous-signing-key: ${POS_OFFLINE_GRANTPREVIOUSSIGNINGKEY:}
+    grant-previous-key-id: ${POS_OFFLINE_GRANTPREVIOUSKEYID:}
 
 # GRV VAT handling: the standard VAT rate, snapshotted onto every GRV line.
 vat:

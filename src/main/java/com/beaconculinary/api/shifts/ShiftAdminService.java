@@ -3,6 +3,7 @@ package com.beaconculinary.api.shifts;
 import com.beaconculinary.api.auth.RecentPasswordCheck;
 import com.beaconculinary.api.common.ClockConfig;
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.offline.OfflineGrantStore;
 import com.beaconculinary.api.endofday.EndOfDayConflictException;
 import com.beaconculinary.api.endofday.ShiftSignoffs;
 import com.beaconculinary.api.endofday.TradingDayLock;
@@ -36,11 +37,13 @@ public class ShiftAdminService {
     private final TradingDayLock tradingDayLock;
     private final ZReadings zReadings;
     private final ShiftSignoffs signoffs;
+    private final OfflineGrantStore offlineGrants;
     private final Clock clock;
 
     public ShiftAdminService(ShiftRepository shiftRepository, ShiftCashCalculator shiftCashCalculator, ShiftMapper shiftMapper,
                              ShiftCashCountEvents events, SessionStore sessionStore, RecentPasswordCheck recentPasswordCheck,
-                             TradingDayLock tradingDayLock, ZReadings zReadings, ShiftSignoffs signoffs, Clock clock) {
+                             TradingDayLock tradingDayLock, ZReadings zReadings, ShiftSignoffs signoffs,
+                             OfflineGrantStore offlineGrants, Clock clock) {
         this.shiftRepository = shiftRepository;
         this.shiftCashCalculator = shiftCashCalculator;
         this.shiftMapper = shiftMapper;
@@ -50,6 +53,7 @@ public class ShiftAdminService {
         this.tradingDayLock = tradingDayLock;
         this.zReadings = zReadings;
         this.signoffs = signoffs;
+        this.offlineGrants = offlineGrants;
         this.clock = clock;
     }
 
@@ -88,6 +92,7 @@ public class ShiftAdminService {
         events.record(shift.getId(), ShiftCashCountEvents.Action.FORCE_CLOSED, counted, breakdown.expectedCash(), variance,
                 shift.getVarianceReasonCode(), reason, admin, now);
         sessionStore.endActivePosOfUser(shift.getCashier().getId(), SessionEndReason.SHIFT_FORCE_CLOSED, now);
+        offlineGrants.revokeForShift(shift.getId(), OfflineGrantStore.RevokeReason.SHIFT_FORCE_CLOSED, now);
         return shiftMapper.toDto(shift);
     }
 

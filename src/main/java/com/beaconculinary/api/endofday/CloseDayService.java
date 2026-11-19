@@ -1,6 +1,8 @@
 package com.beaconculinary.api.endofday;
 
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.auth.RecentPasswordCheck;
+import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.reports.EndOfDayStatements;
 import com.beaconculinary.api.reports.ReportEnvelope;
 import com.beaconculinary.api.reports.ReportFacts;
@@ -8,6 +10,8 @@ import com.beaconculinary.api.reports.ReportParams;
 import com.beaconculinary.api.reports.ReportRange;
 import com.beaconculinary.api.reports.ReportService;
 import com.beaconculinary.api.reports.definitions.ZReadingReport;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,16 +38,46 @@ public class CloseDayService {
     private final ZReadingReport zReadingReport;
     private final AuthService authService;
     private final Clock clock;
+    private final RecentPasswordCheck recentPasswordCheck;
+    private final DayCloseOverrides overrides;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public ReportEnvelope close(LocalDate tradingDay) {
+        return close(tradingDay, null);
+    }
+
+    /** O3: with overrideOfflinePending, OFFLINE_SALES_PENDING is lifted and each overridden till recorded. */
+    @Transactional
+    public ReportEnvelope close(LocalDate tradingDay, CloseDayRequest request) {
+        var overriding = request != null && request.overriding();
+        String reason = null;
+        if (overriding) {
+            recentPasswordCheck.require("close the day with unsynced offline sales");
+            reason = request.reason() == null ? "" : request.reason().strip();
+            if (reason.isEmpty() || reason.length() > 500) {
+                throw new InvalidCloseDayRequestException(Map.of("reason", reason.isEmpty()
+                        ? "A reason is required to close the day with unsynced offline sales."
+                        : "reason must be 500 characters or fewer."));
+            }
+        }
         tradingDayLock.lock(tradingDay);
         var blockers = dayCloseRules.blockers(tradingDay);
-        if (!blockers.isEmpty()) {
-            throw new EndOfDayConflictException("CLOSE_DAY_BLOCKED", "This day can't be closed yet.", blockers, null);
+        var remaining = overriding
+                ? blockers.stream().filter(b -> !DayCloseRules.OFFLINE_SALES_PENDING.equals(b.code())).toList()
+                : blockers;
+        if (!remaining.isEmpty()) {
+            throw new EndOfDayConflictException("CLOSE_DAY_BLOCKED", "This day can't be closed yet.", remaining, null);
         }
 
         var closedBy = authService.getCurrentUser();
+        if (overriding && remaining.size() < blockers.size()) {
+            var at = UtcTimestamps.nowUtc(clock);
+            for (var till : dayCloseRules.offlinePending(tradingDay)) {
+                overrides.insert(tradingDay, DayCloseRules.OFFLINE_SALES_PENDING, reason, json(till.detail()),
+                        closedBy.getId(), closedBy.getName(), at);
+            }
+        }
         var zNumber = zReadings.nextNumber();
         var closedAt = clock.instant();
         var result = statements.dayReading(tradingDay, new EndOfDayStatements.ZContext(zNumber, closedBy.getName(), closedAt));
@@ -53,5 +87,13 @@ public class CloseDayService {
         zReadings.insert(zNumber, tradingDay, closedBy.getId(), closedAt, ZReadingReport.Z_DEFINITION_VERSION,
                 sales.grossSales(), sales.netSales(), zReadingReport.toSnapshot(envelope));
         return envelope;
+    }
+
+    private String json(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Couldn't write the override detail", e);
+        }
     }
 }

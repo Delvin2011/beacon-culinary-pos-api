@@ -20,6 +20,9 @@ public interface DailyMealOptionRepository extends JpaRepository<DailyMealOption
     /** Every option of a day with a status, any period: the full till menu. */
     List<DailyMealOption> findByOptionDateAndStatusOrderById(LocalDate optionDate, DailyPlanItemStatus status);
 
+    /** O3 snapshot: every option of the day, any period and status. */
+    List<DailyMealOption> findByOptionDateOrderById(LocalDate optionDate);
+
     /** The meals that already have their always-on option on a day. */
     @Query("SELECT o.mealCatalog.id FROM DailyMealOption o WHERE o.optionDate = :date AND o.plannedPortions IS NULL")
     List<Long> findAlwaysOnMealIds(@Param("date") LocalDate date);

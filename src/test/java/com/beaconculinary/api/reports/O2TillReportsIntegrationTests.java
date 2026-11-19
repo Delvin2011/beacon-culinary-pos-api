@@ -241,8 +241,9 @@ class O2TillReportsIntegrationTests {
     }
 
     @Test
-    void newZReadings_useDefinitionVersion2() {
-        assertThat(zReading.definitionVersion()).isEqualTo(2);
+    void newZReadings_useTheCurrentDefinitionVersion() {
+        // 2 since O2 (till columns); 3 since O4 (offline sales section).
+        assertThat(zReading.definitionVersion()).isEqualTo(3);
     }
 
     // ---- helpers ----

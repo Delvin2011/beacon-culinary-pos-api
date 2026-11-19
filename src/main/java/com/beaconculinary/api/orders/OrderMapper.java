@@ -9,7 +9,7 @@ import org.mapstruct.Named;
 import java.util.Comparator;
 import java.util.List;
 
-@Mapper(componentModel = "spring", imports = UserRefDto.class)
+@Mapper(componentModel = "spring", imports = {UserRefDto.class, UtcTimestamps.class})
 public interface OrderMapper {
     @Mapping(target = "dailyComponentStockId", source = "dailyComponentStock.id")
     @Mapping(target = "componentName", expression = "java(componentName(extra))")
@@ -29,7 +29,9 @@ public interface OrderMapper {
     OrderPaymentDto toDto(OrderPayment payment);
 
     @Mapping(target = "shiftId", source = "shift.id")
-    @Mapping(target = "receiptNumber", expression = "java(ReceiptNumbers.of(order.getOrderDate(), order.getOrderNumber()))")
+    @Mapping(target = "receiptNumber", expression = "java(order.getOfflineReceiptNumber() != null ? order.getOfflineReceiptNumber()"
+            + " : ReceiptNumbers.of(order.getOrderDate(), order.getOrderNumber()))")
+    @Mapping(target = "soldAt", expression = "java(UtcTimestamps.toInstant(order.getSoldAt()))")
     @Mapping(target = "tillCode", source = "shift.tillCode")
     @Mapping(target = "tillName", source = "shift.tillName")
     @Mapping(target = "cashierId", source = "cashier.id")

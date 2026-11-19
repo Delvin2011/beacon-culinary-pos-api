@@ -22,6 +22,7 @@ import java.util.Map;
 public class ShiftCashFigures {
     private final ShiftCashCalculator shiftCashCalculator;
     private final ReportFacts facts;
+    private final OfflineSalesFacts offlineSales;
 
     public record Figures(BigDecimal cashSales, BigDecimal cashRefunds, BigDecimal expectedCash) {
     }
@@ -61,6 +62,8 @@ public class ShiftCashFigures {
         var shifts = facts.shifts(range, null, null, false);
         var figures = figures(shifts);
         var movement = facts.netCashMovementByShift(range);
+        // O4: late offline cash isn't in a closed shift's snapshot; it's reported on its own line.
+        var late = offlineSales.lateCashByShift(shifts.stream().map(ShiftFacts::shiftId).toList());
 
         var net = BigDecimal.ZERO;
         var expectedMinusFloat = BigDecimal.ZERO;
@@ -74,7 +77,8 @@ public class ShiftCashFigures {
                 legacy++;
                 continue;
             }
-            net = net.add(movement.getOrDefault(shift.shiftId(), BigDecimal.ZERO));
+            var lateCash = late.getOrDefault(shift.shiftId(), OfflineSalesFacts.LateCash.NONE).amount();
+            net = net.add(movement.getOrDefault(shift.shiftId(), BigDecimal.ZERO)).subtract(lateCash);
             expectedMinusFloat = expectedMinusFloat.add(figures.get(shift.shiftId()).expectedCash().subtract(shift.openingFloat()));
         }
         return new Reconciliation(ReportValues.money(net), ReportValues.money(expectedMinusFloat), legacy, open);

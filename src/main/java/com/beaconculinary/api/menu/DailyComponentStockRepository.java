@@ -16,6 +16,9 @@ public interface DailyComponentStockRepository extends JpaRepository<DailyCompon
     List<DailyComponentStock> findByOptionDateAndMealPeriodIdAndStatusOrderById(
             LocalDate optionDate, Long mealPeriodId, DailyPlanItemStatus status);
 
+    /** O3 snapshot: the day's extras of every period with a given status. */
+    List<DailyComponentStock> findByOptionDateAndStatusOrderById(LocalDate optionDate, DailyPlanItemStatus status);
+
     /** Same contract as {@link DailyMealOptionRepository#recordActualPortions}. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("UPDATE DailyComponentStock s SET " +

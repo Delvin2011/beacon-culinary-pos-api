@@ -280,6 +280,26 @@ public class DailyPlanningService {
         return response;
     }
 
+    /** O3 offline snapshot: the day's menu for every period. */
+    public record DayMenu(List<DailyMealOption> options, List<DailyComponentStock> extras) {
+    }
+
+    /**
+     * O3: every option of {@code day} in every period and every status (the till sells only READY ones),
+     * listed and ordered as on the till menu (AlwaysOnMenuService.listed, TILL_ORDER), plus every
+     * period's READY extras. Prices and portions are the entities' own, as on GET /menu/today. Entities
+     * are lazy: call it inside the caller's transaction.
+     */
+    @Transactional(readOnly = true)
+    public DayMenu dayMenu(LocalDate day) {
+        var options = dailyMealOptionRepository.findByOptionDateOrderById(day).stream()
+                .filter(AlwaysOnMenuService::listed)
+                .sorted(TILL_ORDER)
+                .toList();
+        var extras = dailyComponentStockRepository.findByOptionDateAndStatusOrderById(day, DailyPlanItemStatus.READY);
+        return new DayMenu(options, extras);
+    }
+
     private MealPeriod resolvePeriod(String periodName) {
         return mealPeriodRepository.findByNameIgnoreCase(periodName)
                 .orElseThrow(() -> new InvalidMenuRequestException("Unknown meal period: " + periodName));

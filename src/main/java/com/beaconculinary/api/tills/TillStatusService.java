@@ -1,6 +1,7 @@
 package com.beaconculinary.api.tills;
 
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.offline.OfflineProperties;
 import com.beaconculinary.api.sessions.SessionService;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import org.springframework.stereotype.Service;
@@ -13,23 +14,27 @@ public class TillStatusService {
     private final ShiftRepository shiftRepository;
     private final SessionService sessionService;
     private final TillProperties properties;
+    private final OfflineProperties offlineProperties;
 
     public TillStatusService(CurrentTill currentTill, ShiftRepository shiftRepository, SessionService sessionService,
-                             TillProperties properties) {
+                             TillProperties properties, OfflineProperties offlineProperties) {
         this.currentTill = currentTill;
         this.shiftRepository = shiftRepository;
         this.sessionService = sessionService;
         this.properties = properties;
+        this.offlineProperties = offlineProperties;
     }
 
     @Transactional(readOnly = true)
     public TillStatusDto status() {
         var idleLockMinutes = properties.getSession().getIdleLockMinutes();
         var requireRegistered = properties.getTills().isRequireRegistered();
+        var offline = offlineProperties;
         var till = currentTill.resolve();
         if (!till.registered()) {
             // Owner names are never shown to a browser that isn't a registered till.
-            return new TillStatusDto(false, null, null, null, idleLockMinutes, requireRegistered);
+            return new TillStatusDto(false, null, null, null, idleLockMinutes, requireRegistered,
+                    offline.isEnabled(), offline.getMaxOfflineHours(), offline.getWarnOfflineHours());
         }
         var shift = shiftRepository.findOpenOnTill(till.deviceId()).map(open -> {
             var owner = open.getCashier();
@@ -37,6 +42,7 @@ public class TillStatusService {
             return new TillStatusDto.Shift(open.getId(), owner.getId(), owner.getName(),
                     UtcTimestamps.toInstant(open.getOpenedAt()), locked);
         }).orElse(null);
-        return new TillStatusDto(true, till.code(), till.name(), shift, idleLockMinutes, requireRegistered);
+        return new TillStatusDto(true, till.code(), till.name(), shift, idleLockMinutes, requireRegistered,
+                offline.isEnabled(), offline.getMaxOfflineHours(), offline.getWarnOfflineHours());
     }
 }

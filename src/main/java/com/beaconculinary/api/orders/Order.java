@@ -102,6 +102,35 @@ public class Order {
     @Column(name = "vat_included_amount")
     private BigDecimal vatIncludedAmount;
 
+    // O4: set only for a sale recorded through offline sync (docs/2026-11-18-o4-offline-sync-api-contract.md).
+    @Column(name = "recorded_offline")
+    private boolean recordedOffline = false;
+
+    // What the customer's slip shows; for an offline sale these replace the O2b receipt number.
+    @Column(name = "offline_receipt_number")
+    private String offlineReceiptNumber;
+
+    @Column(name = "collection_number")
+    private String collectionNumber;
+
+    // When the offline sale was made (UTC); createdAt stays when it was recorded.
+    @Column(name = "sold_at")
+    private LocalDateTime soldAt;
+
+    @Column(name = "offline_grant_id")
+    private UUID offlineGrantId;
+
+    // The till's own numbering: unique per till and day while offlineSeq is set (null after a clash).
+    @Column(name = "offline_trading_day")
+    private LocalDate offlineTradingDay;
+
+    @Column(name = "offline_seq")
+    private Integer offlineSeq;
+
+    // A late sale counted on a later day because its own day already had a Z (LATE_AFTER_Z).
+    @Column(name = "booked_trading_day")
+    private LocalDate bookedTradingDay;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderLine> lines = new ArrayList<>();
 
