@@ -71,10 +71,6 @@
             <scope>annotationProcessor</scope>
         </dependency>
         <dependency>
-            <artifactId>spring-boot-starter-thymeleaf</artifactId>
-            <groupId>org.springframework.boot</groupId>
-        </dependency>
-        <dependency>
             <artifactId>mapstruct-processor</artifactId>
             <groupId>org.mapstruct</groupId>
             <version>1.6.3</version>
@@ -101,10 +97,6 @@
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.thymeleaf.extras</groupId>
-            <artifactId>thymeleaf-extras-springsecurity6</artifactId>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

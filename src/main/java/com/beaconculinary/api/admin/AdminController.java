@@ -13,11 +13,6 @@ import org.springframework.web.bind.annotation.*;
 public class AdminController {
     private final AdminAuthorizationService adminAuthorizationService;
 
-    @GetMapping("/hello")
-    public String sayHello() {
-        return "Hello Admin!";
-    }
-
     @PostMapping("/authorize")
     public AuthorizeResponse authorize(@Valid @RequestBody AuthorizeRequest request) {
         return adminAuthorizationService.authorize(request);

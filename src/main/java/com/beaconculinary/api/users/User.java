@@ -3,9 +3,6 @@ package com.beaconculinary.api.users;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Setter
 @Getter
 @AllArgsConstructor
@@ -39,20 +36,6 @@ public class User {
 
     @Column(name = "active")
     private boolean active;
-
-    @OneToMany(mappedBy = "user", cascade = {CascadeType.PERSIST, CascadeType.REMOVE}, orphanRemoval = true)
-    @Builder.Default
-    private List<Address> addresses = new ArrayList<>();
-
-    public void addAddress(Address address) {
-        addresses.add(address);
-        address.setUser(this);
-    }
-
-    public void removeAddress(Address address) {
-        addresses.remove(address);
-        address.setUser(null);
-    }
 
     @Override
     public String toString() {
