@@ -6,7 +6,6 @@ import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.common.locale.SiteLocale;
 import com.beaconculinary.api.endofday.ZReadings;
 import com.beaconculinary.api.inventory.LightMealStockService;
-import com.beaconculinary.api.inventory.VatSettings;
 import com.beaconculinary.api.menu.DailyComponentStock;
 import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOption;
@@ -33,6 +32,7 @@ import com.beaconculinary.api.orders.OrderStatusEvent;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
 import com.beaconculinary.api.orders.PaymentMethod;
 import com.beaconculinary.api.orders.VatRule;
+import com.beaconculinary.api.settings.SiteSetting;
 import com.beaconculinary.api.settings.SiteSettings;
 import com.beaconculinary.api.shifts.ShiftRepository;
 import com.beaconculinary.api.shifts.ShiftStatus;
@@ -81,7 +81,6 @@ public class OfflineSaleRecorder {
     private final DailyComponentStockRepository stockRepository;
     private final LightMealStockService lightMealStockService;
     private final ZReadings zReadings;
-    private final VatSettings vatSettings;
     private final SiteSettings siteSettings;
     private final OfflineSequenceStore sequences;
     private final SaleExceptionStore exceptions;
@@ -96,7 +95,7 @@ public class OfflineSaleRecorder {
                                ShiftRepository shiftRepository, UserRepository userRepository,
                                AccountRepository accountRepository, DailyMealOptionRepository optionRepository,
                                DailyComponentStockRepository stockRepository, LightMealStockService lightMealStockService,
-                               ZReadings zReadings, VatSettings vatSettings, SiteSettings siteSettings,
+                               ZReadings zReadings, SiteSettings siteSettings,
                                OfflineSequenceStore sequences, SaleExceptionStore exceptions, AppLock appLock,
                                JdbcTemplate jdbc, ObjectMapper objectMapper, SiteLocale siteLocale, Clock clock) {
         this.orderRepository = orderRepository;
@@ -110,7 +109,6 @@ public class OfflineSaleRecorder {
         this.stockRepository = stockRepository;
         this.lightMealStockService = lightMealStockService;
         this.zReadings = zReadings;
-        this.vatSettings = vatSettings;
         this.siteSettings = siteSettings;
         this.sequences = sequences;
         this.exceptions = exceptions;
@@ -384,16 +382,33 @@ public class OfflineSaleRecorder {
         order.setSaleDiscount(BigDecimal.ZERO);
         order.setOriginalTotal(total);
 
-        var serverRate = VatRule.storedRate(vatSettings.standardRate());
+        // T0-4a: the order keeps the VAT the till printed (the customer's receipt). It is checked against
+        // the rate in force when the sale was made (settings history), not the rate at sync.
+        var serverRate = VatRule.storedRate((BigDecimal) siteSettings.valueAt(SiteSetting.VAT_STANDARD_RATE, sale.soldAt()));
         var serverVat = VatRule.includedVat(total, serverRate);
-        order.setVatRate(serverRate);
-        order.setVatIncludedAmount(serverVat);
+        var printedRate = storableRate(sale.vatRate()) ? VatRule.storedRate(sale.vatRate()) : null;
+        var storedRate = printedRate != null ? printedRate : serverRate;
+        var storedVat = storableVat(sale.vatIncludedAmount(), total) ? sale.vatIncludedAmount()
+                : VatRule.includedVat(total, storedRate);
+        order.setVatRate(storedRate);
+        order.setVatIncludedAmount(storedVat);
         var rateDiffers = sale.vatRate() != null && sale.vatRate().compareTo(serverRate) != 0;
         var vatDiffers = sale.vatIncludedAmount() != null && sale.vatIncludedAmount().compareTo(serverVat) != 0;
         if (rateDiffers || vatDiffers) {
             flags.add(flag(SaleExceptionCode.VAT_MISMATCH, "printedRate", sale.vatRate(), "printedVat", sale.vatIncludedAmount(),
                     "serverRate", serverRate, "serverVat", serverVat));
         }
+    }
+
+    /** A printed rate orders.vat_rate (DECIMAL(6, 4)) can hold as is: 0 to 0.9999, at most 4 decimals. */
+    private static boolean storableRate(BigDecimal rate) {
+        return rate != null && rate.signum() >= 0 && rate.compareTo(BigDecimal.ONE) < 0
+                && rate.stripTrailingZeros().scale() <= VatRule.RATE_SCALE;
+    }
+
+    /** A printed VAT amount that can be stored as is: not negative, at most 2 decimals, not more than the total. */
+    private static boolean storableVat(BigDecimal vat, BigDecimal total) {
+        return vat != null && vat.signum() >= 0 && vat.stripTrailingZeros().scale() <= 2 && vat.compareTo(total) <= 0;
     }
 
     private void payments(Sale sale, OfflineGrantStore.GrantRow grant, Order order, List<Flag> flags) {
@@ -456,9 +471,11 @@ public class OfflineSaleRecorder {
                     WHERE o.[offline_grant_id] = ? AND p.[method] = 'ACCOUNT' AND p.[account_id] = ?""",
                     BigDecimal.class, grant.id().toString(), account.getId());
             var capTotal = earlier.add(input.amount());
-            if (capTotal.compareTo(siteSettings.offlineAccountCap()) > 0) {
+            // T0-4a: the cap the grant was issued with (0 if it was issued with accounts off).
+            var cap = grant.accountCapOr(siteSettings.offlineAccountCap());
+            if (capTotal.compareTo(cap) > 0) {
                 flags.add(flag(SaleExceptionCode.ACCOUNT_OVER_CAP, "accountId", account.getId(), "capTotal", capTotal,
-                        "cap", siteSettings.offlineAccountCap()));
+                        "cap", cap));
             }
         }
     }

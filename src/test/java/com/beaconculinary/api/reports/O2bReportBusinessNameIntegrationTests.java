@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -18,9 +19,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * O2b (contract 8.2, item 1): statement reports print the receipt settings' business name, falling
- * back to app.business.name ("Beacon Culinary" in tests) while it's empty.
+ * back to app.business.name while it's empty. That is blank by default (T0-4a), so these tests set it;
+ * T04aBlankBusinessNameIntegrationTests covers both blank.
  */
 @SpringBootTest
+@TestPropertySource(properties = "app.business.name=Beacon Culinary")
 @AutoConfigureMockMvc
 class O2bReportBusinessNameIntegrationTests {
     private static final String DAY = "2026-01-05";

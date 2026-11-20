@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.Optional;
@@ -13,6 +14,10 @@ import java.util.UUID;
  * O3: SQL for offline_grants (V110). Times are UTC LocalDateTime values. Runs in the caller's
  * transaction. Revoking never deletes: revoked grants stay readable for O4's sync. Each revoke
  * touches only grants that are still active, so it can run any number of times.
+ *
+ * <p>T0-4a (V113): accountsEnabled and accountCap are the offline account values the till was given
+ * when the grant was issued (accountCap null when accounts are off). Both are null on grants issued
+ * before V113.
  */
 @Repository
 public class OfflineGrantStore {
@@ -28,9 +33,21 @@ public class OfflineGrantStore {
 
     public record GrantRow(UUID id, UUID deviceId, UUID credentialId, long shiftId, long cashierId, String cashierName,
                            UUID sessionId, LocalDateTime issuedAt, LocalDateTime expiresAt, LocalDateTime revokedAt,
-                           RevokeReason revokeReason, UUID replacedBy) {
+                           RevokeReason revokeReason, UUID replacedBy, Boolean accountsEnabled, BigDecimal accountCap) {
         public boolean active() {
             return revokedAt == null;
+        }
+
+        /**
+         * T0-4a: the account cap sync checks this grant's ACCOUNT payments against: the cap it was
+         * issued with; 0 when it was issued with accounts off (an account sale is then over the cap);
+         * {@code current} for a grant issued before V113.
+         */
+        public BigDecimal accountCapOr(BigDecimal current) {
+            if (accountsEnabled == null) {
+                return current;
+            }
+            return accountsEnabled && accountCap != null ? accountCap : BigDecimal.ZERO;
         }
     }
 
@@ -40,15 +57,16 @@ public class OfflineGrantStore {
             rs.getObject("issued_at", LocalDateTime.class), rs.getObject("expires_at", LocalDateTime.class),
             rs.getObject("revoked_at", LocalDateTime.class),
             rs.getString("revoke_reason") == null ? null : RevokeReason.valueOf(rs.getString("revoke_reason")),
-            uuid(rs.getString("replaced_by")));
+            uuid(rs.getString("replaced_by")), (Boolean) rs.getObject("accounts_enabled"), rs.getBigDecimal("account_cap"));
 
     public void insert(GrantRow grant) {
         jdbc.update("""
                 INSERT INTO [offline_grants] ([id], [device_id], [credential_id], [shift_id], [cashier_id], [cashier_name],
-                    [session_id], [issued_at], [expires_at])
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    [session_id], [issued_at], [expires_at], [accounts_enabled], [account_cap])
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 grant.id().toString(), grant.deviceId().toString(), grant.credentialId().toString(), grant.shiftId(),
-                grant.cashierId(), grant.cashierName(), grant.sessionId().toString(), grant.issuedAt(), grant.expiresAt());
+                grant.cashierId(), grant.cashierName(), grant.sessionId().toString(), grant.issuedAt(), grant.expiresAt(),
+                grant.accountsEnabled(), grant.accountCap());
     }
 
     public Optional<GrantRow> find(UUID id) {

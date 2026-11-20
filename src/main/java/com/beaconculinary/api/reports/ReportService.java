@@ -81,6 +81,8 @@ public class ReportService {
         var echo = params.asMap();
         var statement = result.statement();
         var isStatement = definition.template() == ReportTemplate.STATEMENT;
+        // T0-4a: no business name configured: meta.business is left out.
+        var business = isStatement ? businessName.current() : null;
         var meta = new ReportEnvelope.Meta(definition.key(), definition.title(), definition.category(),
                 definition.definitionVersion(), clock.instant(), siteLocale.zone().getId(), siteLocale.currencyCode(), true,
                 echo, paramLabels(specs, echo), notes,
@@ -88,7 +90,7 @@ public class ReportService {
                 statement == null ? null : statement.title(),
                 statement == null ? null : statement.reference(),
                 statement == null ? null : statement.interim(),
-                isStatement ? new ReportEnvelope.Business(businessName.current()) : null);
+                business == null ? null : new ReportEnvelope.Business(business));
         return new ReportEnvelope(meta, result.columns(), result.rows(), result.totals(), result.checks(), result.page(),
                 result.sections(), result.actions());
     }

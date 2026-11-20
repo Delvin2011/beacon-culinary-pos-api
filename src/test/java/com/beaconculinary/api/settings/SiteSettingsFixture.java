@@ -2,6 +2,7 @@ package com.beaconculinary.api.settings;
 
 import com.beaconculinary.api.offline.OfflineProperties;
 import com.beaconculinary.api.tills.TillProperties;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -33,6 +34,19 @@ public final class SiteSettingsFixture {
             rows.removeIf(row -> row.key().equals(key));
             rows.add(new Saved(key, value, LocalDateTime.of(2026, 11, 19, 8, 0), "Canteen Admin"));
         }
+    }
+
+    /**
+     * Test database only: removes every saved value and the whole history, so no test sees another's
+     * changes. The history matters beyond the admin screen: an offline sale's VAT is checked against
+     * the rate in force when it was made, read from the history. The insert-only trigger is lifted
+     * just for this delete, as ReportFixture does for Z readings. Call SiteSettings.invalidate() after.
+     */
+    public static void clearSavedAndHistory(JdbcTemplate jdbc) {
+        jdbc.update("DELETE FROM site_settings");
+        jdbc.execute("DISABLE TRIGGER trg_site_setting_changes_insert_only ON site_setting_changes; "
+                + "DELETE FROM site_setting_changes; "
+                + "ENABLE TRIGGER trg_site_setting_changes_insert_only ON site_setting_changes;");
     }
 
     /** The defaults application.yaml ships. */

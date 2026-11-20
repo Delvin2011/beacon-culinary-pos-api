@@ -1,6 +1,7 @@
 package com.beaconculinary.api.offline;
 
 import com.beaconculinary.api.admin.AuthorizationTokenRepository;
+import com.beaconculinary.api.common.UtcTimestamps;
 import com.beaconculinary.api.inventory.IngredientRepository;
 import com.beaconculinary.api.inventory.IngredientStockMovement;
 import com.beaconculinary.api.inventory.IngredientStockMovementRepository;
@@ -15,6 +16,10 @@ import com.beaconculinary.api.menu.MealCatalogRepository;
 import com.beaconculinary.api.orders.OrderAdjustmentRepository;
 import com.beaconculinary.api.orders.OrderRepository;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
+import com.beaconculinary.api.orders.VatRule;
+import com.beaconculinary.api.settings.SiteSettings;
+import com.beaconculinary.api.settings.SiteSettingsFixture;
+import com.beaconculinary.api.settings.SiteSettingsStore;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.CatalogTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
@@ -88,6 +93,8 @@ class O4OfflineSyncIntegrationTests {
     @Autowired private IngredientStockMovementRepository movementRepository;
     @Autowired private LocationRepository locationRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private SiteSettings siteSettings;
+    @Autowired private SiteSettingsStore settingsStore;
 
     private O3Tills tills;
     private String adminPwd;
@@ -105,6 +112,9 @@ class O4OfflineSyncIntegrationTests {
     @BeforeEach
     void setUp() throws Exception {
         clock.setTime(LocalTime.of(12, 0));
+        // T0-4a: no saved settings and no settings history (offline VAT is checked against it).
+        SiteSettingsFixture.clearSavedAndHistory(jdbc);
+        siteSettings.invalidate();
         today = LocalDate.now(clock);
         properties.setEnabled(true);
         adminPwd = AuthTestHelper.loginAsAdmin(mockMvc);
@@ -134,6 +144,8 @@ class O4OfflineSyncIntegrationTests {
     void tearDown() {
         properties.setEnabled(false);
         properties.setAccountsEnabled(true);
+        SiteSettingsFixture.clearSavedAndHistory(jdbc);
+        siteSettings.invalidate();
         jdbc.update("DELETE FROM [sale_exceptions]");
         jdbc.execute("DISABLE TRIGGER trg_z_readings_insert_only ON z_readings; DELETE FROM z_readings WHERE closed_by IN "
                 + "(SELECT id FROM users WHERE email = '" + AuthTestHelper.ADMIN_EMAIL + "') AND definition_version = 99; "
@@ -398,15 +410,58 @@ class O4OfflineSyncIntegrationTests {
     }
 
     @Test
-    void vat_isRecomputed_andAPrintedDifferenceIsFlagged() throws Exception {
+    void vat_thePrintedVatIsKept_andADifferenceIsFlagged() throws Exception {
+        // T0-4a: the order keeps what the customer's receipt shows (before T0-4a the server's 6.52 was stored).
         var sale = sale(1, 20);
         sale.put("vatIncludedAmount", new BigDecimal("7.00"));
 
         var result = result(sync(t1, List.of(grantToken()), List.of(sale)), 0);
 
         assertThat(codes(result)).containsExactly("VAT_MISMATCH");
-        assertThat(jdbc.queryForObject("SELECT [vat_included_amount] FROM [orders] WHERE [id] = ?", BigDecimal.class,
-                result.get("orderId").asLong())).isEqualByComparingTo("6.52");
+        var orderId = result.get("orderId").asLong();
+        assertThat(vat(orderId)).containsExactly(new BigDecimal("0.1500"), new BigDecimal("7.00"));
+        var detail = detail(orderId, "VAT_MISMATCH");
+        assertThat(detail.get("printedVat").decimalValue()).isEqualByComparingTo("7.00");
+        assertThat(detail.get("serverRate").decimalValue()).isEqualByComparingTo("0.15");
+        assertThat(detail.get("serverVat").decimalValue()).isEqualByComparingTo("6.52");
+    }
+
+    @Test
+    void vat_isCheckedAgainstTheRateInForceWhenTheSaleWasMade() throws Exception {
+        // VAT goes from 15% to 16% at 12:25, after the till's last snapshot.
+        var changedAt = UtcTimestamps.toUtc(soldAt(25));
+        settingsStore.upsert("vat.standard-rate", "0.16", changedAt, 1, "O4 test");
+        settingsStore.insertChange("vat.standard-rate", "SET", "0.15", true, "0.16", false, changedAt, 1, "O4 test");
+        siteSettings.invalidate();
+        var before = sale(1, 20);                // printed at 15%: right then
+        var afterOldRate = sale(2, 26);          // printed at 15%: wrong by then
+        var afterNewRate = sale(3, 27);
+        afterNewRate.put("vatRate", new BigDecimal("0.1600"));
+        afterNewRate.put("vatIncludedAmount", new BigDecimal("6.90"));
+
+        var results = body(sync(t1, List.of(grantToken()), List.of(before, afterOldRate, afterNewRate))).get("results");
+
+        assertThat(codes(results.get(0))).isEmpty();
+        assertThat(vat(results.get(0).get("orderId").asLong())).containsExactly(new BigDecimal("0.1500"), new BigDecimal("6.52"));
+        assertThat(codes(results.get(1))).containsExactly("VAT_MISMATCH");
+        var orderId = results.get(1).get("orderId").asLong();
+        assertThat(vat(orderId)).containsExactly(new BigDecimal("0.1500"), new BigDecimal("6.52"));
+        assertThat(detail(orderId, "VAT_MISMATCH").get("serverRate").decimalValue()).isEqualByComparingTo("0.16");
+        assertThat(detail(orderId, "VAT_MISMATCH").get("serverVat").decimalValue()).isEqualByComparingTo("6.90");
+        assertThat(codes(results.get(2))).isEmpty();
+        assertThat(vat(results.get(2).get("orderId").asLong())).containsExactly(new BigDecimal("0.1600"), new BigDecimal("6.90"));
+    }
+
+    @Test
+    void vat_aPrintedValueThatCantBeStored_isReplacedByTheServers_andFlagged() throws Exception {
+        var sale = sale(1, 20);
+        sale.put("vatRate", new BigDecimal("1.5"));
+        sale.put("vatIncludedAmount", new BigDecimal("6.525"));
+
+        var result = result(sync(t1, List.of(grantToken()), List.of(sale)), 0);
+
+        assertThat(codes(result)).containsExactly("VAT_MISMATCH");
+        assertThat(vat(result.get("orderId").asLong())).containsExactly(new BigDecimal("0.1500"), new BigDecimal("6.52"));
     }
 
     @Test
@@ -459,6 +514,55 @@ class O4OfflineSyncIntegrationTests {
                 results.get(3).get("orderId").asLong())).isNull();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM [order_payments] WHERE [order_id] = ? AND [authorized_by] IS NULL",
                 Integer.class, results.get(0).get("orderId").asLong())).isEqualTo(1);
+    }
+
+    // ---- T0-4a: the grant's account values ----
+
+    @Test
+    void theGrant_storesTheAccountValuesItWasIssuedWith() throws Exception {
+        var row = grantRow();
+        assertThat(row.get("accounts_enabled")).isEqualTo(true);
+        assertThat((BigDecimal) row.get("account_cap")).isEqualByComparingTo("150.00");
+    }
+
+    @Test
+    void theCapChecked_isTheGrants_notTheCurrentSetting() throws Exception {
+        settingsStore.upsert("pos.offline.account-cap", "500.00", UtcTimestamps.nowUtc(clock), 1, "O4 test");
+        siteSettings.invalidate();
+
+        var result = result(sync(t1, List.of(grantToken()), List.of(accountSale(1, 20, 4))), 0);
+
+        assertThat(codes(result)).containsExactlyInAnyOrder("ACCOUNT_APPROVAL_PENDING", "ACCOUNT_OVER_CAP");
+        assertThat(detail(result.get("orderId").asLong(), "ACCOUNT_OVER_CAP").get("cap").decimalValue()).isEqualByComparingTo("150.00");
+    }
+
+    @Test
+    void aGrantIssuedWithAccountsOff_treatsAnAccountSaleAsOverACapOfZero() throws Exception {
+        properties.setAccountsEnabled(false);
+        clock.setTime(LocalTime.of(12, 10));   // issued before the sale at 12:20
+        grantFor(cashierToken, t1);
+        clock.setTime(LocalTime.of(12, 30));
+        properties.setAccountsEnabled(true);
+        var row = grantRow();
+        assertThat(row.get("accounts_enabled")).isEqualTo(false);
+        assertThat(row.get("account_cap")).isNull();
+
+        var result = result(sync(t1, List.of(grantToken()), List.of(accountSale(1, 20, 1))), 0);
+
+        assertThat(codes(result)).containsExactlyInAnyOrder("ACCOUNT_APPROVAL_PENDING", "ACCOUNT_OVER_CAP");
+        assertThat(detail(result.get("orderId").asLong(), "ACCOUNT_OVER_CAP").get("cap").decimalValue()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void aGrantIssuedBeforeV113_usesTheCurrentCap() throws Exception {
+        jdbc.update("UPDATE [offline_grants] SET [accounts_enabled] = NULL, [account_cap] = NULL WHERE [id] = ?",
+                grant.get("grantId").asText());
+        settingsStore.upsert("pos.offline.account-cap", "500.00", UtcTimestamps.nowUtc(clock), 1, "O4 test");
+        siteSettings.invalidate();
+
+        var result = result(sync(t1, List.of(grantToken()), List.of(accountSale(1, 20, 4))), 0);
+
+        assertThat(codes(result)).containsExactly("ACCOUNT_APPROVAL_PENDING");
     }
 
     // ---- the till and the grant ----
@@ -660,6 +764,29 @@ class O4OfflineSyncIntegrationTests {
         sale.put("vatIncludedAmount", new BigDecimal("6.52"));
         sale.put("payments", List.of(cash("50.00")));
         return sale;
+    }
+
+    /** An account sale of {@code portions} stews at 50.00. */
+    private Map<String, Object> accountSale(int seq, int minuteAfterNoon, int portions) {
+        var total = new BigDecimal("50.00").multiply(BigDecimal.valueOf(portions));
+        var sale = sale(seq, minuteAfterNoon);
+        sale.put("lines", List.of(line(stewId, portions, "50.00", List.of())));
+        sale.put("subtotal", total);
+        sale.put("total", total);
+        sale.put("vatIncludedAmount", VatRule.includedVat(total, new BigDecimal("0.15")));
+        sale.put("payments", List.of(account(accountId, total.toPlainString())));
+        return sale;
+    }
+
+    private Map<String, Object> grantRow() {
+        return jdbc.queryForMap("SELECT [accounts_enabled], [account_cap] FROM [offline_grants] WHERE [id] = ?",
+                grant.get("grantId").asText());
+    }
+
+    /** The VAT rate and amount stored on an order. */
+    private List<BigDecimal> vat(long orderId) {
+        var row = jdbc.queryForMap("SELECT [vat_rate], [vat_included_amount] FROM [orders] WHERE [id] = ?", orderId);
+        return List.of((BigDecimal) row.get("vat_rate"), (BigDecimal) row.get("vat_included_amount"));
     }
 
     private static Map<String, Object> line(long optionId, int quantity, String unitPrice, List<Map<String, Object>> extras) {

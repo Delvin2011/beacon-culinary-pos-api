@@ -300,13 +300,15 @@ amount differs from the VAT rule applied to the sale total at that rate.
 
 The grant row stores `accounts_enabled` and `account_cap` as given to the till when the grant was
 issued. At sync, `ACCOUNT_OVER_CAP` is checked against **the grant's cap**, not the current
-setting. Grants issued before V113 have no stored values and use the current setting, as before.
+setting. A grant issued with accounts off has no cap: an ACCOUNT payment synced under it (which the till
+shouldn't have taken) is flagged `ACCOUNT_OVER_CAP` with `cap: 0`. Grants issued before V113 have no
+stored values and use the current setting, as before.
 
 ## 6. Business name on reports
 
 `app.business.name` stays a platform setting and its default becomes **blank**. Statement reports
 (X, Z, Cashier reading) print the receipt settings' `businessName`, else `app.business.name`, else
-**no business name**: the report's `business` is `null` and the "Business" header item is left out.
+**no business name**: `meta.business` and the "Business" header item are left out.
 Onboarding must set the receipt settings' business name.
 
 ## 7. Error codes

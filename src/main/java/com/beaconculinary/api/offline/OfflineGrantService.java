@@ -65,19 +65,20 @@ public class OfflineGrantService {
         var expiresAt = issuedAt.plus(properties.getGrantMaxHours(), ChronoUnit.HOURS);
         var id = UUID.randomUUID();
         grants.replaceActive(till.deviceId(), shift.getId(), id, UtcTimestamps.toUtc(issuedAt));
+        // T0-4a: the offline account values given to the till are stored on the grant; sync checks them.
+        var accountsEnabled = siteSettings.offlineAccountsEnabled();
+        var accountCap = accountsEnabled ? siteSettings.offlineAccountCap() : null;
         grants.insert(new OfflineGrantStore.GrantRow(id, till.deviceId(), till.credentialId(), shift.getId(), owner.getId(),
                 owner.getName(), session.id(), UtcTimestamps.toUtc(issuedAt), UtcTimestamps.toUtc(expiresAt),
-                null, null, null));
+                null, null, null, accountsEnabled, accountCap));
 
         var tradingDay = LocalDate.now(clock);
-        // T0-4a: offline limits are site settings, read when the grant is issued.
-        var accountsEnabled = siteSettings.offlineAccountsEnabled();
         var signed = signer.sign(new OfflineGrantSigner.Claimed(id, till.deviceId(), till.credentialId(), shift.getId(),
                 owner.getId(), issuedAt, expiresAt));
         return new GrantResponse(id.toString(), signed, till.deviceId().toString(), shift.getTillCode(), shift.getId(),
                 owner.getId(), owner.getName(), issuedAt, expiresAt, tradingDay,
                 sequences.nextFor(till.deviceId(), tradingDay), siteSettings.offlineMaxOfflineHours(),
-                siteSettings.offlineWarnOfflineHours(), accountsEnabled, accountsEnabled ? siteSettings.offlineAccountCap() : null,
+                siteSettings.offlineWarnOfflineHours(), accountsEnabled, accountCap,
                 clock.instant());
     }
 }

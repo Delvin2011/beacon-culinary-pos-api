@@ -158,7 +158,10 @@ public class EndOfDayStatements {
 
     private Map<String, Object> dayHeader(LocalDate tradingDay, ZContext z) {
         var items = Sections.items();
-        items.add(Sections.item("Business", ColumnType.TEXT, businessName.current()));
+        var business = businessName.current();
+        if (business != null) {
+            items.add(Sections.item("Business", ColumnType.TEXT, business));
+        }
         items.add(Sections.item("Report", ColumnType.TEXT, z == null ? X_TITLE : Z_TITLE));
         if (z != null) {
             items.add(Sections.item("Z number", ColumnType.TEXT, ZReadings.Z.reference(z.zNumber())));
@@ -436,7 +439,10 @@ public class EndOfDayStatements {
 
         var sections = new ArrayList<Map<String, Object>>();
         var header = Sections.items();
-        header.add(Sections.item("Business", ColumnType.TEXT, businessName.current()));
+        var business = businessName.current();
+        if (business != null) {
+            header.add(Sections.item("Business", ColumnType.TEXT, business));
+        }
         header.add(Sections.item("Report", ColumnType.TEXT, open ? CASHIER_TITLE + " — INTERIM" : CASHIER_TITLE));
         header.add(Sections.item("Cashier", ColumnType.TEXT, shift.ownerName()));
         header.add(Sections.item("Till", ColumnType.TEXT, shift.tillLabel()));

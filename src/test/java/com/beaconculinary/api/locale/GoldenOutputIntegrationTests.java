@@ -35,7 +35,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(ClockTestConfig.class)
-@TestPropertySource(properties = "reports.close-day.first-trading-day=2026-10-05")
+// T0-4a: app.business.name is blank by default; the golden files were recorded with this name.
+@TestPropertySource(properties = {"reports.close-day.first-trading-day=2026-10-05", "app.business.name=Beacon Culinary"})
 class GoldenOutputIntegrationTests {
     /** Tue 6 Oct 2026 13:00 Johannesburg. */
     private static final Instant TUESDAY_13_00 = Instant.parse("2026-10-06T11:00:00Z");

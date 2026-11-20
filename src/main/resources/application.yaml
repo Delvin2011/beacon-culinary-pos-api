@@ -90,6 +90,13 @@ pos:
 vat:
   standard-rate: 0.15
 
+# T0-4a: the platform fallback for the business name on statement reports, used only when the receipt
+# settings have none. Blank by default so no customer's name is printed on another's reports; onboarding
+# sets the name in the receipt settings.
+app:
+  business:
+    name: ${APP_BUSINESS_NAME:}
+
 # Reports R3: where Z numbering starts. Close Day ignores earlier days (they can't be closed and
 # don't block later ones). Set to the go-live day; empty = every earlier day must be closed first.
 reports:

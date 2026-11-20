@@ -36,8 +36,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * T0-4a step 5: GET/PUT /admin/settings, POST /admin/settings/{key}/reset and GET
- * /admin/settings/history (contract section 3). Every test starts and ends with nothing saved. The
- * history is kept (insert-only), so assertions count only entries the test added.
+ * /admin/settings/history (contract section 3). Every test starts and ends with nothing saved and an
+ * empty history (SiteSettingsFixture.clearSavedAndHistory).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -77,12 +77,7 @@ class SiteSettingsAdminIntegrationTests {
     }
 
     private void clearSaved() {
-        jdbc.update("DELETE FROM site_settings");
-        // History is insert-only; only this test cleanup lifts the trigger, to remove entries dated in
-        // the future (written while a test had moved the clock ahead), which would sort first.
-        jdbc.execute("DISABLE TRIGGER trg_site_setting_changes_insert_only ON site_setting_changes; "
-                + "DELETE FROM site_setting_changes WHERE changed_at > SYSUTCDATETIME(); "
-                + "ENABLE TRIGGER trg_site_setting_changes_insert_only ON site_setting_changes;");
+        SiteSettingsFixture.clearSavedAndHistory(jdbc);
         siteSettings.invalidate();
     }
 

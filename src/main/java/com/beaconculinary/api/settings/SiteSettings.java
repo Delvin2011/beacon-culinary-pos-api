@@ -1,5 +1,6 @@
 package com.beaconculinary.api.settings;
 
+import com.beaconculinary.api.common.UtcTimestamps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -135,6 +136,25 @@ public class SiteSettings {
 
     public SiteSettingDefaults defaults() {
         return defaults;
+    }
+
+    /**
+     * The value a setting had at an instant, from the history (SiteSettingsStore.valueAt): the value
+     * after the last change before it, else the value before the first change after it; the current
+     * value when the setting has never changed. Not cached: used for offline sales' VAT at sync.
+     */
+    public Object valueAt(SiteSetting setting, Instant at) {
+        var historic = store.valueAt(setting.key(), UtcTimestamps.toUtc(at));
+        if (historic.isEmpty()) {
+            return value(setting);
+        }
+        var text = historic.get().text();
+        try {
+            return text == null ? null : setting.type().fromText(text);
+        } catch (SettingType.BadValueException e) {
+            log.error("Site setting {} has a history value that can't be read ({}); the current value is used.", setting.key(), text);
+            return value(setting);
+        }
     }
 
     /** Drops the cache, so the next read loads the saved values again. */

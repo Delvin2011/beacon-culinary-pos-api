@@ -16,8 +16,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * T0-4a: the V113 tables through SiteSettingsStore: upsert and delete, the insert-only history,
  * the newest change per key, paging, and the value a setting had at a time. Test keys start with
- * "test." so they never clash with real settings; saved rows are removed after each test (the
- * history can't be, so assertions only look at this test's key).
+ * "test." so they never clash with real settings; their rows and history are removed after each
+ * test (lifting the insert-only trigger for that delete only).
  */
 @SpringBootTest
 class SiteSettingsStoreIntegrationTests {
@@ -40,6 +40,9 @@ class SiteSettingsStoreIntegrationTests {
     @AfterEach
     void tearDown() {
         jdbc.update("DELETE FROM [site_settings] WHERE [setting_key] LIKE 'test.%'");
+        jdbc.execute("DISABLE TRIGGER trg_site_setting_changes_insert_only ON site_setting_changes; "
+                + "DELETE FROM site_setting_changes WHERE setting_key LIKE 'test.%'; "
+                + "ENABLE TRIGGER trg_site_setting_changes_insert_only ON site_setting_changes;");
     }
 
     @Test

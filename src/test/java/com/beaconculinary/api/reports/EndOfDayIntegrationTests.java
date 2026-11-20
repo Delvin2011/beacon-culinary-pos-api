@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(ClockTestConfig.class)
-@TestPropertySource(properties = "reports.close-day.first-trading-day=2026-10-05")
+@TestPropertySource(properties = {"reports.close-day.first-trading-day=2026-10-05", "app.business.name=Beacon Culinary"})
 class EndOfDayIntegrationTests {
     private static final String MON = "2026-10-05";
     private static final String TUE = "2026-10-06";
