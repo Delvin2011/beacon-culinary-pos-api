@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
  * Cross-field rules are in {@link SiteSettingRules}.
  *
  * <p>Adding a setting: an entry here, its default in SiteSettingDefaults, a typed getter in
- * SiteSettings, and a row in the contract. No migration. See docs/2026-11-19-site-settings.md.
+ * SiteSettings, and a row in the contract. No migration. See docs/2026-11-20-site-settings.md.
  */
 public enum SiteSetting {
     VAT_STANDARD_RATE("vat.standard-rate", SettingType.DECIMAL, Group.VAT, true,

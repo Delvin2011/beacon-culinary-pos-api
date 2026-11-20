@@ -168,7 +168,7 @@ In its own transaction, without any check against the server's clock (no meal-pe
 | Portions and extra buffers | Decremented by the quantities sold, **never below 0**: when there weren't enough, the count goes to 0 and the shortfall is recorded (`OVERSOLD`). |
 | Light-meal ingredients | Consumed from the Kitchen as for online sales, dated `soldAt` (stock movements gain an "occurred at" time). |
 | Totals | `subtotal`, `total` as charged. No discount: the pre-discount total and the original total are `total`. |
-| VAT | Recomputed with the O2b rule on `total` at the rate in force, and stored. A different printed value or rate is flagged (`VAT_MISMATCH`). |
+| VAT | The till's printed `vatRate` and `vatIncludedAmount` are stored (the customer's receipt), unless they can't be (rate outside 0–0.9999 or more than 4 decimals; amount negative, more than 2 decimals or more than `total`): then the server's. They are checked with the O2b rule against the rate in force **at `soldAt`** (site settings history, T0-4a); a difference is flagged (`VAT_MISMATCH`). |
 | Payments | As taken. A payment with an amount of 0 or less isn't stored (`PAYMENT_MISMATCH`). ACCOUNT payments have no approving manager yet (`ACCOUNT_APPROVAL_PENDING`). |
 
 ## 6. Exception codes
@@ -178,14 +178,14 @@ In its own transaction, without any check against the server's clock (no meal-pe
 | Code | Severity | Raised when | `detail` |
 |---|---|---|---|
 | `ACCOUNT_APPROVAL_PENDING` | REVIEW | Every offline ACCOUNT payment (no manager approved it at the time). | `accountId`, `accountNumber`, `amount` |
-| `ACCOUNT_OVER_CAP` | REVIEW | This account's ACCOUNT payments under the same grant, this one included, exceed `accountCap`. | `accountId`, `capTotal`, `cap` |
+| `ACCOUNT_OVER_CAP` | REVIEW | This account's ACCOUNT payments under the same grant, this one included, exceed the `accountCap` the grant was issued with (T0-4a; `0` if issued with accounts off; the current setting for grants from before V113). | `accountId`, `capTotal`, `cap` |
 | `ACCOUNT_INACTIVE` | REVIEW | The account is inactive, or unknown (then recorded without an account). | `accountId`, `reason` (`INACTIVE` or `UNKNOWN`) |
 | `PAYMENT_MISMATCH` | REVIEW | Payments don't add up to `total`; a payment of 0 or less; cash tendered less than the amount, or change that doesn't match. | `paymentsTotal`, `total`, `problem` |
 | `TOTALS_MISMATCH` | REVIEW | Lines and extras don't add up to `subtotal`, or `subtotal` differs from `total`. | `linesTotal`, `subtotal`, `total` |
 | `PRICE_MISMATCH` | REVIEW | A line's `unitPrice` (or an extra's `priceDelta`) differs from the server's price for that option (or extra) on that day. The till's price stands. | `lineIndex`, `optionId`, `charged`, `serverPrice` |
 | `UNKNOWN_ITEM` | REVIEW | A line's option, or an extra's stock id, is missing or unknown. | `lineIndex`, `name`, `charged` |
 | `OVERSOLD` | REVIEW | Portions or an extra's buffer didn't cover the quantity; recorded at 0. | `optionId` or `componentStockId`, `requested`, `shortfall` |
-| `VAT_MISMATCH` | REVIEW | The printed `vatIncludedAmount` or `vatRate` differs from the server's. | `printedRate`, `printedVat`, `serverRate`, `serverVat` |
+| `VAT_MISMATCH` | REVIEW | The printed `vatIncludedAmount` or `vatRate` differs from the rate in force at `soldAt` and the VAT it gives. | `printedRate`, `printedVat`, `serverRate`, `serverVat` (both at `soldAt`) |
 | `CARD_REFERENCE_MISSING` | REVIEW | A CARD payment without a slip reference. | `amount` |
 | `LATE_AFTER_Z` | REVIEW | The sale's day already had a Z; booked to the next open day. | `saleDay`, `bookedDay` |
 | `LATE_AFTER_SHIFT_CLOSE` | REVIEW | The grant's shift had closed before the sale was recorded; its cash shows as late cash (section 9). | `shiftId`, `closedAt` |

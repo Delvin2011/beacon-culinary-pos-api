@@ -7,7 +7,7 @@ database (`site_settings`, V113) and apply without a restart or redeploy. With n
 setting has today's value (the YAML / environment default), so behaviour is unchanged.
 
 Background: multi-tenancy readiness analysis (19 Nov 2026) sections A.2, B.3, B.4 and 4;
-`docs/2026-11-19-site-settings.md` (customer setting vs entitlement vs platform setting).
+`docs/2026-11-20-site-settings.md` (customer setting vs entitlement vs platform setting).
 
 ## 1. Conventions
 

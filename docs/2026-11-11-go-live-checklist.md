@@ -22,6 +22,7 @@ Paths are relative to the repository root. Java paths are under `src/main/java/c
 | 12 | No foreign keys on the device audit columns | Low | Open; unblocked by T0-3 (item 6 closed) | TBD |
 | 13 | Two error response shapes (`ErrorDto`, `LoginProtectionErrorDto`) | Low | Tidy-up, not in WS1-1b | TBD |
 | 14 | Refresh tokens can't be revoked (logout only clears the cookie) | Medium | Open | TBD |
+| 15 | Customer settings set at onboarding (business name, first trading day, VAT rate) | Medium | Open (T0-4a) | TBD |
 
 ## 1. Seed accounts
 
@@ -195,3 +196,9 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 **Why it matters.** A refresh token copied from a browser keeps issuing access tokens until it expires, even after the user logs out. Revoking a till doesn't end sessions started on it either (WS1-1c).
 
 **Proposed fix.** Store refresh tokens server-side (an ID claim and a table, or a per-user token version), revoke on logout, and rotate on each refresh. To revoke on logout, the cookie must reach the logout endpoint: widen its path to `/auth`, or move logout under `/auth/refresh`.
+
+## 15. Customer settings at onboarding
+
+**What.** Since T0-4a the customer's own settings live in their database (docs/2026-11-20-site-settings.md). `app.business.name` is blank by default, so statement reports print no business name until the receipt settings have one.
+
+**Fix.** At onboarding: set the business name (and VAT number) in the receipt settings; set `reports.close-day.first-trading-day` to the go-live day before the first Z; review the VAT rate and the offline limits in `/admin/settings`.

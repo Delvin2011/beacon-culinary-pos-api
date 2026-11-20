@@ -59,6 +59,8 @@ Application settings, validated at startup, each overridable by environment vari
 | `pos.session.idle-expiry-minutes` | `30` | `POS_SESSION_IDLEEXPIRYMINUTES` | Server backstop: a POS session with no activity (section 4.3) for this long ends with `IDLE`. Must be at least `idle-lock-minutes`. |
 | `pos.session.sweep-enabled` | `true` | `POS_SESSION_SWEEP_ENABLED` | Runs the once-a-minute sweep that records idle (`IDLE`) and expired (`EXPIRED`) sessions. Refresh and POS writes treat an idle session as ended either way; the sweep only records it. Leave it on. |
 
+**Since T0-4a**, `require-registered`, `idle-lock-minutes` and `idle-expiry-minutes` are customer settings: the values above are the defaults, and an admin changes them in the app (`/admin/settings`, docs/2026-11-19-t0-4-site-settings-api-contract.md) without a restart. `max-active` and `sweep-enabled` stay in configuration.
+
 **`require-registered` and `security.device-trust.mode` are independent.** The device-trust mode (WS1-1b) decides whether the staff list, POS tiles and manager-PIN approval need a registered till; `require-registered` decides whether selling does. The till is recognised from its cookie in every device-trust mode, including `off`. Recommended production setting: device-trust `required` and `require-registered=true`.
 
 **Switching `require-registered` on** while the NULL till has an open shift: that shift can still be closed (`POST /shifts/{id}/close`) or force-closed (10.1), but nothing more can be sold on it.

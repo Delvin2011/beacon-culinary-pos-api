@@ -56,6 +56,8 @@ All new timestamps are UTC instants with a `Z` suffix (e.g. `2026-11-18T06:02:11
 | `grant-signing-key` | `POS_OFFLINE_GRANTSIGNINGKEY` | none | Base64, at least 32 bytes. **Required when `enabled` is true.** A dedicated secret, separate from `JWT_SECRET`; can be served from Key Vault unchanged. |
 | `grant-key-id` | `POS_OFFLINE_GRANTKEYID` | `k1` | Written into each grant, so the key can be rotated later. |
 
+**Since T0-4a**, `max-offline-hours`, `warn-offline-hours`, `accounts-enabled` and `account-cap` are customer settings: the values above are the defaults, and an admin changes them in the app (`/admin/settings`). `max-offline-hours` can't exceed `grant-max-hours`. The grant stores the account values it was issued with. The other settings stay in configuration.
+
 ## 3. Shared rules: who may call the offline endpoints
 
 | Rule | Grant | Snapshot | Status |

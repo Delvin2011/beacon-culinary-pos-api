@@ -241,6 +241,6 @@ A **reprint** (`POST /admin/orders/{id}/reprint-receipt`) returns the same field
 
 ### 8.2 Built on the recommendations (no final answer yet; easy to change)
 
-1. **Business name in reports.** Statement reports (the X, Z and Cashier readings) print the receipt settings' `businessName`; when it's empty, they fall back to the server setting `app.business.name`. A Z already taken keeps the name it was printed with.
+1. **Business name in reports.** Statement reports (the X, Z and Cashier readings) print the receipt settings' `businessName`; when it's empty, they fall back to the platform setting `app.business.name`, which is blank by default since T0-4a. With both blank, no business name is printed (`meta.business` and the "Business" header item are left out), so onboarding must set it. A Z already taken keeps the name it was printed with.
 2. **Tax invoice.** `receiptTitle` is a setting (empty by default, so no heading prints until an admin sets it), and `receiptNumber` is the unique serial (section 4). Both still need the accountant's confirmation. `receiptNumber` is derived from stored values and isn't stored itself, so changing its format later needs no data migration.
 3. **Line names on reprints.** Stored at sale (section 4). Not backfilled.
