@@ -196,7 +196,8 @@ An inactive period:
 
 - is not open at any time (selling, `GET /menu/today`)
 - is left out of `GET /meal-periods` and the offline snapshot
-- can't be used for new or edited plan items (400 "Meal period Supper is inactive.")
+- can't be used for new plan items, or for moving an item to it (400 `MEAL_PERIOD_INACTIVE`,
+  "Meal period Supper is inactive."); an item already under it keeps it
 - stays in the report filters and in `GET /admin/meal-periods`
 
 ## 5. The All Day period
@@ -247,6 +248,7 @@ rename. The dashboard's sales-mix group key is derived from the name and changes
 | 400 | (field map) | Section 4.1 |
 | 403 | (empty) | Not an ADMIN |
 | 404 | `MEAL_PERIOD_NOT_FOUND` | Unknown id |
+| 400 | `MEAL_PERIOD_INACTIVE` | Planning a new item under an inactive period, or moving one to it (4.3) |
 | 409 | `PERIOD_OVERLAP` | 4.2 |
 | 409 | `PERIOD_IN_USE` | 4.3 |
 | 409 | `ALL_DAY_PROTECTED` | Section 5 |

@@ -33,6 +33,7 @@ public class DailyPlanningService {
     public DailyMealOptionDto createDailyOption(CreateDailyOptionRequest request) {
         var mealPeriod = mealPeriodRepository.findById(request.getMealPeriodId())
                 .orElseThrow(() -> new InvalidMenuRequestException("mealPeriodId does not exist."));
+        requireActive(mealPeriod);
         var mealCatalog = mealCatalogRepository.findById(request.getMealCatalogId())
                 .orElseThrow(() -> new InvalidMenuRequestException("mealCatalogId does not exist."));
         requirePlannableIn(mealCatalog, mealPeriod);
@@ -57,10 +58,11 @@ public class DailyPlanningService {
 
     @Transactional
     public DailyComponentStockDto createDailyComponentStock(CreateDailyComponentStockRequest request) {
-        var componentCatalog = componentCatalogRepository.findById(request.getComponentCatalogId())
-                .orElseThrow(() -> new InvalidMenuRequestException("componentCatalogId does not exist."));
         var mealPeriod = mealPeriodRepository.findById(request.getMealPeriodId())
                 .orElseThrow(() -> new InvalidMenuRequestException("mealPeriodId does not exist."));
+        requireActive(mealPeriod);
+        var componentCatalog = componentCatalogRepository.findById(request.getComponentCatalogId())
+                .orElseThrow(() -> new InvalidMenuRequestException("componentCatalogId does not exist."));
 
         var stock = new DailyComponentStock();
         stock.setComponentCatalog(componentCatalog);
@@ -94,8 +96,12 @@ public class DailyPlanningService {
                 ? mealCatalogRepository.findById(request.getMealCatalogId())
                         .orElseThrow(() -> new InvalidMenuRequestException("mealCatalogId does not exist."))
                 : option.getMealCatalog();
+        var periodChanged = !option.getMealPeriod().getId().equals(mealPeriod.getId());
+        if (periodChanged) {
+            requireActive(mealPeriod);
+        }
         // Only a change of meal or period is checked, so an older option keeps working as it was.
-        if (mealChanged || !option.getMealPeriod().getId().equals(mealPeriod.getId())) {
+        if (mealChanged || periodChanged) {
             requirePlannableIn(mealCatalog, mealPeriod);
         }
 
@@ -129,6 +135,9 @@ public class DailyPlanningService {
         requirePlanned(stock.getStatus(), stock.getComponentCatalog().getName());
         var mealPeriod = mealPeriodRepository.findById(request.getMealPeriodId())
                 .orElseThrow(() -> new InvalidMenuRequestException("mealPeriodId does not exist."));
+        if (!stock.getMealPeriod().getId().equals(mealPeriod.getId())) {
+            requireActive(mealPeriod);
+        }
 
         if (!stock.getComponentCatalog().getId().equals(request.getComponentCatalogId())) {
             var componentCatalog = componentCatalogRepository.findById(request.getComponentCatalogId())
@@ -162,6 +171,13 @@ public class DailyPlanningService {
         if (meal.getGroup() != period.getAccepts()) {
             throw MenuRuleException.badRequest("MEAL_NOT_ALLOWED_IN_PERIOD",
                     "'" + meal.getName() + "' can't be planned under " + period.getName() + ".");
+        }
+    }
+
+    /** T0-5a: nothing new is planned under an inactive period. An item already under one keeps it. */
+    private static void requireActive(MealPeriod period) {
+        if (!period.isActive()) {
+            throw MenuRuleException.badRequest("MEAL_PERIOD_INACTIVE", "Meal period " + period.getName() + " is inactive.");
         }
     }
 
@@ -301,7 +317,7 @@ public class DailyPlanningService {
     }
 
     private MealPeriod resolvePeriod(String periodName) {
-        return mealPeriodRepository.findByNameIgnoreCase(periodName)
+        return mealPeriodRepository.findByName(periodName)
                 .orElseThrow(() -> new InvalidMenuRequestException("Unknown meal period: " + periodName));
     }
 }

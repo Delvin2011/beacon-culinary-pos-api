@@ -74,6 +74,7 @@ public class OfflineSnapshotService {
         var menu = dailyPlanningService.dayMenu(tradingDay);
 
         var periods = mealPeriodRepository.findAll().stream()
+                .filter(MealPeriod::isActive) // T0-5a: inactive periods aren't offered
                 .sorted(Comparator.comparing(MealPeriod::getStartTime, Comparator.nullsFirst(LocalTime::compareTo))
                         .thenComparing(MealPeriod::getId))
                 .map(period -> new SnapshotPeriod(period.getId(), period.getName(), period.getStartTime(),

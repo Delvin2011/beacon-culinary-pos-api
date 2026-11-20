@@ -34,12 +34,23 @@ public class MealPeriod {
     @Column(name = "accepts")
     private CatalogGroup accepts = CatalogGroup.SET_MEALS;
 
+    // T0-5a (V114): an inactive period is never open, isn't listed or offered, and takes no new
+    // plan items. Past items, orders and reports keep it.
+    @Column(name = "active")
+    private boolean active = true;
+
+    // List order of GET /meal-periods and the admin list (then id).
+    @Column(name = "sort_order")
+    private int sortOrder;
+
     /** Whether set meals are planned here; false for the light-meals period (All Day). */
     public boolean isPlannable() {
         return accepts == CatalogGroup.SET_MEALS;
     }
 
+    /** Open at this site-local time: never while inactive; All Day always; otherwise start to end, both inclusive. */
     public boolean isActiveAt(LocalTime time) {
+        if (!active) return false;
         if (allDay) return true;
         return !time.isBefore(startTime) && !time.isAfter(endTime);
     }

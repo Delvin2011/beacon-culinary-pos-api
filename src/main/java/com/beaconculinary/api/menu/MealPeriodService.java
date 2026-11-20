@@ -12,6 +12,7 @@ public class MealPeriodService {
     private final MealMapper mealMapper;
 
     public List<MealPeriodDto> getAll() {
-        return mealPeriodRepository.findAll().stream().map(mealMapper::toDto).toList();
+        // T0-5a: active periods only, in sort order. The DTO (the public shape) is unchanged.
+        return mealPeriodRepository.findByActiveTrueOrderBySortOrderAscIdAsc().stream().map(mealMapper::toDto).toList();
     }
 }

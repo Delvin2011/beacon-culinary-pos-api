@@ -122,7 +122,7 @@ public class DailyPlanningIngredientService {
     }
 
     private MealPeriod resolvePeriod(String period) {
-        return mealPeriodRepository.findByNameIgnoreCase(period)
+        return mealPeriodRepository.findByName(period)
                 .orElseThrow(() -> new InvalidInventoryRequestException("Unknown meal period: " + period));
     }
 
