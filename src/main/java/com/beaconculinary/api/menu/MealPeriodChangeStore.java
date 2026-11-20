@@ -15,6 +15,7 @@ import java.time.LocalTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * T0-5a: SQL for meal_period_changes (V114, insert-only), the meal period write lock, and the plan
@@ -77,6 +78,21 @@ public class MealPeriodChangeStore {
         return periodId == null
                 ? jdbc.queryForObject("SELECT COUNT_BIG(*) FROM [meal_period_changes]", Long.class)
                 : jdbc.queryForObject("SELECT COUNT_BIG(*) FROM [meal_period_changes] WHERE [meal_period_id] = ?", Long.class, periodId);
+    }
+
+    /** A period's values at a time (UTC): after the last change at or before it; else before the first change
+     * after it; empty with no history, or when the period was created after it. */
+    public Optional<Values> valuesAt(long periodId, LocalDateTime at) {
+        var before = jdbc.query("""
+                SELECT TOP 1 * FROM [meal_period_changes] WHERE [meal_period_id] = ? AND [changed_at] <= ?
+                ORDER BY [changed_at] DESC, [id] DESC""", (rs, i) -> entry(rs), periodId, at);
+        if (!before.isEmpty()) {
+            return Optional.of(before.get(0).after());
+        }
+        var after = jdbc.query("""
+                SELECT TOP 1 * FROM [meal_period_changes] WHERE [meal_period_id] = ? AND [changed_at] > ?
+                ORDER BY [changed_at], [id]""", (rs, i) -> entry(rs), periodId, at);
+        return after.isEmpty() ? Optional.empty() : Optional.ofNullable(after.get(0).before());
     }
 
     /** Options and extras of a period dated on or after a day: what keeps it from being deactivated. */

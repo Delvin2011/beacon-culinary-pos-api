@@ -50,8 +50,13 @@ public class MealPeriod {
 
     /** Open at this site-local time: never while inactive; All Day always; otherwise start to end, both inclusive. */
     public boolean isActiveAt(LocalTime time) {
+        return isOpen(active, allDay, startTime, endTime, time);
+    }
+
+    /** The open rule, also applied to a period's past values (MealPeriodHistory). */
+    static boolean isOpen(boolean active, boolean allDay, LocalTime start, LocalTime end, LocalTime time) {
         if (!active) return false;
         if (allDay) return true;
-        return !time.isBefore(startTime) && !time.isAfter(endTime);
+        return !time.isBefore(start) && !time.isAfter(end);
     }
 }

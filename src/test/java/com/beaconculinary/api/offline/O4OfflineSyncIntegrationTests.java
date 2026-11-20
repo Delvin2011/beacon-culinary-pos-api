@@ -18,6 +18,7 @@ import com.beaconculinary.api.orders.OrderRepository;
 import com.beaconculinary.api.orders.OrderStatusEventRepository;
 import com.beaconculinary.api.orders.VatRule;
 import com.beaconculinary.api.settings.SiteSettings;
+import com.beaconculinary.api.menu.MealPeriodFixture;
 import com.beaconculinary.api.settings.SiteSettingsFixture;
 import com.beaconculinary.api.settings.SiteSettingsStore;
 import com.beaconculinary.api.support.AuthTestHelper;
@@ -115,6 +116,7 @@ class O4OfflineSyncIntegrationTests {
         // T0-4a: no saved settings and no settings history (offline VAT is checked against it).
         SiteSettingsFixture.clearSavedAndHistory(jdbc);
         siteSettings.invalidate();
+        MealPeriodFixture.clear(jdbc); // T0-5a: seeded periods and no period history
         today = LocalDate.now(clock);
         properties.setEnabled(true);
         adminPwd = AuthTestHelper.loginAsAdmin(mockMvc);
@@ -146,6 +148,7 @@ class O4OfflineSyncIntegrationTests {
         properties.setAccountsEnabled(true);
         SiteSettingsFixture.clearSavedAndHistory(jdbc);
         siteSettings.invalidate();
+        MealPeriodFixture.clear(jdbc);
         jdbc.update("DELETE FROM [sale_exceptions]");
         jdbc.execute("DISABLE TRIGGER trg_z_readings_insert_only ON z_readings; DELETE FROM z_readings WHERE closed_by IN "
                 + "(SELECT id FROM users WHERE email = '" + AuthTestHelper.ADMIN_EMAIL + "') AND definition_version = 99; "
@@ -450,6 +453,26 @@ class O4OfflineSyncIntegrationTests {
         assertThat(detail(orderId, "VAT_MISMATCH").get("serverVat").decimalValue()).isEqualByComparingTo("6.90");
         assertThat(codes(results.get(2))).isEmpty();
         assertThat(vat(results.get(2).get("orderId").asLong())).containsExactly(new BigDecimal("0.1600"), new BigDecimal("6.90"));
+    }
+
+    @Test
+    void periodClosed_usesThePeriodsTimesWhenTheSaleWasMade() throws Exception {
+        // At 12:25 (after the till's snapshot) Lunch moves to start at 13:00.
+        var changedAt = UtcTimestamps.toUtc(soldAt(25));
+        jdbc.update("UPDATE [meal_periods] SET [start_time] = '13:00' WHERE [id] = 2");
+        jdbc.update("""
+                INSERT INTO [meal_period_changes] ([meal_period_id], [action], [old_name], [old_start_time], [old_end_time],
+                    [old_sort_order], [old_active], [new_name], [new_start_time], [new_end_time], [new_sort_order],
+                    [new_active], [changed_at], [changed_by], [changed_by_name])
+                VALUES (2, 'UPDATE', 'Lunch', '12:00', '14:30', 20, 1, 'Lunch', '13:00', '14:30', 20, 1, ?, 1, 'O4 test')""",
+                changedAt);
+        var openThen = sale(1, 20);     // 12:20: Lunch was 12:00-14:30
+        var closedThen = sale(2, 26);   // 12:26: Lunch was 13:00-14:30
+
+        var results = body(sync(t1, List.of(grantToken()), List.of(openThen, closedThen))).get("results");
+
+        assertThat(codes(results.get(0))).isEmpty();
+        assertThat(codes(results.get(1))).containsExactly("PERIOD_CLOSED");
     }
 
     @Test

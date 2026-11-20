@@ -11,6 +11,7 @@ import com.beaconculinary.api.menu.DailyComponentStockRepository;
 import com.beaconculinary.api.menu.DailyMealOption;
 import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.DailyPlanItemStatus;
+import com.beaconculinary.api.menu.MealPeriodHistory;
 import com.beaconculinary.api.menu.Station;
 import com.beaconculinary.api.offline.OfflineGrantStore;
 import com.beaconculinary.api.offline.OfflineSequenceStore;
@@ -88,6 +89,7 @@ public class OfflineSaleRecorder {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final SiteLocale siteLocale;
+    private final MealPeriodHistory mealPeriodHistory;
     private final Clock clock;
 
     public OfflineSaleRecorder(OrderRepository orderRepository, OrderMapper orderMapper,
@@ -97,7 +99,8 @@ public class OfflineSaleRecorder {
                                DailyComponentStockRepository stockRepository, LightMealStockService lightMealStockService,
                                ZReadings zReadings, SiteSettings siteSettings,
                                OfflineSequenceStore sequences, SaleExceptionStore exceptions, AppLock appLock,
-                               JdbcTemplate jdbc, ObjectMapper objectMapper, SiteLocale siteLocale, Clock clock) {
+                               JdbcTemplate jdbc, ObjectMapper objectMapper, SiteLocale siteLocale,
+                               MealPeriodHistory mealPeriodHistory, Clock clock) {
         this.orderRepository = orderRepository;
         this.orderMapper = orderMapper;
         this.orderNumberAllocator = orderNumberAllocator;
@@ -116,6 +119,7 @@ public class OfflineSaleRecorder {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.siteLocale = siteLocale;
+        this.mealPeriodHistory = mealPeriodHistory;
         this.clock = clock;
     }
 
@@ -266,7 +270,6 @@ public class OfflineSaleRecorder {
 
     /** Builds the lines as charged; returns what they add up to (lines and extras). */
     private BigDecimal lines(Sale sale, LocalDate saleDay, Instant soldAt, Order order, List<Flag> flags) {
-        var soldAtLocal = soldAt.atZone(siteLocale.zone()).toLocalTime();
         var total = BigDecimal.ZERO;
         for (int i = 0; i < sale.lines().size(); i++) {
             var input = sale.lines().get(i);
@@ -286,7 +289,7 @@ public class OfflineSaleRecorder {
             if (option == null) {
                 flags.add(flag(SaleExceptionCode.UNKNOWN_ITEM, "lineIndex", i, "name", line.getName(), "charged", input.unitPrice()));
             } else {
-                checkOption(i, option, input.unitPrice(), saleDay, soldAtLocal, flags);
+                checkOption(i, option, input.unitPrice(), saleDay, soldAt, flags);
                 decrementPortions(option, input.quantity(), flags);
             }
             if (input.extras() != null) {
@@ -323,7 +326,7 @@ public class OfflineSaleRecorder {
     }
 
     private void checkOption(int index, DailyMealOption option, BigDecimal charged, LocalDate saleDay,
-                             java.time.LocalTime soldAtLocal, List<Flag> flags) {
+                             Instant soldAt, List<Flag> flags) {
         if (option.getPrice() != null && option.getPrice().compareTo(charged) != 0) {
             flags.add(flag(SaleExceptionCode.PRICE_MISMATCH, "lineIndex", index, "optionId", option.getId(),
                     "charged", charged, "serverPrice", option.getPrice()));
@@ -340,7 +343,8 @@ public class OfflineSaleRecorder {
             flags.add(flag(SaleExceptionCode.ITEM_UNAVAILABLE, "lineIndex", index, "optionId", option.getId(), "reason", unavailable));
         }
         var period = option.getMealPeriod();
-        if (period != null && !period.isActiveAt(soldAtLocal)) {
+        // T0-5a: the period's times when the sale was made, not now (an admin may have changed them since).
+        if (period != null && !mealPeriodHistory.wasOpenAt(period, soldAt)) {
             flags.add(flag(SaleExceptionCode.PERIOD_CLOSED, "lineIndex", index, "periodId", period.getId()));
         }
     }
