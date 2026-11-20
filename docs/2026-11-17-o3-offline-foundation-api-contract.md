@@ -234,7 +234,7 @@ Today's data for selling offline. Fetch it after sign-in, after opening a shift,
 |---|---|
 | `snapshotVersion` | A hash of the content (everything except `generatedAt` and `serverTimeUtc`). The same data always gives the same version. |
 | `tradingDay` | Today in Africa/Johannesburg. A snapshot is for this day only; don't sell from it on another day. |
-| `periods` | Every meal period, with its times. When `allDay` is true the period is open all day and its times can be ignored. |
+| `periods` | Every **active** meal period (T0-5a: inactive periods are left out), with its times. When `allDay` is true the period is open all day and its times can be ignored. Admins change periods in the app (docs/2026-11-20-t0-5-meal-periods-locations-api-contract.md); a till picks up a change at its next snapshot. |
 | `options` | **Every** option of today, in **every** period (not only the period open now), plus always-on light meals and beverages (`periodId: null` for beverages). Includes options not yet `READY`, with their `status`. |
 | `options[].status` | Sell only `READY` options, as known at the last refresh. |
 | `options[].portionsRemaining` | Planned meals only; `null` (unlimited) for always-on items. The till counts down from it offline. |

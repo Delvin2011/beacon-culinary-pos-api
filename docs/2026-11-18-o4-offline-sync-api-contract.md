@@ -196,7 +196,7 @@ In its own transaction, without any check against the server's clock (no meal-pe
 | `OFFLINE_NUMBER_CLASH` | REVIEW | Another sale already has this till, day and `offlineSeq`. | `offlineSeq`, `otherOrderId` |
 | `CLOCK_SKEW` | REVIEW | `tillClockAtSendUtc` is more than 5 minutes from the server's time. | `skewMs` |
 | `FUTURE_SALE` | REVIEW | `soldAt` is more than 1 minute after the server received the sale. | `soldAt`, `receivedAt` |
-| `PERIOD_CLOSED` | INFO | A line's meal period wasn't open at `soldAt`. | `lineIndex`, `periodId` |
+| `PERIOD_CLOSED` | INFO | A line's meal period wasn't open at `soldAt`, by its times then (T0-5a: from the meal period history, so a time change made after the sale doesn't flag it). | `lineIndex`, `periodId` |
 | `ITEM_UNAVAILABLE` | INFO | A line's option wasn't READY, was out today, or belongs to another day. | `lineIndex`, `optionId`, `reason` |
 | `UNLOCKED_OFFLINE` | INFO | The till was unlocked offline before the sale. | (none) |
 | `STOCK_AFTER_COUNT` | INFO | A light-meal ingredient used by the sale was counted in a stock take submitted after `soldAt`; that count didn't include this use. | `stockTakeId`, `ingredientId` |

@@ -1,7 +1,7 @@
 # Meal periods and locations API contract (T0-5a)
 
 Branch `feature/t0-5a-meal-periods-locations` (from `feature/t0-4a-site-settings`; V114). Status:
-**draft for the frontend.**
+**Part 2 implemented on the branch; the frontend builds against it.** Part 1 (locations) postponed.
 
 Today meal periods (Breakfast, Lunch, All Day) come from migrations V17/V28 and the API is
 read-only. T0-5a lets an admin create, edit, deactivate and activate them, so a new customer can
