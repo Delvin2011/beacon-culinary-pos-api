@@ -94,6 +94,34 @@ class MealPeriodActiveIntegrationTests {
     }
 
     @Test
+    void anUnknownOrRenamedPeriodNameIsMealPeriodUnknown() throws Exception {
+        jdbc.update("UPDATE [meal_periods] SET [name] = 'T05 Dinner', [active] = 1 WHERE [id] = ?", supperId);
+        var auth = "Bearer " + adminToken;
+        var stockRequests = jdbc.queryForObject("SELECT COUNT(*) FROM [stock_requests]", Long.class);
+
+        mockMvc.perform(get("/menu/today").param("period", "T05 Supper").header("Authorization", auth))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MEAL_PERIOD_UNKNOWN"))
+                .andExpect(jsonPath("$.error").value("Unknown meal period: T05 Supper"));
+        mockMvc.perform(get("/admin/daily-planning/2026-12-01").param("period", "T05 Supper").header("Authorization", auth))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MEAL_PERIOD_UNKNOWN"));
+        mockMvc.perform(get("/admin/daily-planning/2026-12-01/ingredient-requirements").param("period", "T05 Supper")
+                        .header("Authorization", auth))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MEAL_PERIOD_UNKNOWN"))
+                .andExpect(jsonPath("$.error").value("Unknown meal period: T05 Supper"));
+        mockMvc.perform(post("/admin/daily-planning/2026-12-01/confirm-ingredient-requirements").header("Authorization", auth)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"period\":\"T05 Supper\",\"adjustments\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MEAL_PERIOD_UNKNOWN"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM [stock_requests]", Long.class)).isEqualTo(stockRequests);
+
+        mockMvc.perform(get("/admin/daily-planning/2026-12-01").param("period", "t05 dinner").header("Authorization", auth))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void theOfflineSnapshotLeavesOutInactivePeriods() {
         assertThat(offlineSnapshotService.build().periods()).extracting(SnapshotPeriod::name)
                 .containsExactly("All Day", "Breakfast", "Lunch");

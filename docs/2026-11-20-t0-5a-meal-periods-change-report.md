@@ -21,7 +21,7 @@ H.20). With no change made, behaviour is as before.
 | Storage | V114: `meal_periods.active`, `sort_order`, constraints; insert-only `meal_period_changes` |
 | Rules | Unique active name; `HH:mm`, no overnight; no overlap (touching allowed); All Day protected; no deactivation while items are dated today or later |
 | Effects | A change applies at once to the menu, ordering and planning; offline tills at their next snapshot; offline `PERIOD_CLOSED` uses the times at `soldAt` |
-| Tests | Full suite: 1118 tests, 0 failures, 0 errors, 1 skipped (section 8) |
+| Tests | Full suite: 1119 tests, 0 failures, 0 errors, 1 skipped (section 8) |
 
 ## 2. Commits
 
@@ -33,7 +33,8 @@ H.20). With no change made, behaviour is as before.
 | 4 | `f27ecdf` | Admin API, rules, lock, history |
 | 5 | `330a17f` | Offline `PERIOD_CLOSED` at the times in force at `soldAt` |
 | 6 | `234c357` | Effects through the menu, ordering, the snapshot and the reports |
-| 7 | see `git log` | Docs: this report, notes in older docs |
+| 7 | `cea610f` | Docs: this report, notes in older docs |
+| 8 | see `git log` | `MEAL_PERIOD_UNKNOWN` on an unknown period name (the frontend's T0-5b request) |
 
 ## 3. Decisions
 
@@ -90,7 +91,7 @@ database only; no applied migration was edited.
 | `GET /meal-periods` | Every period, by id | Active periods only, by `sortOrder` then id (same order until a period is added or reordered). Same fields. |
 | "Active now" | Times only | Also false while the period is inactive (menu/today, ordering, offline check) |
 | Planning | Any period | `MEAL_PERIOD_INACTIVE` for an inactive period. Extras: the period is now checked before the component, so a request with both ids wrong reports the period. |
-| Name lookups (`?period=`, daily plan, ingredient requirements) | `findByNameIgnoreCase` (would throw with two rows of one name) | The active period of that name, else the newest inactive one |
+| Name lookups (`?period=`, daily plan, ingredient requirements) | `findByNameIgnoreCase` (would throw with two rows of one name) | The active period of that name, else the newest inactive one. An unknown name: the same 400 and message, now with code `MEAL_PERIOD_UNKNOWN` (step 8) |
 | Offline snapshot `periods` | Every period | Active periods only (still in start-time order) |
 | Offline `PERIOD_CLOSED` | The period's current times | Its times at `soldAt`, from `meal_period_changes` (with no history: the current times, as before) |
 | Reports and dashboard | Period names as seeded | The current name; a rename relabels past figures (they stay under the same period id) |
@@ -114,13 +115,15 @@ database only; no applied migration was edited.
 - `menu/MealPeriod`: `active`, `sortOrder`; the open rule in one place (`isOpen`)
 - `menu/MealPeriodRepository`: active list in order; name lookup preferring the active period
 - `menu/MealPeriodService`: public list active only, sorted
-- `menu/DailyPlanningService`: `MEAL_PERIOD_INACTIVE`; name lookup
-- `inventory/DailyPlanningIngredientService`: name lookup
+- `menu/DailyPlanningService`: `MEAL_PERIOD_INACTIVE`; name lookup; `MEAL_PERIOD_UNKNOWN` (step 8)
+- `menu/MenuRuleException`: `unknownMealPeriod` (step 8)
+- `inventory/DailyPlanningIngredientService`: name lookup; `MEAL_PERIOD_UNKNOWN` (step 8)
 - `offline/OfflineSnapshotService`: active periods only
 - `offline/sync/OfflineSaleRecorder`: `PERIOD_CLOSED` at `soldAt`
 
 **Modified (tests)**
 
+- `menu/DailyPlanStatusIntegrationTests`: the unknown-period test also checks the code (step 8)
 - `offline/O4OfflineSyncIntegrationTests`: one test (`PERIOD_CLOSED` at `soldAt`); meal periods
   restored around each test
 
@@ -135,20 +138,21 @@ contract's status line.
 | `MealPeriodTest` (unit) | Open from start to end inclusive; All Day always; inactive never |
 | `MealPeriodRulesTest` (unit) | Field messages, every bad field at once, no overnight, All Day without times, overlap (touching allowed; inactive and All Day never overlap) |
 | `MealPeriodSchemaIntegrationTests` | V114: seeded sort orders, each constraint, the insert-only trigger, "before" required except on CREATE |
-| `MealPeriodActiveIntegrationTests` | Public list (active only, sorted, same shape), `MEAL_PERIOD_INACTIVE`, name lookup preference, snapshot |
+| `MealPeriodActiveIntegrationTests` | Public list (active only, sorted, same shape), `MEAL_PERIOD_INACTIVE`, name lookup preference, snapshot; `MEAL_PERIOD_UNKNOWN` for a stale name in all four places, the confirm creating nothing (step 8) |
 | `MealPeriodAdminIntegrationTests` | Every endpoint and rule: ADMIN only, create, update, unchanged = no record, All Day, in use, activate rechecks, history paging |
 | `MealPeriodHistoryIntegrationTests` | Values at a time (last change at or before; else the "before" of the first later change; a later CREATE; same-instant changes by id); `wasOpenAt` |
 | `MealPeriodEffectsIntegrationTests` | Through the admin API: a time change applies at once to menu/today, ordering and the snapshot; a selling period can't be deactivated; a deactivated period leaves the lists, menu and snapshot; All Day protected; past sales keep their period in reports under the current name |
 | `O4OfflineSyncIntegrationTests` (added) | `PERIOD_CLOSED` uses the times at `soldAt` |
 
-**Full suite:** 1118 tests, 0 failures, 0 errors, 1 skipped. The skip is the existing `StaffManagementIntegrationTests`
+**Full suite (after step 8):** 1119 tests, 0 failures, 0 errors, 1 skipped. The skip is the existing `StaffManagementIntegrationTests`
 assumption (another active admin in the shared test database), as in T0-4a.
 
 ## 9. Risks and follow-ups
 
 - **Period names in the frontend:** `GET /menu/today?period=`, the daily plan and the ingredient
   requirements take a period **name**. A frontend that hard-codes "Lunch" breaks on a rename; it must
-  take names from `GET /meal-periods` (contract section 8). Moving those endpoints to ids is a later
+  take names from `GET /meal-periods` (contract section 8). A stale name gets 400
+  `MEAL_PERIOD_UNKNOWN` (step 8), so the screen can reload the periods. Moving those endpoints to ids is a later
   change.
 - **Renames relabel the past:** reports and the dashboard show the current name; the dashboard's
   sales-mix group key is derived from it.

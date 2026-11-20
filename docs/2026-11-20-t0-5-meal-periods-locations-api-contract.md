@@ -238,6 +238,8 @@ rename. The dashboard's sales-mix group key is derived from the name and changes
 - **Never hard-code period names.** `GET /menu/today?period=`, the daily plan and the ingredient
   requirements take a period **name**. Take names from `GET /meal-periods`; a rename otherwise
   breaks the call. With an active and an inactive period sharing a name, the active one is used.
+  An unknown or stale name (e.g. after a rename) returns 400 `MEAL_PERIOD_UNKNOWN`, also for the
+  `period` in the confirm-ingredient-requirements body: reload `GET /meal-periods` and retry.
 - Show inactive periods greyed out in the admin list, with Activate.
 - Before saving a time change, warn that it applies to selling at once.
 
@@ -248,6 +250,7 @@ rename. The dashboard's sales-mix group key is derived from the name and changes
 | 400 | (field map) | Section 4.1 |
 | 403 | (empty) | Not an ADMIN |
 | 404 | `MEAL_PERIOD_NOT_FOUND` | Unknown id |
+| 400 | `MEAL_PERIOD_UNKNOWN` | A period name in `?period=` (menu/today, daily plan, ingredient requirements) or the confirm body matches no meal period, e.g. after a rename (section 8) |
 | 400 | `MEAL_PERIOD_INACTIVE` | Planning a new item under an inactive period, or moving one to it (4.3) |
 | 409 | `PERIOD_OVERLAP` | 4.2 |
 | 409 | `PERIOD_IN_USE` | 4.3 |

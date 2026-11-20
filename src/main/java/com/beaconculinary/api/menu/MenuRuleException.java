@@ -29,4 +29,10 @@ public class MenuRuleException extends RuntimeException {
     static MenuRuleException conflict(String code, String message) {
         return new MenuRuleException(HttpStatus.CONFLICT, code, message);
     }
+
+    /** T0-5a: a period name (?period=, the confirm body's period) that matches no meal period, e.g. after a
+     * rename. 400 MEAL_PERIOD_UNKNOWN; the message is unchanged from before the code was added. */
+    public static MenuRuleException unknownMealPeriod(String name) {
+        return new MenuRuleException(HttpStatus.BAD_REQUEST, "MEAL_PERIOD_UNKNOWN", "Unknown meal period: " + name);
+    }
 }

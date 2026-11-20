@@ -399,6 +399,7 @@ class DailyPlanStatusIntegrationTests {
         mockMvc.perform(get("/admin/daily-planning/" + today).param("period", "SUPPER")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Unknown meal period: SUPPER"));
+                .andExpect(jsonPath("$.error").value("Unknown meal period: SUPPER"))
+                .andExpect(jsonPath("$.code").value("MEAL_PERIOD_UNKNOWN"));
     }
 }

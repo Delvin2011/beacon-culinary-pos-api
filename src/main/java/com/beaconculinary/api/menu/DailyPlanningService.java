@@ -318,6 +318,6 @@ public class DailyPlanningService {
 
     private MealPeriod resolvePeriod(String periodName) {
         return mealPeriodRepository.findByName(periodName)
-                .orElseThrow(() -> new InvalidMenuRequestException("Unknown meal period: " + periodName));
+                .orElseThrow(() -> MenuRuleException.unknownMealPeriod(periodName));
     }
 }

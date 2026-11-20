@@ -9,6 +9,7 @@ import com.beaconculinary.api.menu.DailyMealOptionRepository;
 import com.beaconculinary.api.menu.DailyPlanItemStatus;
 import com.beaconculinary.api.menu.MealPeriod;
 import com.beaconculinary.api.menu.MealPeriodRepository;
+import com.beaconculinary.api.menu.MenuRuleException;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -123,7 +124,7 @@ public class DailyPlanningIngredientService {
 
     private MealPeriod resolvePeriod(String period) {
         return mealPeriodRepository.findByName(period)
-                .orElseThrow(() -> new InvalidInventoryRequestException("Unknown meal period: " + period));
+                .orElseThrow(() -> MenuRuleException.unknownMealPeriod(period));
     }
 
     private Location mainStore() {
