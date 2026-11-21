@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -77,9 +76,9 @@ public class StaffService {
         var scope = request == null ? null : request.getScope();
         EnumSet<LoginMethod> scopes;
         if (blank(scope)) {
-            scopes = EnumSet.allOf(LoginMethod.class);
+            scopes = LoginMethod.accountScopes();
         } else {
-            var match = Arrays.stream(LoginMethod.values()).filter(m -> m.name().equals(scope.trim())).findFirst();
+            var match = LoginMethod.accountScopes().stream().filter(m -> m.name().equals(scope.trim())).findFirst();
             if (match.isEmpty()) {
                 throw new StaffExceptions.Invalid(Map.of("scope",
                         "Scope must be one of PASSWORD, PIN, MANAGER_PIN, CHANGE_PASSWORD."));
@@ -221,6 +220,48 @@ public class StaffService {
         userRepository.save(user);
         clearPinLocks(user);
         return toDto(user);
+    }
+
+    /**
+     * T0-6a: sets the credentials an accepted invite covers, with the same rules as the staff
+     * screens (length, 6-digit PIN, unique admin PIN), and ends the matching locks. A requirement of
+     * NONE means the link doesn't set that credential. Runs in the caller's transaction; the
+     * caller is not signed in, so the unlock has no admin.
+     */
+    public void applyInviteCredentials(User user, Requirement password, Requirement pin, String newPassword, String newPin) {
+        var rule = StaffRolePolicy.ruleFor(user.getRole()).orElseThrow(StaffExceptions.NotFound::new);
+        var errors = new LinkedHashMap<String, String>();
+        checkInviteCredential("password", password, newPassword, rule, errors);
+        checkInviteCredential("pin", pin, newPin, rule, errors);
+        throwIfAny(errors);
+        if (!blank(newPin) && user.getRole() == Role.ADMIN) {
+            requireUniqueAdminPin(newPin, user.getId());
+        }
+        var scopes = EnumSet.noneOf(LoginMethod.class);
+        if (!blank(newPassword)) {
+            user.setPassword(passwordEncoder.encode(newPassword));
+            scopes.add(LoginMethod.PASSWORD);
+            scopes.add(LoginMethod.CHANGE_PASSWORD);
+        }
+        if (!blank(newPin)) {
+            user.setPinHash(passwordEncoder.encode(newPin));
+            scopes.add(LoginMethod.PIN);
+        }
+        userRepository.save(user);
+        if (!scopes.isEmpty()) {
+            loginAttempts.unlock(user.getId(), scopes, null, "INVITE_ACCEPTED");
+        }
+    }
+
+    private static void checkInviteCredential(String field, Requirement requirement, String value, RoleRule rule,
+                                              Map<String, String> errors) {
+        if (requirement == Requirement.NONE) {
+            if (!blank(value)) {
+                errors.put(field, "This link doesn't set a " + (field.equals("pin") ? "PIN" : "password") + ".");
+            }
+            return;
+        }
+        checkCredential(field, requirement, value, true, rule, errors);
     }
 
     /** A new password ends password sign-in locks and change-password blocks (same transaction). */

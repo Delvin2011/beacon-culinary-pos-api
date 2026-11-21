@@ -51,6 +51,10 @@ public class LoginProtectionProperties {
     @Valid @NotNull
     private Threshold changePasswordUser = new Threshold(5, Duration.ofMinutes(15));
 
+    /** T0-6a INVITE_IP: invite lookups and accepts with unknown tokens per client IP. */
+    @Valid @NotNull
+    private Threshold inviteIp = new Threshold(10, Duration.ofMinutes(15));
+
     /**
      * First and second lock durations for LOCK rules. The third lock needs an admin to unlock.
      * BLOCK rules have no duration of their own: a block lasts until the failures in its window

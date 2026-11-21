@@ -117,6 +117,9 @@ public class LoginAttemptService {
                 }
                 case CHANGE_PASSWORD -> primary = store.countFailuresByUser(method, userId,
                         since(now, properties.getChangePasswordUser().getWindow(), lastSuccess));
+                // T0-6a: per client IP; there is no account to reset the count.
+                case INVITE -> primary = store.countFailuresByIp(method, request.clientIp(),
+                        now.minus(properties.getInviteIp().getWindow()));
             }
             var evaluation = LoginRuleEvaluator.evaluate(method, primary, secondary, properties);
             if (evaluation.blocking() == null && deviceFailures >= deviceTrust.getDevicePin().getMaxFailures()) {
@@ -151,7 +154,8 @@ public class LoginAttemptService {
                 applyAccountLock(attempt, row, userId);
                 return;
             }
-            store.saveAttempt(row, outcome == LoginOutcome.SUCCESS ? userId : null);
+            // INVITE is not an account scope: a success there resets nothing in user_auth_state.
+            store.saveAttempt(row, outcome == LoginOutcome.SUCCESS && attempt.method() != LoginMethod.INVITE ? userId : null);
         } catch (RuntimeException e) {
             log.error("Login protection could not record a {} attempt; continuing", attempt.method(), e);
         }
@@ -321,6 +325,17 @@ public class LoginAttemptService {
                             var oldest = store.failureAtByUser(method, userId, userAfter,
                                     primary - properties.getChangePasswordUser().getMaxFailures());
                             refusal = blockRefusal(LoginRule.CHANGE_PASSWORD_USER, oldest.orElse(null), now);
+                        }
+                    }
+                    case INVITE -> {
+                        // T0-6a: unknown tokens from this client IP; blocking also alerts.
+                        var ipAfter = now.minus(properties.getInviteIp().getWindow());
+                        primary = store.countFailuresByIp(method, request.clientIp(), ipAfter);
+                        if (primary >= properties.getInviteIp().getMaxFailures()) {
+                            alert = LoginRule.INVITE_IP;
+                            var oldest = store.failureAtByIp(method, request.clientIp(), ipAfter,
+                                    primary - properties.getInviteIp().getMaxFailures());
+                            refusal = blockRefusal(LoginRule.INVITE_IP, oldest.orElse(null), now);
                         }
                     }
                 }
@@ -516,6 +531,7 @@ public class LoginAttemptService {
             case MANAGER_PIN_CALLER -> properties.getManagerPinCaller();
             case MANAGER_PIN_GLOBAL -> properties.getManagerPinGlobal();
             case CHANGE_PASSWORD_USER -> properties.getChangePasswordUser();
+            case INVITE_IP -> properties.getInviteIp();
             case DEVICE_PIN -> new LoginProtectionProperties.Threshold(
                     deviceTrust.getDevicePin().getMaxFailures(), deviceTrust.getDevicePin().getWindow());
         };

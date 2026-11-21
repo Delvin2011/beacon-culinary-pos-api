@@ -14,6 +14,9 @@ public class AuthSecurityRules implements SecurityRules {
             .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
             .requestMatchers(HttpMethod.POST, "/auth/pin-login").permitAll()
             .requestMatchers(HttpMethod.POST, "/auth/refresh").permitAll()
+            // T0-6a: invite links. The token is in the body, never the path.
+            .requestMatchers(HttpMethod.POST, "/auth/invites/lookup").permitAll()
+            .requestMatchers(HttpMethod.POST, "/auth/invites/accept").permitAll()
             // Idempotent and public, so it works with an expired access token (it only clears the refresh cookie).
             .requestMatchers(HttpMethod.POST, "/auth/logout").permitAll();
     }

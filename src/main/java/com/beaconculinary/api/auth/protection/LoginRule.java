@@ -15,7 +15,9 @@ public enum LoginRule {
     /** Per user: wrong old passwords block change-password for a fixed time (login is unaffected). */
     CHANGE_PASSWORD_USER(LoginMethod.CHANGE_PASSWORD, Effect.BLOCK, false),
     /** WS1-1b: failed PIN sign-ins on one POS till, across all accounts and browsers. */
-    DEVICE_PIN(LoginMethod.PIN, Effect.BLOCK, false);
+    DEVICE_PIN(LoginMethod.PIN, Effect.BLOCK, false),
+    /** T0-6a: invite lookups and accepts with unknown tokens per client IP: blocks that IP, and alerts. */
+    INVITE_IP(LoginMethod.INVITE, Effect.BLOCK, true);
 
     public enum Effect {
         /** Temporary block for the rule's key, fixed duration. */

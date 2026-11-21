@@ -63,6 +63,12 @@ public class SessionStore {
                 """, now, reason.name(), userId);
     }
 
+    /** T0-6a: every active session of the user, whatever its kind (their credentials changed). */
+    public int endAllOfUser(long userId, SessionEndReason reason, LocalDateTime now) {
+        return jdbc.update("UPDATE [user_sessions] SET [ended_at] = ?, [end_reason] = ? WHERE [user_id] = ? AND [ended_at] IS NULL",
+                now, reason.name(), userId);
+    }
+
     /** C8: every active POS session on a till. */
     public int endActivePosOnDevice(UUID deviceId, SessionEndReason reason, LocalDateTime now) {
         return jdbc.update("""

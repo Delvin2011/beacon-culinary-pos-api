@@ -24,6 +24,7 @@ public final class LoginRuleEvaluator {
     /**
      * @param primary   PASSWORD: failures for the email. PIN: failures for cashierId + client IP.
      *                  MANAGER_PIN: failures by the caller. CHANGE_PASSWORD: failures by the user.
+     *                  INVITE: failures (unknown tokens) from the client IP.
      * @param secondary PIN: failures for the cashierId from any source. MANAGER_PIN: failures by all
      *                  callers. Ignored otherwise.
      */
@@ -42,6 +43,8 @@ public final class LoginRuleEvaluator {
                     reached(secondary, p.getManagerPinGlobal()) ? LoginRule.MANAGER_PIN_GLOBAL : null);
             case CHANGE_PASSWORD -> reached(primary, p.getChangePasswordUser())
                     ? new Evaluation(LoginRule.CHANGE_PASSWORD_USER, null) : Evaluation.NONE;
+            case INVITE -> reached(primary, p.getInviteIp())
+                    ? new Evaluation(LoginRule.INVITE_IP, LoginRule.INVITE_IP) : Evaluation.NONE;
         };
     }
 

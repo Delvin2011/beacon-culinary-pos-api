@@ -1,5 +1,6 @@
 package com.beaconculinary.api.common;
 
+import com.beaconculinary.api.auth.invite.InviteRuleException;
 import com.beaconculinary.api.inventory.LocationRuleException;
 import com.beaconculinary.api.menu.MenuRuleException;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +29,13 @@ public class GlobalExceptionHandler {
     // T0-5c: stock-location rules (stock requests now, /admin/locations later), with details.
     @ExceptionHandler(LocationRuleException.class)
     public ResponseEntity<ErrorDto> handleLocationRule(LocationRuleException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(new ErrorDto(exception.getMessage(), exception.getCode(), exception.getDetails()));
+    }
+
+    // T0-6a: invite refusals (public invite endpoints and staff invites).
+    @ExceptionHandler(InviteRuleException.class)
+    public ResponseEntity<ErrorDto> handleInviteRule(InviteRuleException exception) {
         return ResponseEntity.status(exception.getStatus())
                 .body(new ErrorDto(exception.getMessage(), exception.getCode(), exception.getDetails()));
     }

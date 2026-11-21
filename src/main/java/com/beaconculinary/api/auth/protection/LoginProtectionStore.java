@@ -155,6 +155,26 @@ public class LoginProtectionStore {
                 method.name(), userId, after);
     }
 
+    /** T0-6a INVITE_IP: failures from one client IP (null IP: those recorded without one). */
+    public long countFailuresByIp(LoginMethod method, String clientIp, LocalDateTime after) {
+        if (clientIp == null) {
+            return count("SELECT COUNT(*) FROM [login_attempts] WHERE [method] = ? AND [client_ip] IS NULL AND [attempted_at] > ? AND " + FAILURE,
+                    method.name(), after);
+        }
+        return count("SELECT COUNT(*) FROM [login_attempts] WHERE [method] = ? AND [client_ip] = ? AND [attempted_at] > ? AND " + FAILURE,
+                method.name(), clientIp, after);
+    }
+
+    /** As {@link #failureAtByIdentifierAndIp}, keyed by client IP only (INVITE_IP). */
+    public Optional<LocalDateTime> failureAtByIp(LoginMethod method, String clientIp, LocalDateTime after, long offset) {
+        if (clientIp == null) {
+            return firstTime("SELECT [attempted_at] FROM [login_attempts] WHERE [method] = ? AND [client_ip] IS NULL AND [attempted_at] > ? AND "
+                    + FAILURE + " ORDER BY [attempted_at], [id] OFFSET ? ROWS FETCH NEXT 1 ROWS ONLY", method.name(), after, offset);
+        }
+        return firstTime("SELECT [attempted_at] FROM [login_attempts] WHERE [method] = ? AND [client_ip] = ? AND [attempted_at] > ? AND "
+                + FAILURE + " ORDER BY [attempted_at], [id] OFFSET ? ROWS FETCH NEXT 1 ROWS ONLY", method.name(), clientIp, after, offset);
+    }
+
     public long countFailures(LoginMethod method, LocalDateTime after) {
         return count("SELECT COUNT(*) FROM [login_attempts] WHERE [method] = ? AND [attempted_at] > ? AND " + FAILURE,
                 method.name(), after);
