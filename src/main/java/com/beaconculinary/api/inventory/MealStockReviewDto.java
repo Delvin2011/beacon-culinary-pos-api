@@ -6,8 +6,8 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /** GET /admin/meal-catalog/{id}/stock-review: what one unit of a light meal needs and how many
- * units the Kitchen can make. Not tracked: unitsAvailable and limitingIngredient are null and
- * lines is empty. */
+ * units its station's source location can make (T0-5c; Kitchen by default). Not tracked:
+ * unitsAvailable, limitingIngredient and the source location are null and lines is empty. */
 public record MealStockReviewDto(
         Long mealId,
         String name,
@@ -17,9 +17,14 @@ public record MealStockReviewDto(
         String limitingIngredient,
         int lowStockUnits,
         boolean outToday,
+        // T0-5c: where kitchenAvailable is counted (the meal's station's source location).
+        Long sourceLocationId,
+        String sourceLocationName,
         List<Line> lines) {
 
-    /** One ingredient. Stock figures are ledger sums and may be negative; unitsPossible never is. */
+    /** One ingredient. Stock figures are ledger sums and may be negative; unitsPossible never is.
+     * Names kept for the frontend (T0-5c): kitchenAvailable is at the source location,
+     * mainStoreAvailable at the primary location. */
     public record Line(
             Long ingredientId,
             String name,

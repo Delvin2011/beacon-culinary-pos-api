@@ -3,6 +3,7 @@ package com.beaconculinary.api.inventory;
 import com.beaconculinary.api.menu.Availability;
 import com.beaconculinary.api.menu.CatalogGroup;
 import com.beaconculinary.api.menu.MealCatalog;
+import com.beaconculinary.api.menu.Station;
 import com.beaconculinary.api.menu.StockStatus;
 import com.beaconculinary.api.orders.OrderLine;
 import com.beaconculinary.api.users.User;
@@ -15,6 +16,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -31,17 +33,20 @@ import java.util.stream.Collectors;
  * <p>Warn, never block: low or negative Kitchen stock never stops a sale, since the ledger can lag
  * what is physically there. A meal is tracked when it is a light meal (always available; beverages
  * stay untracked) and its components have at least one recipe line.
+ *
+ * <p>T0-5c — "the Kitchen" above is now each station's source location (an assignment, default
+ * Kitchen for every station): a sale deducts from the source of its line's station (the snapshot
+ * on the order line), and a meal's stock is counted at the source of the meal's station. The
+ * review's second figure is at the primary location.
  */
 @Service
 @AllArgsConstructor
 public class LightMealStockService {
-    private static final String KITCHEN = "Kitchen";
-    private static final String MAIN_STORE = "Main Store";
     private static final int LEDGER_SCALE = 4;
 
     private final MealIngredientRequirements mealIngredientRequirements;
     private final IngredientStockMovementRepository movementRepository;
-    private final LocationRepository locationRepository;
+    private final StockLocations stockLocations;
 
     /** The stock figures a list or menu row shows. */
     public record MealStock(StockStatus status, Integer unitsAvailable) {
@@ -54,7 +59,8 @@ public class LightMealStockService {
         if (perUnit.isEmpty()) {
             return untracked(meal, today);
         }
-        return review(meal, perUnit, ledger(perUnit), kitchen().getId(), mainStore().getId(), today);
+        return review(meal, perUnit, ledger(perUnit), stockLocations.sourceFor(meal.getStation()),
+                stockLocations.primary(), today);
     }
 
     /**
@@ -68,42 +74,42 @@ public class LightMealStockService {
                 : mealIngredientRequirements.perUnitForMeals(lightMeals);
         var tracked = perUnitByMeal.values().stream().anyMatch(rows -> !rows.isEmpty());
         var ledger = ledger(perUnitByMeal.values().stream().flatMap(List::stream).toList());
-        var kitchenId = tracked ? kitchen().getId() : null;
-        var mainStoreId = tracked ? mainStore().getId() : null;
+        var sources = new Sources();
+        var primary = tracked ? stockLocations.primary() : null;
 
         var reviews = new ArrayList<MealStockReviewDto>();
         for (var meal : meals) {
             var perUnit = meal.getGroup() == CatalogGroup.LIGHT_MEALS
                     ? perUnitByMeal.getOrDefault(meal.getId(), List.of()) : List.<MealIngredientRequirements.PerUnit>of();
             reviews.add(perUnit.isEmpty() ? untracked(meal, today)
-                    : review(meal, perUnit, ledger, kitchenId, mainStoreId, today));
+                    : review(meal, perUnit, ledger, sources.of(meal.getStation()), primary, today));
         }
         return reviews;
     }
 
     private static MealStockReviewDto untracked(MealCatalog meal, LocalDate today) {
         return new MealStockReviewDto(meal.getId(), meal.getName(), false, StockStatus.NOT_TRACKED, null, null,
-                meal.getLowStockUnits(), meal.isOutOn(today), List.of());
+                meal.getLowStockUnits(), meal.isOutOn(today), null, null, List.of());
     }
 
     private static MealStockReviewDto review(MealCatalog meal, List<MealIngredientRequirements.PerUnit> perUnit, Ledger ledger,
-                                             Long kitchenId, Long mainStoreId, LocalDate today) {
+                                             Location source, Location primary, LocalDate today) {
         var lines = new ArrayList<MealStockReviewDto.Line>();
         MealStockReviewDto.Line limiting = null;
         for (var row : perUnit) {
             var ingredient = row.ingredient();
-            var kitchen = ledger.at(ingredient.getId(), kitchenId);
-            var units = unitsPossible(kitchen, row.quantity());
+            var atSource = ledger.at(ingredient.getId(), source.getId());
+            var units = unitsPossible(atSource, row.quantity());
             var line = new MealStockReviewDto.Line(ingredient.getId(), ingredient.getName(), ingredient.getUnit(),
-                    row.quantity().setScale(LEDGER_SCALE, RoundingMode.HALF_UP), kitchen,
-                    ledger.at(ingredient.getId(), mainStoreId), units, status(units, meal.getLowStockUnits()));
+                    row.quantity().setScale(LEDGER_SCALE, RoundingMode.HALF_UP), atSource,
+                    ledger.at(ingredient.getId(), primary.getId()), units, status(units, meal.getLowStockUnits()));
             lines.add(line);
             if (limiting == null || units < limiting.unitsPossible()) {
                 limiting = line;
             }
         }
         return new MealStockReviewDto(meal.getId(), meal.getName(), true, limiting.status(), limiting.unitsPossible(),
-                limiting.name(), meal.getLowStockUnits(), meal.isOutOn(today), lines);
+                limiting.name(), meal.getLowStockUnits(), meal.isOutOn(today), source.getId(), source.getName(), lines);
     }
 
     /**
@@ -121,7 +127,7 @@ public class LightMealStockService {
         var perUnitByMeal = lightMeals.isEmpty() ? Map.<Long, List<MealIngredientRequirements.PerUnit>>of()
                 : mealIngredientRequirements.perUnitForMeals(lightMeals);
         var ledger = ledger(perUnitByMeal.values().stream().flatMap(List::stream).toList());
-        var kitchenId = perUnitByMeal.values().stream().allMatch(List::isEmpty) ? null : kitchen().getId();
+        var sources = new Sources();
 
         Map<Long, MealStock> result = new HashMap<>();
         for (var meal : alwaysOn.values()) {
@@ -130,8 +136,9 @@ public class LightMealStockService {
                 result.put(meal.getId(), MealStock.NOT_TRACKED);
                 continue;
             }
+            var sourceId = sources.of(meal.getStation()).getId();
             var units = perUnit.stream()
-                    .mapToInt(row -> unitsPossible(ledger.at(row.ingredient().getId(), kitchenId), row.quantity()))
+                    .mapToInt(row -> unitsPossible(ledger.at(row.ingredient().getId(), sourceId), row.quantity()))
                     .min().orElseThrow();
             result.put(meal.getId(), new MealStock(status(units, meal.getLowStockUnits()), units));
         }
@@ -139,9 +146,9 @@ public class LightMealStockService {
     }
 
     /**
-     * Inside the order's transaction, once its lines have ids: a CONSUMED movement at the Kitchen
-     * per ingredient of every tracked line, -(per unit x quantity). Planned (set meal) lines are
-     * skipped: they deducted at planning confirmation. Complimentary orders deduct like sales.
+     * Inside the order's transaction, once its lines have ids: a CONSUMED movement at the line's
+     * station's source location (T0-5c) per ingredient of every tracked line, -(per unit x
+     * quantity). Planned (set meal) lines are skipped. Complimentary orders deduct like sales.
      */
     public void deductForSale(Collection<OrderLine> lines, User recordedBy) {
         deductForSale(lines, recordedBy, null);
@@ -160,17 +167,14 @@ public class LightMealStockService {
         }
         var perUnitByMeal = mealIngredientRequirements.perUnitForMeals(lightMealLines.stream()
                 .map(line -> line.getDailyMealOption().getMealCatalog()).distinct().toList());
-        Location kitchen = null;
+        var sources = new Sources();
         var movements = new ArrayList<IngredientStockMovement>();
         for (var line : lightMealLines) {
             for (var row : perUnitByMeal.get(line.getDailyMealOption().getMealCatalog().getId())) {
-                if (kitchen == null) {
-                    kitchen = kitchen();
-                }
                 var quantity = row.quantity().multiply(BigDecimal.valueOf(line.getQuantity()))
                         .setScale(LEDGER_SCALE, RoundingMode.HALF_UP);
-                movements.add(movement(row.ingredient(), MovementType.CONSUMED, quantity.negate(), kitchen,
-                        line.getId(), recordedBy));
+                movements.add(movement(row.ingredient(), MovementType.CONSUMED, quantity.negate(),
+                        sources.of(line.getStation()), line.getId(), recordedBy));
                 movements.get(movements.size() - 1).setOccurredAt(occurredAt);
             }
         }
@@ -261,13 +265,12 @@ public class LightMealStockService {
         return movement;
     }
 
-    private Location kitchen() {
-        return locationRepository.findByNameIgnoreCase(KITCHEN)
-                .orElseThrow(() -> new IllegalStateException(KITCHEN + " location not seeded."));
-    }
+    /** T0-5c: each station's source location, looked up at most once per call. */
+    private final class Sources {
+        private final Map<Station, Location> byStation = new EnumMap<>(Station.class);
 
-    private Location mainStore() {
-        return locationRepository.findByNameIgnoreCase(MAIN_STORE)
-                .orElseThrow(() -> new IllegalStateException(MAIN_STORE + " location not seeded."));
+        Location of(Station station) {
+            return byStation.computeIfAbsent(station == null ? Station.KITCHEN : station, stockLocations::sourceFor);
+        }
     }
 }

@@ -484,24 +484,35 @@ public class OfflineSaleRecorder {
         }
     }
 
-    /** INFO: a light-meal ingredient this sale used was counted in a stock take submitted after soldAt. */
+    /**
+     * INFO: a light-meal ingredient this sale used was counted, at the location it was deducted
+     * from, in a stock take submitted after soldAt. T0-5c: one sale can deduct at more than one
+     * location (each line's station has its own source), so each location is checked for its own
+     * ingredients; the earliest such stock take is reported, as before.
+     */
     private void stockAfterCount(List<com.beaconculinary.api.inventory.IngredientStockMovement> movements,
                                  LocalDateTime soldAtUtc, List<Flag> flags) {
         if (movements.isEmpty()) {
             return;
         }
-        var location = movements.get(0).getLocation().getId();
-        var ingredients = movements.stream().map(m -> m.getIngredient().getId()).distinct().toList();
-        var placeholders = String.join(", ", java.util.Collections.nCopies(ingredients.size(), "?"));
+        var ingredientsByLocation = movements.stream().collect(java.util.stream.Collectors.groupingBy(
+                m -> m.getLocation().getId(), java.util.LinkedHashMap::new,
+                java.util.stream.Collectors.mapping(m -> m.getIngredient().getId(),
+                        java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new))));
         var args = new ArrayList<Object>();
-        args.add(location);
         args.add(soldAtUtc);
-        args.addAll(ingredients);
+        var conditions = new ArrayList<String>();
+        ingredientsByLocation.forEach((location, ingredients) -> {
+            conditions.add("(st.[location_id] = ? AND l.[ingredient_id] IN ("
+                    + String.join(", ", java.util.Collections.nCopies(ingredients.size(), "?")) + "))");
+            args.add(location);
+            args.addAll(ingredients);
+        });
         var found = jdbc.queryForList("""
                 SELECT TOP (1) st.[id] AS [stock_take_id], l.[ingredient_id] FROM [stock_takes] st
                 JOIN [stock_take_lines] l ON l.[stock_take_id] = st.[id]
-                WHERE st.[location_id] = ? AND st.[submitted_at] > ? AND st.[status] <> 'REJECTED'
-                  AND l.[ingredient_id] IN (""" + placeholders + ") ORDER BY st.[submitted_at]", args.toArray());
+                WHERE st.[submitted_at] > ? AND st.[status] <> 'REJECTED'
+                  AND (""" + String.join(" OR ", conditions) + ") ORDER BY st.[submitted_at]", args.toArray());
         if (!found.isEmpty()) {
             flags.add(flag(SaleExceptionCode.STOCK_AFTER_COUNT, "stockTakeId", found.get(0).get("stock_take_id"),
                     "ingredientId", found.get(0).get("ingredient_id")));
