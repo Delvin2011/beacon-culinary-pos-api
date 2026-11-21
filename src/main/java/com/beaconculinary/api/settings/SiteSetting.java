@@ -61,9 +61,13 @@ public enum SiteSetting {
             Limits.NONE),
     OFFLINE_ACCOUNT_CAP("pos.offline.account-cap", SettingType.DECIMAL, Group.OFFLINE, true,
             "Most that may be charged to one account, on one till, during one outage.",
-            Limits.decimal("0", "99999999.99", 2, true));
+            Limits.decimal("0", "99999999.99", 2, true)),
+    // T0-5c: becomes a tier limit later. Lowering it below the active count blocks only new ones.
+    STOCK_LOCATIONS_MAX_ACTIVE("stock.locations.max-active", SettingType.INTEGER, Group.STOCK, false,
+            "Most stock locations that can be active at once, the primary included.",
+            Limits.integer(2, 100));
 
-    public enum Group { VAT, END_OF_DAY, DASHBOARD, BOARD, TILLS, SESSIONS, OFFLINE }
+    public enum Group { VAT, END_OF_DAY, DASHBOARD, BOARD, TILLS, SESSIONS, OFFLINE, STOCK }
 
     /**
      * Single-value limits. min/max apply to numbers (inclusive; a null max on OFFLINE_MAX_OFFLINE_HOURS

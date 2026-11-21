@@ -114,6 +114,11 @@ public class SiteSettings {
         return (BigDecimal) value(SiteSetting.OFFLINE_ACCOUNT_CAP);
     }
 
+    /** T0-5c: most stock locations active at once, the primary included. */
+    public int stockLocationsMaxActive() {
+        return (Integer) value(SiteSetting.STOCK_LOCATIONS_MAX_ACTIVE);
+    }
+
     // ---- Generic access ------------------------------------------------------------------------
 
     /** The effective value: saved, else the default. */

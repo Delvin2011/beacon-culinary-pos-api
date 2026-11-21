@@ -20,9 +20,10 @@ class SiteSettingRegistryTest {
     // ---- Registry ------------------------------------------------------------------------------
 
     @Test
-    void fifteenSettingsWithUniqueKeysAndTheAgreedSensitiveOnes() {
-        assertThat(SiteSetting.values()).hasSize(15);
-        assertThat(Arrays.stream(SiteSetting.values()).map(SiteSetting::key).distinct()).hasSize(15);
+    void sixteenSettingsWithUniqueKeysAndTheAgreedSensitiveOnes() {
+        // T0-5c added stock.locations.max-active.
+        assertThat(SiteSetting.values()).hasSize(16);
+        assertThat(Arrays.stream(SiteSetting.values()).map(SiteSetting::key).distinct()).hasSize(16);
         assertThat(Arrays.stream(SiteSetting.values()).filter(SiteSetting::sensitive)).containsExactly(
                 SiteSetting.VAT_STANDARD_RATE, SiteSetting.FIRST_TRADING_DAY, SiteSetting.TILLS_REQUIRE_REGISTERED,
                 SiteSetting.OFFLINE_ACCOUNTS_ENABLED, SiteSetting.OFFLINE_ACCOUNT_CAP);
@@ -155,7 +156,7 @@ class SiteSettingRegistryTest {
         assertThat(defaults.get(SiteSetting.OFFLINE_ACCOUNTS_ENABLED)).isEqualTo(true);
         assertThat(defaults.get(SiteSetting.OFFLINE_ACCOUNT_CAP)).isEqualTo(new BigDecimal("150.00"));
         assertThat(defaults.grantMaxHours()).isEqualTo(18);
-        assertThat(defaults.all()).hasSize(15);
+        assertThat(defaults.all()).hasSize(16);
     }
 
     @Test

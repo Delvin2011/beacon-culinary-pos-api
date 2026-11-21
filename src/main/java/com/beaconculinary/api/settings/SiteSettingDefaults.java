@@ -2,6 +2,7 @@ package com.beaconculinary.api.settings;
 
 import com.beaconculinary.api.offline.OfflineProperties;
 import com.beaconculinary.api.tills.TillProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +26,20 @@ public class SiteSettingDefaults {
     private final TillProperties tillProperties;
     private final OfflineProperties offlineProperties;
 
+    /** T0-5c: the default for stock.locations.max-active when it isn't configured. */
+    static final String DEFAULT_STOCK_LOCATIONS_MAX_ACTIVE = "10";
+
+    /** As before T0-5c, with stock.locations.max-active at its default (kept for tests). */
+    public SiteSettingDefaults(TillProperties tillProperties, OfflineProperties offlineProperties,
+                               String vatStandardRate, String firstTradingDay, String boardDoneDisplayMinutes,
+                               String varianceThreshold, String voidRefundWatchPercent, String slowMealThresholdPercent,
+                               String slowMealAfter, String openingHours) {
+        this(tillProperties, offlineProperties, vatStandardRate, firstTradingDay, boardDoneDisplayMinutes,
+                varianceThreshold, voidRefundWatchPercent, slowMealThresholdPercent, slowMealAfter, openingHours,
+                DEFAULT_STOCK_LOCATIONS_MAX_ACTIVE);
+    }
+
+    @Autowired
     public SiteSettingDefaults(TillProperties tillProperties, OfflineProperties offlineProperties,
                                @Value("${vat.standard-rate:0.15}") String vatStandardRate,
                                @Value("${reports.close-day.first-trading-day:}") String firstTradingDay,
@@ -33,7 +48,9 @@ public class SiteSettingDefaults {
                                @Value("${dashboard.voidRefund.watchPercent:3.0}") String voidRefundWatchPercent,
                                @Value("${dashboard.slowMeal.thresholdPercent:25}") String slowMealThresholdPercent,
                                @Value("${dashboard.slowMeal.afterTime:12:30}") String slowMealAfter,
-                               @Value("${dashboard.openingHours:06:00-15:00}") String openingHours) {
+                               @Value("${dashboard.openingHours:06:00-15:00}") String openingHours,
+                               @Value("${stock.locations.max-active:" + DEFAULT_STOCK_LOCATIONS_MAX_ACTIVE + "}")
+                               String stockLocationsMaxActive) {
         this.tillProperties = tillProperties;
         this.offlineProperties = offlineProperties;
         parse(SiteSetting.VAT_STANDARD_RATE, vatStandardRate);
@@ -48,6 +65,7 @@ public class SiteSettingDefaults {
         parse(SiteSetting.DASHBOARD_SLOW_MEAL_THRESHOLD_PERCENT, slowMealThresholdPercent);
         parse(SiteSetting.DASHBOARD_SLOW_MEAL_AFTER_TIME, slowMealAfter);
         parse(SiteSetting.DASHBOARD_OPENING_HOURS, openingHours);
+        parse(SiteSetting.STOCK_LOCATIONS_MAX_ACTIVE, stockLocationsMaxActive);
         check();
     }
 
