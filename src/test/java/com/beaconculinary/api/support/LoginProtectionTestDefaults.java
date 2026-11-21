@@ -39,7 +39,9 @@ public class LoginProtectionTestDefaults implements EnvironmentPostProcessor {
                 // O3: offline stays off (the default) so a local .env can't turn it on; the O3 tests switch it
                 // on themselves. The signing key is a fixed test-only value, not a secret.
                 "pos.offline.enabled", "false",
-                "pos.offline.grant-signing-key", "dGVzdC1vbmx5LW9mZmxpbmUtZ3JhbnQta2V5LW5vdC1hLXNlY3JldA=="));
+                "pos.offline.grant-signing-key", "dGVzdC1vbmx5LW9mZmxpbmUtZ3JhbnQta2V5LW5vdC1hLXNlY3JldA==",
+                // T0-6a: the suite signs in as the demo accounts, so a local .env can't switch the demo guard on.
+                "security.demo-accounts.block-sign-in", "false"));
         var sources = environment.getPropertySources();
         if (sources.contains(INLINED_TEST_PROPERTIES)) {
             sources.addAfter(INLINED_TEST_PROPERTIES, source);

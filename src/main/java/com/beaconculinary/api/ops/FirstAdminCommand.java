@@ -141,35 +141,51 @@ public final class FirstAdminCommand {
                     + "migrations), then run this again.");
             return REFUSED;
         }
-        connection.setAutoCommit(false);
+        // One first-admin run at a time. A session lock: with auto-commit off, SQL Server opens the
+        // transaction only at the first data statement, so a transaction-owned lock can't be taken first.
+        if (!lock(connection)) {
+            err.println("Refused: another first-admin run is in progress. Try again shortly.");
+            return REFUSED;
+        }
         try {
-            var result = createInTransaction(connection, name, email, force, reason, baseUrl);
-            if (result == OK) {
-                connection.commit();
-            } else {
+            connection.setAutoCommit(false);
+            try {
+                var result = createInTransaction(connection, name, email, force, reason, baseUrl);
+                if (result == OK) {
+                    connection.commit();
+                } else {
+                    connection.rollback();
+                }
+                return result;
+            } catch (SQLException | RuntimeException e) {
                 connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
             }
-            return result;
-        } catch (SQLException | RuntimeException e) {
-            connection.rollback();
-            throw e;
+        } finally {
+            unlock(connection);
+        }
+    }
+
+    private static boolean lock(Connection connection) throws SQLException {
+        try (var call = connection.prepareStatement(
+                "DECLARE @r INT; EXEC @r = sp_getapplock @Resource = 'beacon-first-admin', @LockMode = 'Exclusive', "
+                        + "@LockOwner = 'Session', @LockTimeout = 10000; SELECT @r AS [result]");
+             var rs = call.executeQuery()) {
+            return rs.next() && rs.getInt(1) >= 0;
+        }
+    }
+
+    private static void unlock(Connection connection) throws SQLException {
+        try (var call = connection.prepareStatement(
+                "EXEC sp_releaseapplock @Resource = 'beacon-first-admin', @LockOwner = 'Session'")) {
+            call.execute();
         }
     }
 
     private int createInTransaction(Connection connection, String name, String email, boolean force, String reason,
                                     String baseUrl) throws SQLException {
-        // One first-admin run at a time, until this transaction ends.
-        try (var lock = connection.prepareStatement(
-                "DECLARE @r INT; EXEC @r = sp_getapplock @Resource = 'beacon-first-admin', @LockMode = 'Exclusive', "
-                        + "@LockOwner = 'Transaction', @LockTimeout = 10000; SELECT @r")) {
-            try (var rs = lock.executeQuery()) {
-                if (!rs.next() || rs.getInt(1) < 0) {
-                    err.println("Refused: another first-admin run is in progress. Try again shortly.");
-                    return REFUSED;
-                }
-            }
-        }
-
         long realAdmins;
         try (var count = connection.prepareStatement("""
                 SELECT COUNT(*) FROM [users] WITH (UPDLOCK, HOLDLOCK)
