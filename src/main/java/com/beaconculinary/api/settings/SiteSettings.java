@@ -119,6 +119,11 @@ public class SiteSettings {
         return (Integer) value(SiteSetting.STOCK_LOCATIONS_MAX_ACTIVE);
     }
 
+    /** T0-6a: hours a staff invite link stays valid. */
+    public int inviteExpiryHours() {
+        return (Integer) value(SiteSetting.AUTH_INVITE_EXPIRY_HOURS);
+    }
+
     // ---- Generic access ------------------------------------------------------------------------
 
     /** The effective value: saved, else the default. */

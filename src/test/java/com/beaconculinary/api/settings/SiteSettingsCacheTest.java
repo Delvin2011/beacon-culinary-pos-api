@@ -32,7 +32,7 @@ class SiteSettingsCacheTest {
         assertThat(settings.sessionIdleExpiryMinutes()).isEqualTo(30);
         assertThat(settings.tillsRequireRegistered()).isFalse();
         assertThat(settings.isSaved(SiteSetting.VAT_STANDARD_RATE)).isFalse();
-        assertThat(settings.effective()).hasSize(16);
+        assertThat(settings.effective()).hasSize(17);
     }
 
     @Test

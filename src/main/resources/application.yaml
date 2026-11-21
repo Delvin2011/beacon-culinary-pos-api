@@ -96,6 +96,14 @@ vat:
 app:
   business:
     name: ${APP_BUSINESS_NAME:}
+  # T0-6a: the address staff open the frontend at, for invite links ({base}/invite#t=<token>). Blank:
+  # the API returns no link and the frontend builds it from its own address. Per customer in T1.
+  public-base-url: ${APP_PUBLIC_BASE_URL:}
+
+# T0-6a: default for the site setting auth.invites.expiry-hours (1-720).
+auth:
+  invites:
+    expiry-hours: ${AUTH_INVITES_EXPIRYHOURS:72}
 
 # Reports R3: where Z numbering starts. Close Day ignores earlier days (they can't be closed and
 # don't block later ones). Set to the go-live day; empty = every earlier day must be closed first.

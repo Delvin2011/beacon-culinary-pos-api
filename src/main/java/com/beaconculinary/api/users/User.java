@@ -37,6 +37,10 @@ public class User {
     @Column(name = "active")
     private boolean active;
 
+    /** T0-6a (V116): a seeded demo account. Set by the migration only; the app never writes it. */
+    @Column(name = "is_demo", insertable = false, updatable = false)
+    private boolean demo;
+
     @Override
     public String toString() {
         return getClass().getSimpleName() + "(" +

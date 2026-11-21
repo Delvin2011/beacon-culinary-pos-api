@@ -65,9 +65,13 @@ public enum SiteSetting {
     // T0-5c: becomes a tier limit later. Lowering it below the active count blocks only new ones.
     STOCK_LOCATIONS_MAX_ACTIVE("stock.locations.max-active", SettingType.INTEGER, Group.STOCK, false,
             "Most stock locations that can be active at once, the primary included.",
-            Limits.integer(2, 100));
+            Limits.integer(2, 100)),
+    // T0-6a: how long a staff invite link stays valid. The first-admin command always uses 72 hours.
+    AUTH_INVITE_EXPIRY_HOURS("auth.invites.expiry-hours", SettingType.INTEGER, Group.SECURITY, true,
+            "Hours a staff invite link (set up or reset sign-in) stays valid.",
+            Limits.integer(1, 720));
 
-    public enum Group { VAT, END_OF_DAY, DASHBOARD, BOARD, TILLS, SESSIONS, OFFLINE, STOCK }
+    public enum Group { VAT, END_OF_DAY, DASHBOARD, BOARD, TILLS, SESSIONS, OFFLINE, STOCK, SECURITY }
 
     /**
      * Single-value limits. min/max apply to numbers (inclusive; a null max on OFFLINE_MAX_OFFLINE_HOURS

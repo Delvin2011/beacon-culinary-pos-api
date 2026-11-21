@@ -20,13 +20,13 @@ class SiteSettingRegistryTest {
     // ---- Registry ------------------------------------------------------------------------------
 
     @Test
-    void sixteenSettingsWithUniqueKeysAndTheAgreedSensitiveOnes() {
-        // T0-5c added stock.locations.max-active.
-        assertThat(SiteSetting.values()).hasSize(16);
-        assertThat(Arrays.stream(SiteSetting.values()).map(SiteSetting::key).distinct()).hasSize(16);
+    void seventeenSettingsWithUniqueKeysAndTheAgreedSensitiveOnes() {
+        // T0-5c added stock.locations.max-active; T0-6a auth.invites.expiry-hours (sensitive).
+        assertThat(SiteSetting.values()).hasSize(17);
+        assertThat(Arrays.stream(SiteSetting.values()).map(SiteSetting::key).distinct()).hasSize(17);
         assertThat(Arrays.stream(SiteSetting.values()).filter(SiteSetting::sensitive)).containsExactly(
                 SiteSetting.VAT_STANDARD_RATE, SiteSetting.FIRST_TRADING_DAY, SiteSetting.TILLS_REQUIRE_REGISTERED,
-                SiteSetting.OFFLINE_ACCOUNTS_ENABLED, SiteSetting.OFFLINE_ACCOUNT_CAP);
+                SiteSetting.OFFLINE_ACCOUNTS_ENABLED, SiteSetting.OFFLINE_ACCOUNT_CAP, SiteSetting.AUTH_INVITE_EXPIRY_HOURS);
         assertThat(SiteSetting.byKey("vat.standard-rate")).contains(SiteSetting.VAT_STANDARD_RATE);
         assertThat(SiteSetting.byKey("vat.standrad-rate")).isEmpty();
         assertThat(SiteSetting.byKey(null)).isEmpty();
@@ -156,7 +156,7 @@ class SiteSettingRegistryTest {
         assertThat(defaults.get(SiteSetting.OFFLINE_ACCOUNTS_ENABLED)).isEqualTo(true);
         assertThat(defaults.get(SiteSetting.OFFLINE_ACCOUNT_CAP)).isEqualTo(new BigDecimal("150.00"));
         assertThat(defaults.grantMaxHours()).isEqualTo(18);
-        assertThat(defaults.all()).hasSize(16);
+        assertThat(defaults.all()).hasSize(17);
     }
 
     @Test

@@ -29,14 +29,17 @@ public class SiteSettingDefaults {
     /** T0-5c: the default for stock.locations.max-active when it isn't configured. */
     static final String DEFAULT_STOCK_LOCATIONS_MAX_ACTIVE = "10";
 
-    /** As before T0-5c, with stock.locations.max-active at its default (kept for tests). */
+    /** T0-6a: the default for auth.invites.expiry-hours when it isn't configured. */
+    static final String DEFAULT_INVITE_EXPIRY_HOURS = "72";
+
+    /** As before T0-5c, with stock.locations.max-active and auth.invites.expiry-hours at their defaults (kept for tests). */
     public SiteSettingDefaults(TillProperties tillProperties, OfflineProperties offlineProperties,
                                String vatStandardRate, String firstTradingDay, String boardDoneDisplayMinutes,
                                String varianceThreshold, String voidRefundWatchPercent, String slowMealThresholdPercent,
                                String slowMealAfter, String openingHours) {
         this(tillProperties, offlineProperties, vatStandardRate, firstTradingDay, boardDoneDisplayMinutes,
                 varianceThreshold, voidRefundWatchPercent, slowMealThresholdPercent, slowMealAfter, openingHours,
-                DEFAULT_STOCK_LOCATIONS_MAX_ACTIVE);
+                DEFAULT_STOCK_LOCATIONS_MAX_ACTIVE, DEFAULT_INVITE_EXPIRY_HOURS);
     }
 
     @Autowired
@@ -50,7 +53,9 @@ public class SiteSettingDefaults {
                                @Value("${dashboard.slowMeal.afterTime:12:30}") String slowMealAfter,
                                @Value("${dashboard.openingHours:06:00-15:00}") String openingHours,
                                @Value("${stock.locations.max-active:" + DEFAULT_STOCK_LOCATIONS_MAX_ACTIVE + "}")
-                               String stockLocationsMaxActive) {
+                               String stockLocationsMaxActive,
+                               @Value("${auth.invites.expiry-hours:" + DEFAULT_INVITE_EXPIRY_HOURS + "}")
+                               String inviteExpiryHours) {
         this.tillProperties = tillProperties;
         this.offlineProperties = offlineProperties;
         parse(SiteSetting.VAT_STANDARD_RATE, vatStandardRate);
@@ -66,6 +71,7 @@ public class SiteSettingDefaults {
         parse(SiteSetting.DASHBOARD_SLOW_MEAL_AFTER_TIME, slowMealAfter);
         parse(SiteSetting.DASHBOARD_OPENING_HOURS, openingHours);
         parse(SiteSetting.STOCK_LOCATIONS_MAX_ACTIVE, stockLocationsMaxActive);
+        parse(SiteSetting.AUTH_INVITE_EXPIRY_HOURS, inviteExpiryHours);
         check();
     }
 

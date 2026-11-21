@@ -89,7 +89,7 @@ class SiteSettingsAdminIntegrationTests {
 
         assertThat(body.get("offlineEntitled").asBoolean()).isFalse();
         var settings = body.get("settings");
-        assertThat(settings).hasSize(16);
+        assertThat(settings).hasSize(17);
         for (var setting : settings) {
             assertThat(setting.get("isDefault").asBoolean()).as(setting.get("key").asText()).isTrue();
             assertThat(setting.get("value")).as(setting.get("key").asText()).isEqualTo(setting.get("defaultValue"));
