@@ -76,6 +76,16 @@ New: `kind`, `sortOrder`, the order, and inactive locations left out by default.
 - **ISSUE request picker**: offer only `kind = SECONDARY`; the primary is always the supplier.
 - **Waste and stock take pickers**: offer all.
 
+### `GET /stock-takes[?locationId=&status=]`
+
+Stock takes, filtered on the server; both parameters optional and combinable (`status` is `SUBMITTED`, `APPROVED`,
+`REJECTED` or `CANCELLED`). A STOCK_CLERK sees only their own. Each stock take is for one location (`locationId`,
+`locationName`); its lines' expected quantity and variance are at that location. For a location filter, fill the
+picker from `GET /locations?includeInactive=true` so past counts at a deactivated location can still be found.
+
+Of the history lists, only this one takes a location: `GET /admin/waste` filters by ingredient and dates, and
+`GET /stock-requests` by status and type.
+
 ## 4. Admin (`ADMIN` only; everyone else 403)
 
 ### 4.1 `GET /admin/locations`
@@ -219,6 +229,7 @@ All additions; no field was removed or renamed.
 | `GET /locations` | `kind`, `sortOrder`; active only unless `includeInactive=true`; display order |
 | `POST/PUT/GET /stock-requests` | ISSUE: `locationId` accepted (the requesting secondary); `locationId`/`locationName` now filled for ISSUE (were null) |
 | `GET /admin/daily-planning/{date}/ingredient-requirements` | `primaryLocation`, `productionLocation` (`{id, name, kind, sortOrder}`). `currentStock` is at the primary, `kitchenStock` at production |
+| `POST /admin/daily-planning/{date}/confirm-ingredient-requirements` | No new fields. Each shortfall's `resultingStock` is the **primary's** stock minus `finalQuantity`: what the issue sheet can't be filled from. Label shortfalls with `primaryLocation.name` from the requirements load |
 | `GET /admin/meal-catalog/{id}/stock-review` | `sourceLocationId`, `sourceLocationName` (null when not tracked). `kitchenAvailable` is at that source, `mainStoreAvailable` at the primary |
 | `GET /admin/ingredients/{id}/stock` | `byLocation[]` gains `kind` and `active`; display order; lists active locations plus any inactive one with non-zero stock |
 | Error message on approving an ISSUE past stock | `exceeds available <primary name> stock.` (unchanged text with the default name) |
