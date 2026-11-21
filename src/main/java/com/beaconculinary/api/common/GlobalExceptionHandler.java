@@ -1,5 +1,6 @@
 package com.beaconculinary.api.common;
 
+import com.beaconculinary.api.inventory.LocationRuleException;
 import com.beaconculinary.api.menu.MenuRuleException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -22,6 +23,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MenuRuleException.class)
     public ResponseEntity<ErrorDto> handleMenuRule(MenuRuleException exception) {
         return ResponseEntity.status(exception.getStatus()).body(new ErrorDto(exception.getMessage(), exception.getCode()));
+    }
+
+    // T0-5c: stock-location rules (stock requests now, /admin/locations later), with details.
+    @ExceptionHandler(LocationRuleException.class)
+    public ResponseEntity<ErrorDto> handleLocationRule(LocationRuleException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(new ErrorDto(exception.getMessage(), exception.getCode(), exception.getDetails()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

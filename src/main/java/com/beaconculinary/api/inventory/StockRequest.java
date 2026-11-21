@@ -60,9 +60,10 @@ public class StockRequest {
     @JoinColumn(name = "daily_plan_period_id")
     private MealPeriod dailyPlanPeriod;
 
-    // Stage 5.2.4 — required for WASTE (validated at creation), unused by ISSUE (still fixed
-    // Main Store -> Kitchen) and ORDER (not location-specific). Fixed at submission; approving a
-    // request can adjust quantities but never the location.
+    // Stage 5.2.4 — WASTE: where the stock is written off (required). T0-5c — ISSUE: the
+    // requesting secondary location, which the primary supplies (V115 backfilled older ISSUEs to
+    // Kitchen). ORDER: null (not location-specific). Fixed at submission; approving a request can
+    // adjust quantities but never the location.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "location_id")
     private Location location;

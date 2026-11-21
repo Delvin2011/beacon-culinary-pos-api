@@ -12,8 +12,9 @@ public class CreateStockRequestRequest {
     @NotNull(message = "requestType is required")
     private StockRequestType requestType;
 
-    // Required for WASTE only (validated in the service, since it's conditional on requestType);
-    // ignored for ISSUE (fixed Main Store -> Kitchen) and ORDER (not location-specific).
+    // WASTE: required, any active location. ISSUE (T0-5c): the requesting location, an active
+    // SECONDARY; omitted = the production location (or, on an edit, the request's current one).
+    // ORDER: ignored (not location-specific). Validated in the service, since it depends on requestType.
     private Long locationId;
 
     @NotEmpty(message = "lines must contain at least one item")

@@ -31,20 +31,22 @@ import java.util.stream.Collectors;
  * produces a {@link PurchaseOrder} instead of any stock movement — ordering is not receiving.
  *
  * <p>Stage 5.2.4 — a WASTE request now carries its own location (header-level, chosen at
- * submission), instead of always defaulting to Main Store. ISSUE stays fixed Main Store -&gt;
- * Kitchen; ORDER stays location-agnostic.
+ * submission), instead of always defaulting to Main Store. ORDER stays location-agnostic.
+ *
+ * <p>T0-5c — an ISSUE is requested by a secondary location (its {@code location}, the
+ * destination) and always supplied by the primary location. Never secondary -&gt; primary or
+ * secondary -&gt; secondary; transfers between locations (IBT) are a later phase. Without a
+ * {@code locationId} an ISSUE goes to the production location, as every ISSUE did before.
  */
 @Service
 @AllArgsConstructor
 public class StockRequestService {
-    private static final String ISSUE_SOURCE_LOCATION = "Main Store";
-    private static final String ISSUE_DESTINATION_LOCATION = "Kitchen";
-
     private final StockRequestRepository stockRequestRepository;
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final LocationRepository locationRepository;
+    private final StockLocations stockLocations;
     private final AuthService authService;
     private final InventoryMapper inventoryMapper;
     private final Clock clock;
@@ -108,6 +110,8 @@ public class StockRequestService {
     private void applyContent(StockRequest stockRequest, CreateStockRequestRequest request) {
         if (request.getRequestType() == StockRequestType.WASTE) {
             stockRequest.setLocation(resolveActiveLocation(request.getLocationId()));
+        } else if (request.getRequestType() == StockRequestType.ISSUE) {
+            stockRequest.setLocation(resolveIssueDestination(request.getLocationId(), stockRequest.getLocation()));
         }
 
         for (var lineRequest : request.getLines()) {
@@ -153,9 +157,10 @@ public class StockRequestService {
 
         var actionedBy = authService.getCurrentUser();
         var isIssue = stockRequest.getRequestType() == StockRequestType.ISSUE;
-        var mainStore = isIssue ? location(ISSUE_SOURCE_LOCATION) : null;
-        var kitchen = isIssue ? location(ISSUE_DESTINATION_LOCATION) : null;
-        // WASTE: fixed at submission (create()) — approving can adjust quantities, never location.
+        // ISSUE: primary -> the requesting location. WASTE: its own location. Both fixed at
+        // submission — approving can adjust quantities, never a location.
+        var source = isIssue ? stockLocations.primary() : null;
+        var destination = isIssue ? issueDestinationOf(stockRequest) : null;
         var wasteLocation = isIssue ? null : stockRequest.getLocation();
 
         for (var line : stockRequest.getLines()) {
@@ -173,10 +178,10 @@ public class StockRequestService {
 
             if (stockRequest.getRequestType() == StockRequestType.ISSUE) {
                 var availableStock = ingredientStockMovementRepository
-                        .sumQuantityByIngredientIdAndLocationId(line.getIngredient().getId(), mainStore.getId());
+                        .sumQuantityByIngredientIdAndLocationId(line.getIngredient().getId(), source.getId());
                 if (actionedQuantity.compareTo(availableStock) > 0) {
                     throw new InvalidInventoryRequestException("actionedQuantity for ingredientId "
-                            + line.getIngredient().getId() + " exceeds available Main Store stock.");
+                            + line.getIngredient().getId() + " exceeds available " + source.getName() + " stock.");
                 }
             } else {
                 if (actionedQuantity.compareTo(line.getRequestedQuantity()) > 0) {
@@ -187,7 +192,7 @@ public class StockRequestService {
 
             line.setActionedQuantity(actionedQuantity);
             if (actionedQuantity.compareTo(BigDecimal.ZERO) > 0) {
-                writeMovementsForLine(stockRequest, line, actionedQuantity, mainStore, kitchen, wasteLocation, actionedBy);
+                writeMovementsForLine(stockRequest, line, actionedQuantity, source, destination, wasteLocation, actionedBy);
             }
         }
 
@@ -253,10 +258,10 @@ public class StockRequestService {
         return dto;
     }
 
-    // ISSUE moves stock Main Store -> Kitchen (the only two locations this system has); WASTE
-    // writes off the approved amount at the request's own location, chosen at submission.
+    // ISSUE moves stock from the primary to the requesting secondary location; WASTE writes off
+    // the approved amount at the request's own location, chosen at submission.
     private void writeMovementsForLine(StockRequest stockRequest, StockRequestLine line, BigDecimal actionedQuantity,
-                                        Location mainStore, Location kitchen, Location wasteLocation, User actionedBy) {
+                                        Location source, Location destination, Location wasteLocation, User actionedBy) {
         if (stockRequest.getRequestType() == StockRequestType.ISSUE) {
             var issued = new IngredientStockMovement();
             issued.setIngredient(line.getIngredient());
@@ -264,7 +269,7 @@ public class StockRequestService {
             issued.setQuantity(actionedQuantity.negate());
             issued.setSourceType(MovementSourceType.STOCK_REQUEST);
             issued.setSourceId(stockRequest.getId());
-            issued.setLocation(mainStore);
+            issued.setLocation(source);
             issued.setRecordedBy(actionedBy);
             ingredientStockMovementRepository.save(issued);
 
@@ -274,7 +279,7 @@ public class StockRequestService {
             received.setQuantity(actionedQuantity);
             received.setSourceType(MovementSourceType.STOCK_REQUEST);
             received.setSourceId(stockRequest.getId());
-            received.setLocation(kitchen);
+            received.setLocation(destination);
             received.setRecordedBy(actionedBy);
             ingredientStockMovementRepository.save(received);
         } else {
@@ -314,21 +319,36 @@ public class StockRequestService {
         return currentUser.getRole() == Role.STOCK_CLERK ? currentUser.getId() : null;
     }
 
-    private Location location(String name) {
-        return locationRepository.findByNameIgnoreCase(name)
-                .orElseThrow(() -> new IllegalStateException(name + " location not seeded."));
-    }
-
     private Location resolveActiveLocation(Long locationId) {
         if (locationId == null) {
             throw new InvalidInventoryRequestException("locationId is required for WASTE requests.");
         }
+        return stockLocations.chosen(locationId);
+    }
+
+    /**
+     * T0-5c: the location an ISSUE is requested for. It must be an active SECONDARY; the primary
+     * always supplies. Without a locationId: the request's current one on an edit, else the
+     * production location (what every ISSUE used before T0-5c).
+     */
+    private Location resolveIssueDestination(Long locationId, Location current) {
+        if (locationId == null) {
+            return current != null ? current : stockLocations.production();
+        }
         var location = locationRepository.findById(locationId)
-                .orElseThrow(() -> new InvalidInventoryRequestException("locationId does not exist."));
+                .orElseThrow(() -> LocationRuleException.notFound(locationId));
         if (!location.isActive()) {
-            throw new InvalidInventoryRequestException("locationId does not reference an active location.");
+            throw LocationRuleException.inactive(location);
+        }
+        if (location.isPrimary()) {
+            throw LocationRuleException.issueLocationNotSecondary(location);
         }
         return location;
+    }
+
+    /** ISSUE rows from before V115 were backfilled; a missing destination still means production. */
+    private Location issueDestinationOf(StockRequest stockRequest) {
+        return stockRequest.getLocation() != null ? stockRequest.getLocation() : stockLocations.production();
     }
 
     // Stage 5.2.3 — ORDER-type requests carry the id of whatever PO they were approved into, so
