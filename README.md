@@ -67,6 +67,8 @@ All under `docs/`.
   settings, and how to add one; API in `2026-11-19-t0-4-site-settings-api-contract.md`.
 - **Meal periods:** `2026-11-20-t0-5-meal-periods-locations-api-contract.md`. Create, edit,
   deactivate and activate meal periods; the rules, effects and history.
+- **Stock locations:** `2026-11-21-stock-locations.md` (one primary, any number of secondary
+  locations, what each flow uses); API in `2026-11-21-t0-5c-locations-api-contract.md`.
 - **Till printing:** `2026-11-17-o2b-frontend-handoff.md` and
   `2026-11-17-o2b-receipt-data-api-contract.md` (receipts and kitchen tickets). There is no
   separate printer setup guide yet.

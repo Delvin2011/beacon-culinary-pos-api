@@ -22,7 +22,7 @@ Paths are relative to the repository root. Java paths are under `src/main/java/c
 | 12 | No foreign keys on the device audit columns | Low | Open; unblocked by T0-3 (item 6 closed) | TBD |
 | 13 | Two error response shapes (`ErrorDto`, `LoginProtectionErrorDto`) | Low | Tidy-up, not in WS1-1b | TBD |
 | 14 | Refresh tokens can't be revoked (logout only clears the cookie) | Medium | Open | TBD |
-| 15 | Customer settings set at onboarding (business name, first trading day, VAT rate, meal periods) | Medium | Open (T0-4a, T0-5a) | TBD |
+| 15 | Customer settings set at onboarding (business name, first trading day, VAT rate, meal periods, stock locations) | Medium | Open (T0-4a, T0-5a, T0-5c) | TBD |
 
 ## 1. Seed accounts
 
@@ -203,4 +203,6 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 
 **Fix.** At onboarding: set the business name (and VAT number) in the receipt settings; set `reports.close-day.first-trading-day` to the go-live day before the first Z; review the VAT rate and the offline limits in `/admin/settings`.
 
-**Meal periods (T0-5a).** The seeded Breakfast 07:00–10:00, Lunch 12:00–14:30 and All Day are defaults. At onboarding, set the customer's own names and times in `/admin/meal-periods` before planning the first day (a period with items planned today or later can't be deactivated). Location names "Main Store" and "Kitchen" are still fixed in code (T0-5a Part 1, postponed).
+**Meal periods (T0-5a).** The seeded Breakfast 07:00–10:00, Lunch 12:00–14:30 and All Day are defaults. At onboarding, set the customer's own names and times in `/admin/meal-periods` before planning the first day (a period with items planned today or later can't be deactivated).
+
+**Stock locations (T0-5c).** Main Store (the primary: receives every GRV, supplies every issue) and Kitchen (production and every station) are seeded. At onboarding, rename them to the customer's own names and add any other locations in `/admin/locations`, then set the production location and each station's source in `/admin/locations/assignments` before the first GRV and the first planning day. At most `stock.locations.max-active` (default 10) can be active. See docs/2026-11-21-stock-locations.md.

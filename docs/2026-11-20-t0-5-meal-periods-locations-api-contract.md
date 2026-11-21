@@ -256,7 +256,8 @@ rename. The dashboard's sales-mix group key is derived from the name and changes
 | 409 | `PERIOD_IN_USE` | 4.3 |
 | 409 | `ALL_DAY_PROTECTED` | Section 5 |
 
-## 9. Locations found by role (Part 1, later)
+## 9. Locations found by role (Part 1)
 
-Postponed. Today the code finds "Main Store" and "Kitchen" by name. A later step will give each
-location a role so the names can change; its endpoints will be added here.
+Done in T0-5c, with its own contract: `docs/2026-11-21-t0-5c-locations-api-contract.md` (one primary
+location, any number of secondary ones, and assignments for production and each station). The
+model is in `docs/2026-11-21-stock-locations.md`.

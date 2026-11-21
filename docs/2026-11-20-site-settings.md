@@ -46,6 +46,7 @@ so a fresh database behaves exactly as before T0-4a.
 | `pos.offline.warn-offline-hours` | 5 | `POS_OFFLINE_WARNOFFLINEHOURS` | Offline | no | Next grant, snapshot, till status |
 | `pos.offline.accounts-enabled` | true | `POS_OFFLINE_ACCOUNTSENABLED` | Offline | yes | Next grant and snapshot (stored on the grant) |
 | `pos.offline.account-cap` | 150.00 | `POS_OFFLINE_ACCOUNTCAP` | Offline | yes | Next grant and snapshot (stored on the grant) |
+| `stock.locations.max-active` (T0-5c) | 10 | yaml only | Stock | no | Next location create or activate |
 
 "yaml only": `application.yaml` has no environment placeholder; Spring's relaxed binding still
 accepts one (e.g. `VAT_STANDARDRATE`). Limits and cross-field rules: contract section 4.
