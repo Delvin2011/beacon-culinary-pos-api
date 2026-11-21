@@ -1,5 +1,7 @@
 package com.beaconculinary.api.staff;
 
+import com.beaconculinary.api.auth.invite.InviteAdminDtos;
+import com.beaconculinary.api.auth.invite.InviteService;
 import com.beaconculinary.api.common.ErrorDto;
 import lombok.AllArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -15,6 +17,7 @@ import java.util.Map;
 @RequestMapping("/admin/staff")
 public class StaffController {
     private final StaffService staffService;
+    private final InviteService inviteService;
 
     /** The roles staff can be given and which credentials each uses (REQUIRED / OPTIONAL / NONE). */
     @GetMapping("/roles")
@@ -32,9 +35,13 @@ public class StaffController {
         return staffService.get(id);
     }
 
+    /** T0-6a: setup INVITE creates the person without credentials and returns their set-up link once. */
     @PostMapping
     public ResponseEntity<StaffDto> create(@RequestBody StaffRequests.Create request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(staffService.create(request));
+        var body = request.getSetup() == StaffRequests.Setup.INVITE
+                ? inviteService.createStaffWithInvite(request)
+                : staffService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 
     @PutMapping("/{id}")
@@ -50,6 +57,20 @@ public class StaffController {
     @PostMapping("/{id}/pin")
     public StaffDto setPin(@PathVariable Long id, @RequestBody StaffRequests.SetPin request) {
         return staffService.setPin(id, request);
+    }
+
+    /** T0-6a: a STAFF_SETUP or RESET link, replacing any open one. The token is in this response only. */
+    @PostMapping("/{id}/invite")
+    public ResponseEntity<InviteAdminDtos.IssuedInvite> invite(@PathVariable Long id,
+                                                               @RequestBody(required = false) InviteAdminDtos.IssueRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(inviteService.issue(id, request));
+    }
+
+    /** T0-6a: revokes the open link, if any (nothing open: no change). */
+    @PostMapping("/{id}/invite/revoke")
+    public StaffDto revokeInvite(@PathVariable Long id) {
+        inviteService.revoke(id);
+        return staffService.get(id);
     }
 
     /** WS1-1: ends sign-in locks and blocks. Body {"scope": "PIN"} for one scope; no body for all. */

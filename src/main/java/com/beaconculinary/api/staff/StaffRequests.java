@@ -16,7 +16,12 @@ public final class StaffRequests {
         private String email;
         private String password;
         private String pin;
+        /** T0-6a: SET_NOW (default: password / PIN in this request) or INVITE (none; a set-up link is returned). */
+        private Setup setup;
     }
+
+    /** T0-6a: how a new person gets their credentials. */
+    public enum Setup { SET_NOW, INVITE }
 
     /** Name, role, email and active. password and pin are only needed to supply a credential the
      * new role requires and the person doesn't have yet (and a PIN is always needed when promoting

@@ -1,5 +1,9 @@
 package com.beaconculinary.api.staff;
 
+import com.beaconculinary.api.auth.invite.InviteAdminDtos.InviteSummary;
+import com.beaconculinary.api.auth.invite.InviteRevokeReason;
+import com.beaconculinary.api.auth.invite.UserInvite;
+import com.beaconculinary.api.auth.invite.UserInviteStore;
 import com.beaconculinary.api.auth.protection.LoginAttemptService;
 import com.beaconculinary.api.auth.protection.LoginMethod;
 import com.beaconculinary.api.auth.protection.LoginProtectionStore;
@@ -46,6 +50,7 @@ public class StaffService {
     private final LoginAttemptService loginAttempts;
     private final OfflineGrantStore offlineGrants;
     private final Clock clock;
+    private final UserInviteStore inviteStore;
 
     public List<RoleRule> roles() {
         return StaffRolePolicy.RULES;
@@ -55,9 +60,12 @@ public class StaffService {
     public List<StaffDto> list() {
         var locks = loginAttempts.activeAccountLocks();
         var blocks = loginAttempts.activeBlocks();
-        return userRepository.findAll().stream()
+        var all = userRepository.findAll();
+        var invites = inviteStore.latestForUsers(all.stream().map(User::getId).toList());
+        var now = UtcTimestamps.nowUtc(clock);
+        return all.stream()
                 .sorted(Comparator.comparing(User::getName, String.CASE_INSENSITIVE_ORDER))
-                .map(user -> toDto(user, locks, blocks))
+                .map(user -> toDto(user, locks, blocks, invites.get(user.getId()), now))
                 .toList();
     }
 
@@ -98,17 +106,28 @@ public class StaffService {
     public StaffDto create(StaffRequests.Create request) {
         var errors = new LinkedHashMap<String, String>();
         var name = requireName(request.getName(), errors);
+        // T0-6a: with setup INVITE the person sets their own credentials from a link (InviteService).
+        var inviting = request.getSetup() == StaffRequests.Setup.INVITE;
         var rule = ruleFor(request.getRole(), errors);
         String email = null;
         if (rule != null) {
             email = checkEmail(rule, request.getEmail(), true, errors);
-            checkCredential("password", rule.password(), request.getPassword(), true, rule, errors);
-            checkCredential("pin", rule.pin(), request.getPin(), true, rule, errors);
+            if (inviting) {
+                if (!blank(request.getPassword())) {
+                    errors.put("password", "Leave the password out: the person sets it from their link.");
+                }
+                if (!blank(request.getPin())) {
+                    errors.put("pin", "Leave the PIN out: the person sets it from their link.");
+                }
+            } else {
+                checkCredential("password", rule.password(), request.getPassword(), true, rule, errors);
+                checkCredential("pin", rule.pin(), request.getPin(), true, rule, errors);
+            }
         }
         throwIfAny(errors);
 
         requireUniqueEmail(email, null);
-        if (rule.role() == Role.ADMIN) {
+        if (rule.role() == Role.ADMIN && !inviting) {
             requireUniqueAdminPin(request.getPin(), null);
         }
 
@@ -136,13 +155,18 @@ public class StaffService {
         var name = requireName(request.getName(), errors);
         var rule = ruleFor(request.getRole(), errors);
         var becomingAdmin = rule != null && rule.role() == Role.ADMIN && user.getRole() != Role.ADMIN;
+        // T0-6a: a credential the person will set from their open link isn't missing, unless the role changes
+        // (which revokes the link).
+        var awaitingLink = rule != null && rule.role() == user.getRole() && inviteStore.openForUser(user.getId()).isPresent();
 
         String email = null;
         if (rule != null) {
             var emailInput = request.getEmail() != null ? request.getEmail() : user.getEmail();
             email = checkEmail(rule, rule.usesPassword() ? emailInput : request.getEmail(), true, errors);
-            checkCredential("password", rule.password(), request.getPassword(), user.getPassword() == null, rule, errors);
-            checkCredential("pin", rule.pin(), request.getPin(), user.getPinHash() == null || becomingAdmin, rule, errors);
+            checkCredential("password", rule.password(), request.getPassword(), user.getPassword() == null && !awaitingLink,
+                    rule, errors);
+            checkCredential("pin", rule.pin(), request.getPin(), (user.getPinHash() == null && !awaitingLink) || becomingAdmin,
+                    rule, errors);
         }
         throwIfAny(errors);
 
@@ -156,12 +180,20 @@ public class StaffService {
         }
 
         var wasActive = user.isActive();
+        var roleChanged = user.getRole() != rule.role();
         user.setName(name);
         user.setRole(rule.role());
         user.setActive(active);
         if (wasActive && !active) {
             // O3: a deactivated cashier's offline grants end (kept for O4's sync).
             offlineGrants.revokeForCashier(user.getId(), OfflineGrantStore.RevokeReason.CASHIER_DEACTIVATED,
+                    UtcTimestamps.nowUtc(clock));
+        }
+        if ((wasActive && !active) || roleChanged) {
+            // T0-6a: an open sign-in link no longer fits a deactivated person or a new role.
+            var adminId = currentUserId();
+            inviteStore.revokeOpen(user.getId(), InviteRevokeReason.REVOKED, adminId,
+                    adminId == null ? null : userRepository.findById(adminId).map(User::getName).orElse(null),
                     UtcTimestamps.nowUtc(clock));
         }
         user.setEmail(rule.usesPassword() ? email : null);
@@ -409,11 +441,13 @@ public class StaffService {
     }
 
     private StaffDto toDto(User user) {
-        return toDto(user, loginAttempts.activeAccountLocks(), loginAttempts.activeBlocks());
+        return toDto(user, loginAttempts.activeAccountLocks(), loginAttempts.activeBlocks(),
+                inviteStore.latestForUsers(List.of(user.getId())).get(user.getId()), UtcTimestamps.nowUtc(clock));
     }
 
     private static StaffDto toDto(User user, Map<Long, Map<LoginMethod, LoginProtectionStore.ActiveLock>> locks,
-                                  Map<Long, Map<LoginMethod, LocalDateTime>> blocks) {
+                                  Map<Long, Map<LoginMethod, LocalDateTime>> blocks, UserInvite latestInvite,
+                                  LocalDateTime now) {
         var userLocks = locks.getOrDefault(user.getId(), Map.of());
         var lockDtos = new LinkedHashMap<String, AccountLockDto>();
         lockDtos.put(LoginMethod.PASSWORD.name(), AccountLockDto.of(userLocks.get(LoginMethod.PASSWORD)));
@@ -424,6 +458,7 @@ public class StaffService {
         blockDtos.put(LoginMethod.MANAGER_PIN.name(), AccountBlockDto.of(userBlocks.get(LoginMethod.MANAGER_PIN)));
         blockDtos.put(LoginMethod.CHANGE_PASSWORD.name(), AccountBlockDto.of(userBlocks.get(LoginMethod.CHANGE_PASSWORD)));
         return new StaffDto(user.getId(), user.getName(), user.getEmail(), user.getRole(), user.isActive(),
-                user.getPassword() != null, user.getPinHash() != null, lockDtos, blockDtos);
+                user.getPassword() != null, user.getPinHash() != null, lockDtos, blockDtos,
+                InviteSummary.of(latestInvite, now), null);
     }
 }

@@ -81,4 +81,31 @@ public class InviteRuleException extends RuntimeException {
     public static InviteRuleException conflict(String code, String message) {
         return new InviteRuleException(HttpStatus.CONFLICT, code, message, null, LoginOutcome.VALIDATION);
     }
+
+    // ---- staff invites (ADMIN) ------------------------------------------------------------------
+
+    /** 400 INVITE_REQUEST_INVALID with details.fields (purpose, credentials, email). */
+    public static InviteRuleException requestInvalid(Map<String, String> fields) {
+        return new InviteRuleException(HttpStatus.BAD_REQUEST, "INVITE_REQUEST_INVALID",
+                "This invite can't be sent as it is.", Map.of("fields", fields), LoginOutcome.VALIDATION);
+    }
+
+    /** 409 INVITE_SELF: change your own password or PIN from your profile instead. */
+    public static InviteRuleException self() {
+        return new InviteRuleException(HttpStatus.CONFLICT, "INVITE_SELF",
+                "You can't send yourself a sign-in link. Change your own password or PIN instead.", null,
+                LoginOutcome.VALIDATION);
+    }
+
+    /** 409 INVITE_USER_INACTIVE: activate the person first. */
+    public static InviteRuleException userInactive() {
+        return new InviteRuleException(HttpStatus.CONFLICT, "INVITE_USER_INACTIVE",
+                "This person is deactivated. Activate them before sending a link.", null, LoginOutcome.VALIDATION);
+    }
+
+    /** 409 INVITE_DEMO_ACCOUNT: demo accounts never get a link. */
+    public static InviteRuleException demoAccount() {
+        return new InviteRuleException(HttpStatus.CONFLICT, "INVITE_DEMO_ACCOUNT",
+                "This is a demo account. Deactivate it and add the real person instead.", null, LoginOutcome.VALIDATION);
+    }
 }
