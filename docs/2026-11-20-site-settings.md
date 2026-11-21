@@ -46,6 +46,7 @@ so a fresh database behaves exactly as before T0-4a.
 | `pos.offline.warn-offline-hours` | 5 | `POS_OFFLINE_WARNOFFLINEHOURS` | Offline | no | Next grant, snapshot, till status |
 | `pos.offline.accounts-enabled` | true | `POS_OFFLINE_ACCOUNTSENABLED` | Offline | yes | Next grant and snapshot (stored on the grant) |
 | `pos.offline.account-cap` | 150.00 | `POS_OFFLINE_ACCOUNTCAP` | Offline | yes | Next grant and snapshot (stored on the grant) |
+| `auth.invites.expiry-hours` (T0-6a) | 72 | `AUTH_INVITES_EXPIRYHOURS` | Security | yes | Next invite link issued |
 | `stock.locations.max-active` (T0-5c) | 10 | yaml only | Stock | no | Next location create or activate |
 
 "yaml only": `application.yaml` has no environment placeholder; Spring's relaxed binding still
@@ -71,6 +72,8 @@ as for till management.
 | `site.time-zone`, `site.currency-code`, `site.currency-symbol` | Platform | Locale (T0-2); the SQL report views assume SAST, so the zone can't vary per customer yet |
 | `pos.require-client-order-id`, `pos.session.sweep-enabled`, job switches | Platform | Rollout and job switches |
 | `reports.export.max-rows`, `dashboard.cache.enabled` | Platform | Protect the server |
+| `app.public-base-url` | Platform | The frontend address invite links point at (T0-6a; env `APP_PUBLIC_BASE_URL`); per customer in T1 |
+| `security.demo-accounts.block-sign-in` | Platform | Refuses the seeded demo accounts; always on under the prod profile (T0-6a) |
 | `app.business.name` | Platform | Fallback only. **Blank by default** (env `APP_BUSINESS_NAME`), so one customer's name is never printed on another's reports. The customer's name is the receipt settings' `businessName`; with both blank, statement reports print no business name. **Onboarding must set the business name in the receipt settings.** |
 
 Hard-coded customer values (meal periods, the `PM` account prefix, location names) are out of scope

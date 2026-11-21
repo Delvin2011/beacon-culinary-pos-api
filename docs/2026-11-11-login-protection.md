@@ -27,7 +27,7 @@ Setting: `security.login-protection.mode` (environment variable `LOGIN_PROTECTIO
 
 ## Rules (decision D3)
 
-Failures are the outcomes `BAD_CREDENTIAL`, `UNKNOWN_USER` and `DISABLED`. Refused attempts (`LOCKED`, `RATE_LIMITED`) and `VALIDATION` don't count.
+Failures are the outcomes `BAD_CREDENTIAL`, `UNKNOWN_USER` and `DISABLED`. Refused attempts (`LOCKED`, `RATE_LIMITED`) and `VALIDATION` don't count. Nor do refusals that involve no credential guess: `DEVICE_NOT_REGISTERED`, `SHIFT_OPEN_ON_OTHER_TILL`, `TILL_LOCKED`, and `DEMO_ACCOUNT` (T0-6a: a seeded demo account refused by the demo guard).
 
 **When counting starts:**
 - Only failures after the user's latest **success** or **unlock** for that method count.
@@ -44,6 +44,7 @@ With a threshold of 5, the 5th failure triggers the rule and the **6th** attempt
 | `MANAGER_PIN_CALLER` | MANAGER_PIN | calling user (JWT subject) | 5 in 15 min | **Block** that caller (window-based) | `RATE_LIMITED` |
 | `MANAGER_PIN_GLOBAL` | MANAGER_PIN | all callers | 20 in 60 min | Alert only, never blocks | none |
 | `CHANGE_PASSWORD_USER` | CHANGE_PASSWORD | user | 5 in 15 min | **Block** change-password (window-based); sign-in unaffected | `RATE_LIMITED` |
+| `INVITE_IP` (T0-6a) | INVITE | client IP (unknown invite tokens) | 10 in 15 min | **Block** invite lookup and accept from that address (window-based), plus an alert | `RATE_LIMITED` |
 
 **Locks** (LOCK rules):
 - Stored per user and method in `user_auth_state`.
@@ -99,13 +100,16 @@ WARN lines with the stable marker `LOGIN_PROTECTION_ALERT`, for an Azure log ale
 | `PIN_ACCOUNT_CEILING` | A cashier's PIN reaches the ceiling (enforce: locked; monitor: would lock) |
 | `MANAGER_PIN_GLOBAL` | 20+ wrong manager PINs across all tills in 60 min |
 | `ADMIN_UNLOCK_REQUIRED` | A level-3 lock was written (enforce) |
-| `UNLOCK` | Any unlock: `reason=ADMIN_UNLOCK`, `PIN_RESET` or `PASSWORD_RESET`, with `by=` the admin |
+| `UNLOCK` | Any unlock: `reason=ADMIN_UNLOCK`, `PIN_RESET` or `PASSWORD_RESET`, with `by=` the admin; `INVITE_ACCEPTED` (T0-6a) has no admin |
 | `SELF_UNLOCK_REFUSED` | An admin tried to unlock themselves, or reset their own PIN or password while locked (`reason=` as above). Worth a look: it may be someone using that admin's PIN. |
 | `DEVICE_REGISTERED` / `DEVICE_JOINED` | A till was registered, or a browser added to one (`device=`, `credential=`, `by=`) |
 | `DEVICE_REVOKED` / `DEVICE_CREDENTIAL_REVOKED` | An admin revoked a till or one browser |
 | `DEVICE_REVOKED_USED` / `DEVICE_EXPIRED_USED` | A revoked or expired browser was used (optional and required mode) |
 | `DEVICE_INVALID_TOKENS` | 5 unknown or malformed till cookies from one address in 10 minutes |
 | `DEVICE_GATE_REFUSED` | A CASHIER or ADMIN PIN sign-in was refused for lack of a registered till (required) |
+| `INVITE_IP` | 10+ unknown invite tokens from one address in 15 min (T0-6a; enforce: blocked) |
+| `DEMO_ACCOUNT_REFUSED` | A seeded demo account was refused (`path=` PASSWORD, PIN, MANAGER_PIN, REFRESH, CHANGE_PASSWORD or INVITE). Repeated: someone is trying the published credential |
+| `DEMO_ACCOUNTS_ACTIVE` | At startup with the demo guard on: `count=` demo accounts still active. Deactivate them (docs/2026-11-21-first-admin-and-invites.md) |
 | `DEVICE_NOT_REGISTERED_REPEATED` | 5 device refusals from one address in 10 minutes (required) |
 
 Till cookies (`deviceToken`) are never logged; only the till and browser IDs are.
@@ -131,6 +135,7 @@ All under `security.login-protection`. Invalid values stop the app at startup.
 | `manager-pin-caller.max-failures` / `.window` | 5 / 15m | `MANAGER_PIN_CALLER` |
 | `manager-pin-global.max-failures` / `.window` | 20 / 60m | `MANAGER_PIN_GLOBAL` |
 | `change-password-user.max-failures` / `.window` | 5 / 15m | `CHANGE_PASSWORD_USER` |
+| `invite-ip.max-failures` / `.window` | 10 / 15m | `INVITE_IP` (T0-6a) |
 | `lock-durations` | `[15m, 60m]` | First and second lock; exactly two values. The third needs an admin. |
 | `escalation-reset` | 24h | Lock level resets after this long without a lock |
 | `trusted-proxies` | empty | IPs or CIDRs whose `X-Forwarded-For` is trusted |

@@ -44,6 +44,7 @@ Background: multi-tenancy readiness analysis (19 Nov 2026) sections A.2, B.3, B.
 | `pos.offline.accounts-enabled` | BOOLEAN | true | | `OFFLINE` | **yes** |
 | `pos.offline.account-cap` | DECIMAL | 150.00 | 0 to 99 999 999.99, 2 decimals | `OFFLINE` | **yes** |
 | `stock.locations.max-active` (T0-5c) | INTEGER | 10 | 2 to 100 | `STOCK` | no |
+| `auth.invites.expiry-hours` (T0-6a) | INTEGER | 72 | 1 to 720 | `SECURITY` | **yes** |
 
 Defaults are whatever the server's configuration says; the table shows the shipped values. GET
 always returns the actual default (`defaultValue`).
@@ -277,6 +278,7 @@ decimals."
 | `pos.offline.max-offline-hours`, `warn-offline-hours` | Next grant, snapshot or till status | A till already offline keeps the values it was given. |
 | `pos.offline.accounts-enabled` | Next grant and snapshot | Stored on the grant (5.2). |
 | `pos.offline.account-cap` | Next grant and snapshot | Stored on the grant (5.2). |
+| `auth.invites.expiry-hours` | Next invite link issued | Links already sent keep their expiry. The first-admin command always uses 72 hours (docs/2026-11-21-t0-6-invites-api-contract.md). |
 | `stock.locations.max-active` | Next location create or activate | Lowering it below the active count deactivates nothing; it only blocks new ones (docs/2026-11-21-t0-5c-locations-api-contract.md). |
 | `board.done-display-minutes` | Next board fetch (`GET /public/board/today`) and next order event on the stream | Orders already on a board keep the `removeAt` they were sent. |
 | Dashboard thresholds and hours | Next dashboard request | This server clears its dashboard cache at once; other instances within 30 s plus the section's own refresh time. |

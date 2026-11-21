@@ -41,8 +41,10 @@ with the repository.
    The API listens on `http://localhost:8080`. Outside the `prod` profile, the API reference is
    at `/swagger-ui.html`.
 
-Staff accounts are managed in the app (`/admin/staff`). Don't use seeded or shared credentials
-anywhere real: see the go-live checklist.
+Staff accounts are managed in the app (`/admin/staff`); staff set their own password and PIN from
+an invite link. The seeded demo accounts can't sign in under the `prod` profile, and a new
+customer's first admin comes from the operator's first-admin command: see
+`docs/2026-11-21-first-admin-and-invites.md`.
 
 ## Tests
 
@@ -69,6 +71,9 @@ All under `docs/`.
   deactivate and activate meal periods; the rules, effects and history.
 - **Stock locations:** `2026-11-21-stock-locations.md` (one primary, any number of secondary
   locations, what each flow uses); API in `2026-11-21-t0-5c-locations-api-contract.md`.
+- **First admin and invite links:** `2026-11-21-first-admin-and-invites.md` (the operator's
+  first-admin command, staff links, retiring the demo accounts); API in
+  `2026-11-21-t0-6-invites-api-contract.md`.
 - **Till printing:** `2026-11-17-o2b-frontend-handoff.md` and
   `2026-11-17-o2b-receipt-data-api-contract.md` (receipts and kitchen tickets). There is no
   separate printer setup guide yet.

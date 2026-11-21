@@ -8,16 +8,16 @@ Paths are relative to the repository root. Java paths are under `src/main/java/c
 
 | # | Item | Severity | Status | Owner |
 |---|---|---|---|---|
-| 1 | Seed accounts with one shared, documented credential | Blocker | Open (proposal below) | TBD |
+| 1 | Seed accounts with one shared, documented credential | Blocker | Mitigated in T0-6a: refused under the prod profile; deactivate at onboarding (runbook) | TBD |
 | 2 | Datasource credentials in config files and git history | Blocker | Config fixed in WS1-1 0-A/0-B; history and rotation open | TBD |
 | 3 | Flyway `clean` enabled in the Maven plugin | Blocker | Fixed in WS1-1 0-A | TBD |
 | 4 | Swagger UI and API docs public | High | Fixed for the prod profile in WS1-1 0-C | TBD |
 | 5 | `Role.USER` can log in by password | High | Closed in T0-3 (V112; `USER` role removed) | TBD |
 | 6 | `DELETE /users/{id}` hard-deletes staff | High | Closed in T0-3 (endpoint removed) | TBD |
 | 7 | Template leftovers reachable after login | Low | Closed in T0-3 | TBD |
-| 8 | Public login-tile endpoints list every PIN user | Medium | Open (WS1-1 Phase 2 context) | TBD |
+| 8 | Public login-tile endpoints list every PIN user | Medium | Open (WS1-1 Phase 2 context); demo accounts left out under prod since T0-6a | TBD |
 | 9 | Access tokens ignore deactivation for up to 15 minutes | Medium | Open | TBD |
-| 10 | Production profile not confirmed for Azure | Medium | Open | TBD |
+| 10 | Production profile not confirmed for Azure | **High** since T0-6a (the demo guard depends on it) | Open | TBD |
 | 11 | Frontend and API on separate default Azure hostnames (cookies are cross-site) | Blocker | Open (WS1-1b decision K1) | TBD |
 | 12 | No foreign keys on the device audit columns | Low | Open; unblocked by T0-3 (item 6 closed) | TBD |
 | 13 | Two error response shapes (`ErrorDto`, `LoginProtectionErrorDto`) | Low | Tidy-up, not in WS1-1b | TBD |
@@ -85,6 +85,15 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 - Effort: 2–3 days. Risks: seeded menu and stock data stays in production (decide separately whether to keep it); an admin could reactivate a seed account (the guard stops a restart, and staff management could refuse the reserved emails).
 
 **Recommendation:** Option B. It needs no change to applied migrations, keeps dev and test exactly as they are, and makes "production still has seeds" impossible to miss at startup.
+
+**Done in T0-6a (V116), a variant of option B.** Runbook: `docs/2026-11-21-first-admin-and-invites.md`; API: `docs/2026-11-21-t0-6-invites-api-contract.md`.
+
+- The eight seed accounts are marked `users.is_demo`. Under the `prod` profile (or `security.demo-accounts.block-sign-in=true`) they are **refused** by password and PIN sign-in, manager-PIN approval, refresh, change password and invite links, and left off the login tiles. Each refusal is recorded (`DEMO_ACCOUNT`) and alerted. Startup logs `LOGIN_PROTECTION_ALERT type=DEMO_ACCOUNTS_ACTIVE count=N` while any is active.
+- **Blocked rather than refusing to start**: deactivating them without SQL needs a real admin, who is set up through an invite link, which needs the app running.
+- **First admin**: the operator's `FirstAdminCommand` (run from the app jar on a workstation, not from Azure) creates the admin without credentials and prints a single-use 72-hour link; the admin sets their own password and PIN. Nobody else ever knows them, so no forced password change is needed. `--force --reason` (recorded on the invite) only when no existing admin can sign in.
+- Staff set their own credentials from links too (`POST /admin/staff/{id}/invite`).
+- **Still to do at each go-live:** the first admin deactivates the demo accounts from the staff screen. The seeded menu and stock data remain a separate decision.
+- Depends on item 10: without the prod profile (and without the setting) the guard is off.
 
 ## 2. Datasource credentials in config files and history
 
@@ -164,6 +173,8 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 **What.** Swagger, cookie security and Flyway behaviour depend on which profile runs. It is not confirmed which profile Azure dev uses, or will use in production.
 
 **Proposed fix.** Production runs with `SPRING_PROFILES_ACTIVE=prod`. Add a startup log line that states the active profiles.
+
+**T0-6a.** The demo-account guard (item 1) is always on under the prod profile, so confirming the profile is now more urgent. Check the startup line: it says `demo guard on` (and `off` without the profile).
 
 ## 11. Custom domains for the frontend and API
 
