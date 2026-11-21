@@ -24,6 +24,7 @@ import com.beaconculinary.api.settings.SiteSettingsStore;
 import com.beaconculinary.api.support.AuthTestHelper;
 import com.beaconculinary.api.support.CatalogTestHelper;
 import com.beaconculinary.api.support.ClockTestConfig;
+import com.beaconculinary.api.support.LocationFixture;
 import com.beaconculinary.api.support.MutableClock;
 import com.beaconculinary.api.support.O3Tills;
 import com.beaconculinary.api.support.O3Tills.Cashier;
@@ -165,6 +166,7 @@ class O4OfflineSyncIntegrationTests {
         componentCatalogRepository.deleteAll();
         movementRepository.deleteAll();
         ingredientRepository.deleteAll();
+        LocationFixture.reset(jdbc); // T0-5c: default locations and assignments
         jdbc.update("DELETE FROM [accounts] WHERE [name] LIKE ?", PREFIX + "%");
         tills.cleanUp();
         clock.reset();
@@ -692,6 +694,46 @@ class O4OfflineSyncIntegrationTests {
         assertThat(((BigDecimal) movement.get("quantity"))).isEqualByComparingTo("-2");
         assertThat(((java.sql.Timestamp) movement.get("occurred_at")).toLocalDateTime())
                 .isEqualTo(LocalDateTime.ofInstant(soldAt(20), ZoneOffset.UTC));
+    }
+
+    @Test
+    void lightMealIngredients_areConsumedAtTheStationsSourceLocation() throws Exception {
+        // T0-5c: a third location as the KITCHEN station's source (light meals are always KITCHEN).
+        var coffee = body(mockMvc.perform(post("/admin/locations").header("Authorization", "Bearer " + adminPwd)
+                .contentType(MediaType.APPLICATION_JSON).content(MAPPER.writeValueAsString(Map.of("name", PREFIX + "Coffee"))))
+                .andReturn()).get("id").asLong();
+        mockMvc.perform(put("/admin/locations/assignments").header("Authorization", "Bearer " + adminPwd)
+                .contentType(MediaType.APPLICATION_JSON).content(MAPPER.writeValueAsString(
+                        Map.of("stations", Map.of("KITCHEN", coffee))))).andReturn();
+        var bread = createIngredient(PREFIX + "Rye");
+        var build = new PosFlowHelper(mockMvc, clock, dailyMealOptionRepository, dailyComponentStockRepository)
+                .createComponent("O4S Rye build", "0.00");
+        mockMvc.perform(put("/admin/components/" + build + "/recipe").header("Authorization", "Bearer " + adminPwd)
+                .contentType(MediaType.APPLICATION_JSON).content(MAPPER.writeValueAsString(Map.of("batchSize", 1,
+                        "lines", List.of(Map.of("ingredientId", bread, "quantity", new BigDecimal("1"))))))).andReturn();
+        mockMvc.perform(post("/admin/meal-catalog").header("Authorization", "Bearer " + adminPwd)
+                .contentType(MediaType.APPLICATION_JSON).content(MAPPER.writeValueAsString(Map.of("name", "O4S Rye Toast",
+                        "description", "d", "price", new BigDecimal("30.00"),
+                        "categoryId", CatalogTestHelper.categoryId(mockMvc, "Light meals > Burgers"), "componentIds", List.of(build)))))
+                .andReturn();
+        var menu = MAPPER.readTree(mockMvc.perform(get("/menu/today")).andReturn().getResponse().getContentAsString());
+        long toast = 0;
+        for (var option : menu.get("options")) {
+            if ("O4S Rye Toast".equals(option.get("name").asText())) {
+                toast = option.get("id").asLong();
+            }
+        }
+        var sale = sale(1, 20);
+        sale.put("lines", List.of(line(toast, 1, "30.00", List.of())));
+        sale.put("subtotal", new BigDecimal("30.00"));
+        sale.put("total", new BigDecimal("30.00"));
+        sale.put("vatIncludedAmount", new BigDecimal("3.91"));
+        sale.put("payments", List.of(cash("30.00")));
+
+        result(sync(t1, List.of(grantToken()), List.of(sale)), 0);
+
+        assertThat(jdbc.queryForList("SELECT [location_id] FROM [ingredient_stock_movements] "
+                + "WHERE [ingredient_id] = ? AND [movement_type] = 'CONSUMED'", Long.class, bread)).containsExactly(coffee);
     }
 
     // ---- two tills at once ----
