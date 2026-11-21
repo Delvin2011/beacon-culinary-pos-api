@@ -14,3 +14,9 @@ logging:
   structured:
     format:
       console: logstash
+
+# T0-6a: demo accounts (users.is_demo) can never sign in in production. The code also forces
+# this on under the prod profile; set here so the configuration says it too.
+security:
+  demo-accounts:
+    block-sign-in: true

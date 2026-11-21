@@ -1,6 +1,7 @@
 package com.beaconculinary.api.users;
 
 import com.beaconculinary.api.auth.AuthService;
+import com.beaconculinary.api.auth.DemoAccountGuard;
 import com.beaconculinary.api.auth.protection.LoginAttemptService;
 import com.beaconculinary.api.auth.protection.LoginMethod;
 import com.beaconculinary.api.auth.protection.LoginOutcome;
@@ -21,6 +22,7 @@ public class UserService {
     private final AuthService authService;
     private final LoginAttemptService loginAttempts;
     private final DeviceGate deviceGate;
+    private final DemoAccountGuard demoGuard;
 
     /** Public, pre-login list for the POS login screen's cashier tile grid. */
     /** The active users who log in by PIN on the given screen. The kitchen screen lists only users
@@ -36,6 +38,8 @@ public class UserService {
                 .stream()
                 .filter(user -> !screen.requiresPin() || user.getPinHash() != null)
                 .filter(user -> !hideAdmins || user.getRole() != Role.ADMIN)
+                // T0-6a: demo accounts are left off while the demo guard is on.
+                .filter(user -> !demoGuard.refuses(user))
                 .map(userMapper::toCashierSummaryDto)
                 .toList();
     }
@@ -48,6 +52,11 @@ public class UserService {
         }
         var user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
         var attempt = loginAttempts.begin(LoginMethod.CHANGE_PASSWORD, userId.toString(), userId);
+        if (demoGuard.refuses(user)) {
+            loginAttempts.finish(attempt, LoginOutcome.DEMO_ACCOUNT, userId);
+            demoGuard.alertRefused("CHANGE_PASSWORD", userId);
+            throw new AccessDeniedException("Password does not match");
+        }
 
         if (user.getPassword() == null || request.getOldPassword() == null
                 || !passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {

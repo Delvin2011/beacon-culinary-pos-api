@@ -1,5 +1,6 @@
 package com.beaconculinary.api.auth.invite;
 
+import com.beaconculinary.api.auth.DemoAccountGuard;
 import com.beaconculinary.api.auth.RecentPasswordCheck;
 import com.beaconculinary.api.auth.invite.InviteAdminDtos.IssueRequest;
 import com.beaconculinary.api.auth.invite.InviteAdminDtos.IssuedInvite;
@@ -61,11 +62,13 @@ public class InviteService {
     private final RecentPasswordCheck recentPasswordCheck;
     private final SiteSettings siteSettings;
     private final InviteLinks links;
+    private final DemoAccountGuard demoGuard;
     private final Clock clock;
 
     public InviteService(UserInviteStore store, UserRepository users, StaffService staffService,
                          LoginAttemptService loginAttempts, SessionStore sessions, TransactionTemplate transactions,
                          RecentPasswordCheck recentPasswordCheck, SiteSettings siteSettings, InviteLinks links,
+                         DemoAccountGuard demoGuard,
                          Clock clock) {
         this.store = store;
         this.users = users;
@@ -76,6 +79,7 @@ public class InviteService {
         this.recentPasswordCheck = recentPasswordCheck;
         this.siteSettings = siteSettings;
         this.links = links;
+        this.demoGuard = demoGuard;
         this.clock = clock;
     }
 
@@ -264,6 +268,10 @@ public class InviteService {
             }
         }
         var user = users.findById(invite.userId()).orElseThrow(InviteRuleException::noLongerValid);
+        if (demoGuard.refuses(user)) {
+            demoGuard.alertRefused("INVITE", user.getId());
+            throw InviteRuleException.demoRefused();
+        }
         var rule = StaffRolePolicy.ruleFor(user.getRole()).orElseThrow(InviteRuleException::noLongerValid);
         var credentials = invite.credentials();
         if (!user.isActive()

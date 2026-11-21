@@ -59,6 +59,12 @@ public class InviteRuleException extends RuntimeException {
                 LoginOutcome.VALIDATION);
     }
 
+    /** 404 INVITE_INVALID for a demo account while the demo guard is on (recorded as DEMO_ACCOUNT). */
+    public static InviteRuleException demoRefused() {
+        return new InviteRuleException(HttpStatus.NOT_FOUND, "INVITE_INVALID", INVALID_MESSAGE, null,
+                LoginOutcome.DEMO_ACCOUNT);
+    }
+
     /** 410 INVITE_EXPIRED. */
     public static InviteRuleException expired() {
         return new InviteRuleException(HttpStatus.GONE, "INVITE_EXPIRED",

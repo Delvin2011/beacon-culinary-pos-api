@@ -1,5 +1,6 @@
 package com.beaconculinary.api.admin;
 
+import com.beaconculinary.api.auth.DemoAccountGuard;
 import com.beaconculinary.api.auth.protection.LoginAttemptService;
 import com.beaconculinary.api.auth.protection.LoginMethod;
 import com.beaconculinary.api.auth.protection.LoginOutcome;
@@ -40,6 +41,7 @@ public class AdminAuthorizationService {
     private final Clock clock;
     private final LoginAttemptService loginAttempts;
     private final DeviceGate deviceGate;
+    private final DemoAccountGuard demoGuard;
 
     @Transactional
     public AuthorizeResponse authorize(AuthorizeRequest request) {
@@ -165,6 +167,12 @@ public class AdminAuthorizationService {
                 .findFirst();
         if (matched.isEmpty()) {
             loginAttempts.finish(attempt, LoginOutcome.BAD_CREDENTIAL, callerId);
+            throw new InvalidPinException();
+        }
+        // T0-6a: a demo admin's PIN approves nothing (admin PINs are unique, so no real admin matched).
+        if (demoGuard.refuses(matched.get())) {
+            loginAttempts.finish(attempt, LoginOutcome.DEMO_ACCOUNT, callerId);
+            demoGuard.alertRefused("MANAGER_PIN", matched.get().getId());
             throw new InvalidPinException();
         }
         loginAttempts.finish(attempt, LoginOutcome.SUCCESS, callerId);

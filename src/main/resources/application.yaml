@@ -154,3 +154,7 @@ security:
     cookie-max-age-days: 365
     last-seen-interval: 5m
     reauth-max-age: 30m
+  # T0-6a: refuse every sign-in by the seeded demo accounts (users.is_demo). Always on under the prod
+  # profile whatever this says; off by default elsewhere so development and the tests can use them.
+  demo-accounts:
+    block-sign-in: ${SECURITY_DEMOACCOUNTS_BLOCKSIGNIN:false}

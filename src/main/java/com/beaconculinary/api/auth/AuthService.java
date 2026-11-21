@@ -40,6 +40,7 @@ public class AuthService {
     private final DeviceGate deviceGate;
     private final Clock clock;
     private final SessionService sessionService;
+    private final DemoAccountGuard demoGuard;
 
     public User getCurrentUser() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -62,10 +63,16 @@ public class AuthService {
 
     public LoginResponse login(LoginRequest request) {
         // Login protection: look the account up on every attempt, known or not, so the extra query
-        // adds no timing difference. Skipped when protection is off.
-        var account = loginAttempts.isActive() ? userRepository.findByEmail(request.getEmail()).orElse(null) : null;
+        // adds no timing difference. Skipped when protection and the demo guard are off.
+        var account = loginAttempts.isActive() || demoGuard.blocking() ? userRepository.findByEmail(request.getEmail()).orElse(null) : null;
         var accountId = account == null ? null : account.getId();
         var attempt = loginAttempts.begin(LoginMethod.PASSWORD, LoginAttemptService.emailIdentifier(request.getEmail()), accountId);
+        // T0-6a: a demo account is refused before the password is checked, with the same answer.
+        if (demoGuard.refuses(account)) {
+            loginAttempts.finish(attempt, LoginOutcome.DEMO_ACCOUNT, accountId);
+            demoGuard.alertRefused("PASSWORD", accountId);
+            throw new BadCredentialsException("Bad credentials");
+        }
         try {
             authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
@@ -99,6 +106,12 @@ public class AuthService {
         if (deviceGate.refusesPinLogin(user)) {
             loginAttempts.finish(attempt, LoginOutcome.DEVICE_NOT_REGISTERED, user == null ? null : user.getId());
             throw DeviceException.notRegistered();
+        }
+        // T0-6a: a demo account is refused before the PIN is checked, with the same answer.
+        if (demoGuard.refuses(user)) {
+            loginAttempts.finish(attempt, LoginOutcome.DEMO_ACCOUNT, user.getId());
+            demoGuard.alertRefused("PIN", user.getId());
+            throw new BadCredentialsException("Invalid cashier ID or PIN");
         }
         var hashToCheck = user != null && user.getPinHash() != null ? user.getPinHash() : DUMMY_PIN_HASH;
         var matches = passwordEncoder.matches(request.getPin(), hashToCheck);
@@ -142,6 +155,11 @@ public class AuthService {
         // A deactivated user's existing refresh token stops working too, and so does a user whose
         // password or PIN sign-in is locked (enforce mode only).
         if (!user.isActive() || loginAttempts.isAccountLocked(user.getId())) {
+            throw new BadCredentialsException("Invalid refresh token");
+        }
+        // T0-6a: existing sessions of demo accounts stop at their next refresh.
+        if (demoGuard.refuses(user)) {
+            demoGuard.alertRefused("REFRESH", user.getId());
             throw new BadCredentialsException("Invalid refresh token");
         }
         // O2: the session must still be active (401 SESSION_ENDED with its reason otherwise).
