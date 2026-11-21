@@ -28,15 +28,15 @@ import java.util.Map;
  * StockRequest} ({@code requestType = ISSUE}, {@code source = DAILY_PLANNING}) awaiting a {@code
  * STOCK_ADMIN}'s authorization via {@code POST /stock-requests/{id}/action} — stock only actually
  * moves once that Issuing Sheet is approved. The shortfall list this step still returns is a
- * preview only (informational, against Main Store's current stock — the same figure the eventual
- * approval will check the cap against), not a block.
+ * preview only (informational, against the primary location's current stock — the same figure
+ * the eventual approval will check the cap against), not a block.
+ *
+ * <p>T0-5c — the sheet issues from the primary location to the production location (an
+ * assignment, default Kitchen); the requirements show stock at both.
  */
 @Service
 @AllArgsConstructor
 public class DailyPlanningIngredientService {
-    private static final String ISSUE_SOURCE_LOCATION = "Main Store";
-    private static final String ISSUE_DESTINATION_LOCATION = "Kitchen";
-
     private final MealPeriodRepository mealPeriodRepository;
     private final DailyMealOptionRepository dailyMealOptionRepository;
     private final DailyComponentStockRepository dailyComponentStockRepository;
@@ -44,20 +44,22 @@ public class DailyPlanningIngredientService {
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
     private final StockRequestRepository stockRequestRepository;
-    private final LocationRepository locationRepository;
+    private final StockLocations stockLocations;
+    private final InventoryMapper inventoryMapper;
     private final AuthService authService;
 
     @Transactional(readOnly = true)
     public IngredientRequirementsResponseDto getRequirements(LocalDate date, String period) {
         var mealPeriod = resolvePeriod(period);
         var calculation = calculate(date, mealPeriod.getId());
-        var mainStoreId = mainStore().getId();
-        var kitchenId = kitchen().getId();
+        var primary = stockLocations.primary();
+        var production = stockLocations.production();
 
         var requirements = calculation.byIngredientId().entrySet().stream()
-                .map(entry -> toRequirementDto(entry.getKey(), entry.getValue(), mainStoreId, kitchenId))
+                .map(entry -> toRequirementDto(entry.getKey(), entry.getValue(), primary.getId(), production.getId()))
                 .toList();
-        return new IngredientRequirementsResponseDto(requirements, calculation.uncovered());
+        return new IngredientRequirementsResponseDto(requirements, calculation.uncovered(),
+                inventoryMapper.toDto(primary), inventoryMapper.toDto(production));
     }
 
     @Transactional
@@ -66,11 +68,13 @@ public class DailyPlanningIngredientService {
         // Re-fetch the same unreviewed set the GET would have returned for this date/period —
         // never trust a stale client-side snapshot.
         var calculation = calculate(date, mealPeriod.getId());
-        var mainStore = mainStore();
+        var primary = stockLocations.primary();
 
         var stockRequest = new StockRequest();
         stockRequest.setRequestType(StockRequestType.ISSUE);
         stockRequest.setSource(StockRequestSource.DAILY_PLANNING);
+        // T0-5c: an ISSUE names its requesting (destination) location; planning's is production.
+        stockRequest.setLocation(stockLocations.production());
         stockRequest.setRequestedBy(authService.getCurrentUser());
         stockRequest.setStatus(StockRequestStatus.REQUESTED);
         stockRequest.setDailyPlanDate(date);
@@ -84,7 +88,7 @@ public class DailyPlanningIngredientService {
             // Preview only — informational, since the real cap-and-authorize decision now
             // happens later, at POST /stock-requests/{id}/action, not here.
             var currentStock = ingredientStockMovementRepository
-                    .sumQuantityByIngredientIdAndLocationId(ingredient.getId(), mainStore.getId());
+                    .sumQuantityByIngredientIdAndLocationId(ingredient.getId(), primary.getId());
             var resultingStock = currentStock.subtract(adjustment.getFinalQuantity());
             if (resultingStock.compareTo(BigDecimal.ZERO) < 0) {
                 shortfalls.add(new IngredientShortfallDto(
@@ -114,10 +118,11 @@ public class DailyPlanningIngredientService {
     }
 
     private IngredientRequirementDto toRequirementDto(
-            Long ingredientId, BigDecimal calculatedQuantity, Long mainStoreId, Long kitchenId) {
+            Long ingredientId, BigDecimal calculatedQuantity, Long primaryId, Long productionId) {
         var ingredient = ingredientRepository.findById(ingredientId).orElseThrow(IngredientNotFoundException::new);
-        var currentStock = ingredientStockMovementRepository.sumQuantityByIngredientIdAndLocationId(ingredientId, mainStoreId);
-        var kitchenStock = ingredientStockMovementRepository.sumQuantityByIngredientIdAndLocationId(ingredientId, kitchenId);
+        // Field names kept for the frontend: currentStock is at the primary, kitchenStock at production.
+        var currentStock = ingredientStockMovementRepository.sumQuantityByIngredientIdAndLocationId(ingredientId, primaryId);
+        var kitchenStock = ingredientStockMovementRepository.sumQuantityByIngredientIdAndLocationId(ingredientId, productionId);
         return new IngredientRequirementDto(
                 ingredient.getId(), ingredient.getName(), ingredient.getUnit(), calculatedQuantity, currentStock, kitchenStock);
     }
@@ -125,16 +130,6 @@ public class DailyPlanningIngredientService {
     private MealPeriod resolvePeriod(String period) {
         return mealPeriodRepository.findByName(period)
                 .orElseThrow(() -> MenuRuleException.unknownMealPeriod(period));
-    }
-
-    private Location mainStore() {
-        return locationRepository.findByNameIgnoreCase(ISSUE_SOURCE_LOCATION)
-                .orElseThrow(() -> new IllegalStateException(ISSUE_SOURCE_LOCATION + " location not seeded."));
-    }
-
-    private Location kitchen() {
-        return locationRepository.findByNameIgnoreCase(ISSUE_DESTINATION_LOCATION)
-                .orElseThrow(() -> new IllegalStateException(ISSUE_DESTINATION_LOCATION + " location not seeded."));
     }
 
     // calculatedQuantity per ingredient = SUM over every unreviewed DailyMealOption of [SUM over

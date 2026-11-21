@@ -12,4 +12,8 @@ public class IngredientRequirementsResponseDto {
     // Planned items that contribute nothing to requirements (no components, or no recipe), so the
     // planner can be warned before confirming; empty when every item is covered.
     private List<UncoveredPlanItemDto> uncovered;
+    // T0-5c: where each requirement's currentStock (primary) and kitchenStock (production) are
+    // counted, so the screen can label them with the current names.
+    private LocationDto primaryLocation;
+    private LocationDto productionLocation;
 }

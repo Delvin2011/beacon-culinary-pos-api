@@ -8,18 +8,17 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** @deprecated see {@link LegacyStockTake}. Frozen as-is (still hardcoded to Main Store, still a
- * one-step direct write) — kept only so historical callers/data keep working, not extended. */
+/** @deprecated see {@link LegacyStockTake}. Frozen as-is (always counts at the primary location,
+ * T0-5c; still a one-step direct write) — kept only so historical callers/data keep working, not
+ * extended. */
 @Deprecated
 @Service
 @AllArgsConstructor
 public class LegacyStockTakeService {
-    private static final String COUNTED_LOCATION = "Main Store";
-
     private final LegacyStockTakeRepository legacyStockTakeRepository;
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
-    private final LocationRepository locationRepository;
+    private final StockLocations stockLocations;
     private final AuthService authService;
 
     @Transactional(readOnly = true)
@@ -56,10 +55,9 @@ public class LegacyStockTakeService {
         var ingredient = ingredientRepository.findById(request.getIngredientId())
                 .orElseThrow(() -> new InvalidInventoryRequestException("ingredientId does not exist."));
 
-        var mainStore = locationRepository.findByNameIgnoreCase(COUNTED_LOCATION)
-                .orElseThrow(() -> new IllegalStateException(COUNTED_LOCATION + " location not seeded."));
+        var primary = stockLocations.primary();
         var currentStock = ingredientStockMovementRepository
-                .sumQuantityByIngredientIdAndLocationId(ingredient.getId(), mainStore.getId());
+                .sumQuantityByIngredientIdAndLocationId(ingredient.getId(), primary.getId());
         var variance = request.getCountedQuantity().subtract(currentStock);
 
         var stockTake = new LegacyStockTake();
@@ -76,7 +74,7 @@ public class LegacyStockTakeService {
         movement.setQuantity(variance);
         movement.setSourceType(MovementSourceType.STOCK_TAKE);
         movement.setSourceId(stockTake.getId());
-        movement.setLocation(mainStore);
+        movement.setLocation(primary);
         movement.setRecordedBy(stockTake.getRecordedBy());
         ingredientStockMovementRepository.save(movement);
 

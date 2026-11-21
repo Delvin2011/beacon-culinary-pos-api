@@ -24,9 +24,8 @@ import java.util.stream.Collectors;
 @Service
 @AllArgsConstructor
 public class GrvService {
-    // Stage 5.2.1/5.2.2: GRV has no location-selection UI yet — every receipt implicitly lands
-    // at Main Store until a later stage adds real location awareness here.
-    private static final String RECEIVING_LOCATION = "Main Store";
+    // T0-5c: every receipt lands at the primary location (StockLocations.primary()); receiving
+    // has no location choice by design.
     private static final String COST_PER_UNIT_RETIRED =
             "costPerUnit is no longer accepted: send unitPrice (as written on the invoice) and pricesIncludeVat.";
 
@@ -35,7 +34,7 @@ public class GrvService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseOrderLineRepository purchaseOrderLineRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
-    private final LocationRepository locationRepository;
+    private final StockLocations stockLocations;
     private final AuthService authService;
     private final InventoryMapper inventoryMapper;
     private final VatSettings vatSettings;
@@ -124,7 +123,7 @@ public class GrvService {
     // so a movement always traces back to the exact item that produced it. The movement's cost is
     // the ledger cost (VAT-inclusive unit cost).
     private void writeReceivedMovements(Grv grv) {
-        var mainStore = mainStore();
+        var primary = stockLocations.primary();
         for (var line : grv.getLines()) {
             var movement = new IngredientStockMovement();
             movement.setIngredient(line.getIngredient());
@@ -133,7 +132,7 @@ public class GrvService {
             movement.setCostPerUnit(line.getCostPerUnit());
             movement.setSourceType(MovementSourceType.GRV);
             movement.setSourceId(line.getId());
-            movement.setLocation(mainStore);
+            movement.setLocation(primary);
             movement.setRecordedBy(grv.getReceivedBy());
             ingredientStockMovementRepository.save(movement);
         }
@@ -384,11 +383,6 @@ public class GrvService {
         grvRepository.save(grv);
         writeReceivedMovements(grv);
         return grv;
-    }
-
-    private Location mainStore() {
-        return locationRepository.findByNameIgnoreCase(RECEIVING_LOCATION)
-                .orElseThrow(() -> new IllegalStateException(RECEIVING_LOCATION + " location not seeded."));
     }
 
     private record ParsedGrvRow(int lineNumber, String invoiceNumber, Ingredient ingredient, BigDecimal quantity,
