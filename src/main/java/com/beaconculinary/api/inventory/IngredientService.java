@@ -59,7 +59,9 @@ public class IngredientService {
 
     // Stage 5.2.1 — every location is shown, including ones with zero movements for this
     // ingredient (e.g. Kitchen before anything has ever been issued/consumed there), rather than
-    // only the locations that happen to appear in the ledger.
+    // only the locations that happen to appear in the ledger. T0-5c — in sort order, every active
+    // location plus any deactivated one that still has stock (non-zero), so the figures always add
+    // up to totalStock.
     @Transactional(readOnly = true)
     public IngredientStockDto getStock(Long id) {
         if (!ingredientRepository.existsById(id)) {
@@ -72,9 +74,12 @@ public class IngredientService {
         for (Object[] row : ingredientStockMovementRepository.sumQuantityByIngredientIdGroupedByLocation(id)) {
             stockByLocationId.put((Long) row[0], (BigDecimal) row[1]);
         }
-        var byLocation = locationRepository.findAll().stream()
+        var byLocation = locationRepository.findAllByOrderBySortOrderAscIdAsc().stream()
+                .filter(location -> location.isActive()
+                        || stockByLocationId.getOrDefault(location.getId(), BigDecimal.ZERO).signum() != 0)
                 .map(location -> new LocationStockDto(location.getId(), location.getName(),
-                        stockByLocationId.getOrDefault(location.getId(), BigDecimal.ZERO)))
+                        stockByLocationId.getOrDefault(location.getId(), BigDecimal.ZERO),
+                        location.getKind(), location.isActive()))
                 .toList();
 
         return new IngredientStockDto(totalStock, byLocation, lastMovementAt);

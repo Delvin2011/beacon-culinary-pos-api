@@ -14,7 +14,7 @@ public class WasteService {
     private final WasteEntryRepository wasteEntryRepository;
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
-    private final LocationRepository locationRepository;
+    private final StockLocations stockLocations;
     private final AuthService authService;
     private final InventoryMapper inventoryMapper;
 
@@ -52,7 +52,8 @@ public class WasteService {
     public WasteEntryDto create(CreateWasteRequest request) {
         var ingredient = ingredientRepository.findById(request.getIngredientId())
                 .orElseThrow(() -> new InvalidInventoryRequestException("ingredientId does not exist."));
-        var location = resolveActiveLocation(request.getLocationId());
+        // T0-5c: any active location, the primary included (same messages as before).
+        var location = stockLocations.chosen(request.getLocationId());
 
         var wasteEntry = new WasteEntry();
         wasteEntry.setIngredient(ingredient);
@@ -74,14 +75,5 @@ public class WasteService {
         ingredientStockMovementRepository.save(movement);
 
         return inventoryMapper.toDto(wasteEntry);
-    }
-
-    private Location resolveActiveLocation(Long locationId) {
-        var location = locationRepository.findById(locationId)
-                .orElseThrow(() -> new InvalidInventoryRequestException("locationId does not exist."));
-        if (!location.isActive()) {
-            throw new InvalidInventoryRequestException("locationId does not reference an active location.");
-        }
-        return location;
     }
 }

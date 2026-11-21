@@ -11,4 +11,7 @@ public class LocationStockDto {
     private Long locationId;
     private String locationName;
     private BigDecimal stock;
+    // T0-5c: so the screen can mark the primary and a deactivated location still holding stock.
+    private LocationKind kind;
+    private boolean active;
 }

@@ -15,8 +15,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Stage 5.2.5 — submit/review flow for physical stock counts, location-selectable (Main Store or
- * Kitchen). A clerk (or {@code STOCK_ADMIN}/{@code ADMIN}) submits what they counted; a {@code
+ * Stage 5.2.5 — submit/review flow for physical stock counts, location-selectable (T0-5c: any
+ * active location, the primary included; expected stock and variance are at that location). A clerk (or {@code STOCK_ADMIN}/{@code ADMIN}) submits what they counted; a {@code
  * STOCK_ADMIN}/{@code ADMIN} reviews it as a binary credibility check — approve or reject, never
  * an edit. Only {@link #review} ever writes an {@link IngredientStockMovement}.
  */
@@ -26,7 +26,7 @@ public class StockTakeService {
     private final StockTakeRepository stockTakeRepository;
     private final IngredientRepository ingredientRepository;
     private final IngredientStockMovementRepository ingredientStockMovementRepository;
-    private final LocationRepository locationRepository;
+    private final StockLocations stockLocations;
     private final AuthService authService;
     private final InventoryMapper inventoryMapper;
     private final Clock clock;
@@ -77,7 +77,7 @@ public class StockTakeService {
     }
 
     private void applyCount(StockTake stockTake, CreateStockTakeRequest request) {
-        var location = resolveActiveLocation(request.getLocationId());
+        var location = stockLocations.chosen(request.getLocationId());
         stockTake.setLocation(location);
 
         for (var lineRequest : request.getLines()) {
@@ -175,18 +175,6 @@ public class StockTakeService {
 
     private Long ownSubmissionsFilterFor(User currentUser) {
         return currentUser.getRole() == Role.STOCK_CLERK ? currentUser.getId() : null;
-    }
-
-    private Location resolveActiveLocation(Long locationId) {
-        if (locationId == null) {
-            throw new InvalidInventoryRequestException("locationId is required.");
-        }
-        var location = locationRepository.findById(locationId)
-                .orElseThrow(() -> new InvalidInventoryRequestException("locationId does not exist."));
-        if (!location.isActive()) {
-            throw new InvalidInventoryRequestException("locationId does not reference an active location.");
-        }
-        return location;
     }
 
     private StockTakeDto toDto(StockTake stockTake) {
