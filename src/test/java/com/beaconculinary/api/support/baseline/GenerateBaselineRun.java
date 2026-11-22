@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * It creates a throwaway database, migrates it through every migration in db/migration, reads its schema,
  * and writes target/baseline/B{N}__baseline.sql with the hand-written required data
  * (src/test/resources/baseline/required-data.sql). A person reviews the file before copying it to
- * src/main/resources/db/baseline (docs/2026-11-21-new-customer-database.md, "Re-baselining").
+ * src/main/resources/db/baseline (docs/2026-11-22-new-customer-database.md, "Re-baselining").
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @EnabledIfSystemProperty(named = "baseline.generate", matches = "true")

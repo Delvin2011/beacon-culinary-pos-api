@@ -1,4 +1,4 @@
--- REQUIRED reference data: only what a customer needs to trade (docs/2026-11-21-new-customer-database.md).
+-- REQUIRED reference data: only what a customer needs to trade (docs/2026-11-22-new-customer-database.md).
 -- Copied into the baseline by BaselineScriptGenerator. Everything else (meal periods other than All Day,
 -- subcategories, component and count-sheet categories) is in the optional starter, db/starter.
 

@@ -55,7 +55,7 @@ class BaselineSchemaIntegrationTests {
             var report = new ArrayList<String>();
             onlyFull.forEach(line -> report.add("- only after V1..V" + fullResult.targetSchemaVersion + ": " + line));
             onlyBaseline.forEach(line -> report.add("+ only from the baseline: " + line));
-            assertThat(report).as("Schema differences (regenerate the baseline? see docs/2026-11-21-new-customer-database.md)")
+            assertThat(report).as("Schema differences (regenerate the baseline? see docs/2026-11-22-new-customer-database.md)")
                     .isEmpty();
             assertThat(expected).hasSizeGreaterThan(500);
         }

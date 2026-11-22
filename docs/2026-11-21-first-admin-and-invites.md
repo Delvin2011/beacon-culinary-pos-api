@@ -17,6 +17,10 @@ No password, PIN, token or link is ever written in a ticket, chat log, email thr
 
 ## 2. Before you start
 
+For a **new customer**, `scripts/new-customer-database.ps1` sets up the database from the baseline and then runs
+the first-admin command in one go: see `docs/2026-11-22-new-customer-database.md`. The steps below are for running
+the first-admin command on its own (an existing database, or a rerun when the link expired).
+
 - The app has started once against the customer's database (it applies the migrations, V116 included).
 - `APP_PUBLIC_BASE_URL` is set on the app to the address staff open the frontend at (for example
   `https://pos.customer.co.za`). Without it, staff links from the staff screen are built by the frontend.

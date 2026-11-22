@@ -8,7 +8,7 @@ Paths are relative to the repository root. Java paths are under `src/main/java/c
 
 | # | Item | Severity | Status | Owner |
 |---|---|---|---|---|
-| 1 | Seed accounts with one shared, documented credential | Blocker | Mitigated in T0-6a: refused under the prod profile; deactivate at onboarding (runbook) | TBD |
+| 1 | Seed accounts with one shared, documented credential | Blocker | Closed for new customers in T0-7 (baseline without demo data); existing databases: refused under prod since T0-6a, deactivate them | TBD |
 | 2 | Datasource credentials in config files and git history | Blocker | Config fixed in WS1-1 0-A/0-B; history and rotation open | TBD |
 | 3 | Flyway `clean` enabled in the Maven plugin | Blocker | Fixed in WS1-1 0-A | TBD |
 | 4 | Swagger UI and API docs public | High | Fixed for the prod profile in WS1-1 0-C | TBD |
@@ -94,6 +94,8 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 - Staff set their own credentials from links too (`POST /admin/staff/{id}/invite`).
 - **Still to do at each go-live:** the first admin deactivates the demo accounts from the staff screen. The seeded menu and stock data remain a separate decision.
 - Depends on item 10: without the prod profile (and without the setting) the guard is off.
+
+**T0-7: new customers start without them.** A new customer's database is built from the B116 baseline (`docs/2026-11-22-new-customer-database.md`): the schema with only the required reference data, so it has no demo accounts, demo menu or demo stock at all. The guard and the deactivation step above remain for databases with full migration history (OptimumSCS). `baseline-on-migrate` is now off: before deploying to an existing database, check its `flyway_schema_history` (that doc, section 8).
 
 ## 2. Datasource credentials in config files and history
 

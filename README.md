@@ -30,7 +30,9 @@ with the repository.
 2. **Database.** Create an empty database. The app applies the Flyway migrations
    (`src/main/resources/db/migration`) when it starts. The `dev` profile turns Flyway off, so
    there you apply them yourself: see `docs/2026-11-11-running-flyway-locally.md`.
-   `flyway:clean` is disabled. Never point the plugin at production.
+   `flyway:clean` is disabled. Never point the plugin at production. An empty database started
+   outside the `prod` profile replays every migration from V1, demo data included; a new
+   customer's database is set up from the baseline instead (`docs/2026-11-22-new-customer-database.md`).
 
 3. **Run.**
 
@@ -74,6 +76,9 @@ All under `docs/`.
 - **First admin and invite links:** `2026-11-21-first-admin-and-invites.md` (the operator's
   first-admin command, staff links, retiring the demo accounts); API in
   `2026-11-21-t0-6-invites-api-contract.md`.
+- **New customer database:** `2026-11-22-new-customer-database.md`. A new customer's database starts
+  from the B116 baseline (no demo data) with `scripts/new-customer-database.ps1`; existing
+  databases keep their full migration history.
 - **Till printing:** `2026-11-17-o2b-frontend-handoff.md` and
   `2026-11-17-o2b-receipt-data-api-contract.md` (receipts and kitchen tickets). There is no
   separate printer setup guide yet.
