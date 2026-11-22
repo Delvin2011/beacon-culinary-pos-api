@@ -37,16 +37,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * T0-7 smoke test: the app trades on a database built from the baseline, with no seed of any kind. The database
- * is set up by {@link NewDatabaseCommand} (no starter) before the context starts; the app then runs on it with the
- * production Flyway locations. Through the API: the first admin by {@link FirstAdminCommand}, the invite accepted,
+ * is set up by {@link NewDatabaseCommand} (no starter) before the context starts; the app then runs on it with
+ * app.flyway.include-baseline on, as in production (which also tests that setting). Through the API: the first
+ * admin by {@link FirstAdminCommand}, the invite accepted,
  * a password sign-in, a meal period, a component and a set meal created and planned for today, a shift opened and a
  * sale made.
  *
  * <p>The throwaway database is passed in as TEST_DATASOURCE_URL (a system property, read by
- * TestDatabaseEnvironmentPostProcessor) and dropped afterwards. The context is marked dirty, and its own Flyway
- * locations keep it from being shared with other test classes. Skipped when the test login can't create databases.
+ * TestDatabaseEnvironmentPostProcessor) and dropped afterwards. The context is marked dirty, and its own setting
+ * keeps it from being shared with other test classes. Skipped when the test login can't create databases.
  */
-@SpringBootTest(properties = "spring.flyway.locations=classpath:db/migration,classpath:db/baseline")
+@SpringBootTest(properties = "app.flyway.include-baseline=true")
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class BaselineSmokeIntegrationTests {

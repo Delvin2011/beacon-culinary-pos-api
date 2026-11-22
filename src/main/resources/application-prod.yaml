@@ -1,11 +1,6 @@
 spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL}
-  # T0-7: with db/baseline, an empty database starts from the B116 baseline (no demo data) and validation
-  # accepts databases built that way. Databases with full migration history never run it.
-  # docs/2026-11-22-new-customer-database.md
-  flyway:
-    locations: classpath:db/migration,classpath:db/baseline
 
 # Swagger UI and the OpenAPI document are off in production (go-live checklist item 4).
 springdoc:
@@ -19,6 +14,13 @@ logging:
   structured:
     format:
       console: logstash
+
+# T0-7: Flyway also reads db/baseline, so an empty database starts from the B116 baseline (no demo data) and
+# validation accepts databases built that way. Databases with full migration history never run it.
+# docs/2026-11-22-new-customer-database.md
+app:
+  flyway:
+    include-baseline: true
 
 # T0-6a: demo accounts (users.is_demo) can never sign in in production. The code also forces
 # this on under the prod profile; set here so the configuration says it too.

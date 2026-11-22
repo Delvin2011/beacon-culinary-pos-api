@@ -21,11 +21,19 @@ public class LoginProtectionTestDefaults implements EnvironmentPostProcessor {
     static final String INLINED_TEST_PROPERTIES = "Inlined Test Properties";
     static final String SOURCE_NAME = "loginProtectionTestDefaults";
 
+    /** Adds the T0-7 setting (Map.of takes at most ten pairs). */
+    private static Map<String, Object> withT07Defaults(Map<String, Object> values) {
+        var all = new java.util.HashMap<>(values);
+        // T0-7: the suite's databases have full history; a local .env can't add the baseline location.
+        all.put("app.flyway.include-baseline", "false");
+        return all;
+    }
+
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         // WS1-1b: device trust is also pinned to its defaults, so a local .env (for example
         // SECURITY_DEVICETRUST_MODE=required for manual testing) doesn't change the suite.
-        var source = new MapPropertySource(SOURCE_NAME, Map.of(
+        var source = new MapPropertySource(SOURCE_NAME, withT07Defaults(Map.of(
                 "security.login-protection.mode", "off",
                 "security.device-trust.mode", "off",
                 "security.device-trust.multi-browser-enabled", "false",
@@ -41,7 +49,7 @@ public class LoginProtectionTestDefaults implements EnvironmentPostProcessor {
                 "pos.offline.enabled", "false",
                 "pos.offline.grant-signing-key", "dGVzdC1vbmx5LW9mZmxpbmUtZ3JhbnQta2V5LW5vdC1hLXNlY3JldA==",
                 // T0-6a: the suite signs in as the demo accounts, so a local .env can't switch the demo guard on.
-                "security.demo-accounts.block-sign-in", "false"));
+                "security.demo-accounts.block-sign-in", "false")));
         var sources = environment.getPropertySources();
         if (sources.contains(INLINED_TEST_PROPERTIES)) {
             sources.addAfter(INLINED_TEST_PROPERTIES, source);
