@@ -157,11 +157,13 @@ public final class SchemaCatalog {
         try (var st = connection.createStatement(); var rs = st.executeQuery(sql)) {
             var columns = new LinkedHashMap<String, List<Column>>();
             while (rs.next()) {
+                // The position in the table, not column_id: dropped columns leave gaps in column_id.
+                var position = columns.getOrDefault(rs.getString("tbl"), List.of()).size() + 1;
                 var defaultName = rs.getString("default_name");
                 var dflt = defaultName == null ? null
                         : new Constraint(defaultName, rs.getBoolean("default_system_named"), rs.getString("default_definition"));
                 var computed = rs.getString("computed");
-                columns.computeIfAbsent(rs.getString("tbl"), k -> new ArrayList<>()).add(new Column(rs.getInt("column_id"),
+                columns.computeIfAbsent(rs.getString("tbl"), k -> new ArrayList<>()).add(new Column(position,
                         rs.getString("col"), typeSql(rs), rs.getBoolean("is_nullable"), longOrNull(rs, "seed_value"),
                         longOrNull(rs, "increment_value"), computed, computed != null && rs.getBoolean("is_persisted"), dflt));
             }

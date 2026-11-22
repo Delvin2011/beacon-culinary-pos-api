@@ -112,11 +112,14 @@ public final class BaselineScriptGenerator {
         out.append(requiredData.strip()).append("\nGO\n");
 
         section(out, "Views");
+        // A batch of its own: a comment in a view's or trigger's batch becomes part of its stored definition.
+        out.append("GO\n\n");
         for (var v : catalog.viewsInDependencyOrder()) {
             out.append(asCreate(v.definition())).append("\nGO\n\n");
         }
 
         section(out, "Triggers");
+        out.append("GO\n\n");
         for (var t : catalog.triggers()) {
             out.append(asCreate(t.definition())).append("\nGO\n\n");
         }
