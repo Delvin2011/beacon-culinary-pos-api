@@ -28,12 +28,23 @@ public final class ThrowawayDatabase implements AutoCloseable {
         this.name = name;
     }
 
-    /** Creates an empty database named T07{label}{random}Test on the server of {@code testUrl}. */
+    private static final Pattern COLLATION = Pattern.compile("[A-Za-z0-9_]+");
+
+    /** Creates an empty database named T07{label}{random}Test on the server of {@code testUrl} (its default collation). */
     public static ThrowawayDatabase create(String testUrl, String username, String password, String label) throws SQLException {
+        return create(testUrl, username, password, label, null);
+    }
+
+    /** As {@link #create(String, String, String, String)}, with this collation (null: the server's default). */
+    public static ThrowawayDatabase create(String testUrl, String username, String password, String label, String collation)
+            throws SQLException {
+        if (collation != null && !COLLATION.matcher(collation).matches()) {
+            throw new IllegalArgumentException("Not a collation name: " + collation);
+        }
         var name = "T07" + label + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + "Test";
         var db = new ThrowawayDatabase(withDatabase(testUrl, "master"), username, password, name);
         try (var connection = db.master(); var st = connection.createStatement()) {
-            st.execute("CREATE DATABASE [" + name + "]");
+            st.execute("CREATE DATABASE [" + name + "]" + (collation == null ? "" : " COLLATE " + collation));
         }
         return db;
     }

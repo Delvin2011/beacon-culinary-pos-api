@@ -26,8 +26,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * T0-7: a new customer database set up by {@link NewDatabaseCommand}: only the REQUIRED reference rows, no demo
  * data or legacy tables, the starter on request (and harmless twice), migrations after the baseline apply on top,
- * a database that isn't empty is refused, and nothing about the connection is printed. Each test uses its own
- * throwaway database. Skipped when the test login can't create databases.
+ * a database that isn't empty or has another collation is refused, and nothing about the connection is printed.
+ * Each test uses its own throwaway database, created with the expected collation like a customer's. Skipped
+ * when the test login can't create databases.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class NewDatabaseIntegrationTests {
@@ -64,6 +65,11 @@ class NewDatabaseIntegrationTests {
                 new PrintStream(err, true, StandardCharsets.UTF_8), Clock.systemUTC()).run(args);
     }
 
+    /** A throwaway database with the collation new customer databases have. */
+    private ThrowawayDatabase customerDatabase(String label) throws SQLException {
+        return ThrowawayDatabase.create(url, username, password, label, NewDatabaseCommand.DEFAULT_COLLATION);
+    }
+
     private static long count(Connection c, String sql) throws SQLException {
         try (var st = c.createStatement(); var rs = st.executeQuery(sql)) {
             rs.next();
@@ -82,7 +88,7 @@ class NewDatabaseIntegrationTests {
 
     @Test
     void aNewDatabaseHasOnlyTheRequiredReferenceData_andNoDemoDataOrLegacyTables() throws Exception {
-        try (var db = ThrowawayDatabase.create(url, username, password, "New")) {
+        try (var db = customerDatabase("New")) {
             var started = System.nanoTime();
             assertThat(run(db)).as(err.toString(StandardCharsets.UTF_8)).isEqualTo(NewDatabaseCommand.OK);
             var millis = (System.nanoTime() - started) / 1_000_000;
@@ -115,7 +121,7 @@ class NewDatabaseIntegrationTests {
 
     @Test
     void theStarterIsOptional_andRunningItTwiceChangesNothing() throws Exception {
-        try (var db = ThrowawayDatabase.create(url, username, password, "Starter")) {
+        try (var db = customerDatabase("Starter")) {
             assertThat(run(db, "--starter")).as(err.toString(StandardCharsets.UTF_8)).isEqualTo(NewDatabaseCommand.OK);
             assertThat(out.toString(StandardCharsets.UTF_8)).contains("Starter template applied");
             try (var c = db.connect()) {
@@ -138,7 +144,7 @@ class NewDatabaseIntegrationTests {
                 INSERT INTO [t07_probe] ([id], [primary_location]) SELECT 1, [name] FROM [locations] WHERE [kind] = 'PRIMARY';
                 """);
         var laterLocation = "filesystem:" + later.toAbsolutePath();
-        try (var fromBaseline = ThrowawayDatabase.create(url, username, password, "OnTopBase");
+        try (var fromBaseline = customerDatabase("OnTopBase");
              var fullPath = ThrowawayDatabase.create(url, username, password, "OnTopFull")) {
             assertThat(run(fromBaseline)).isEqualTo(NewDatabaseCommand.OK);
             var onBaseline = fromBaseline.flyway("classpath:db/migration", "classpath:db/baseline", laterLocation).migrate();
@@ -159,7 +165,7 @@ class NewDatabaseIntegrationTests {
 
     @Test
     void aDatabaseThatIsntEmptyIsRefused_andNothingAboutTheConnectionIsPrinted() throws Exception {
-        try (var db = ThrowawayDatabase.create(url, username, password, "Refuse")) {
+        try (var db = customerDatabase("Refuse")) {
             assertThat(run(db)).isEqualTo(NewDatabaseCommand.OK);
             var firstOutput = out.toString(StandardCharsets.UTF_8) + err.toString(StandardCharsets.UTF_8);
             assertThat(run(db)).isEqualTo(NewDatabaseCommand.REFUSED);
@@ -170,6 +176,20 @@ class NewDatabaseIntegrationTests {
                 // A boolean, so a failure can't print the password in the assertion message.
                 assertThat(output.contains(password)).as("the output contains the database password").isFalse();
             }
+        }
+    }
+
+    @Test
+    void aDatabaseWithAnotherCollationIsRefused_unlessThatCollationIsExpected() throws Exception {
+        try (var db = ThrowawayDatabase.create(url, username, password, "Collation", "Latin1_General_CI_AS")) {
+            assertThat(run(db)).isEqualTo(NewDatabaseCommand.REFUSED);
+            assertThat(err.toString(StandardCharsets.UTF_8)).contains("collation is Latin1_General_CI_AS")
+                    .contains("COLLATE " + NewDatabaseCommand.DEFAULT_COLLATION);
+            try (var c = db.connect()) {
+                assertThat(count(c, "SELECT COUNT(*) FROM sys.tables")).as("nothing was created").isZero();
+            }
+            assertThat(run(db, "--collation", "Latin1_General_CI_AS")).as(err.toString(StandardCharsets.UTF_8))
+                    .isEqualTo(NewDatabaseCommand.OK);
         }
     }
 }

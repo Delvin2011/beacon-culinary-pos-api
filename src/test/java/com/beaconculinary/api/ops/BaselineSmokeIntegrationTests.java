@@ -75,7 +75,7 @@ class BaselineSmokeIntegrationTests {
         var password = env.get("SPRING_DATASOURCE_PASSWORD");
         Assumptions.assumeTrue(username != null && ThrowawayDatabase.canCreate(url, username, password),
                 "the test login can't create databases");
-        database = ThrowawayDatabase.create(url, username, password, "Smoke");
+        database = ThrowawayDatabase.create(url, username, password, "Smoke", NewDatabaseCommand.DEFAULT_COLLATION);
         var command = new NewDatabaseCommand(database.url(), username, password, new PrintStream(new ByteArrayOutputStream()),
                 new PrintStream(new ByteArrayOutputStream()), Clock.systemUTC());
         assertThat(command.run(new String[0])).isEqualTo(NewDatabaseCommand.OK);

@@ -14,6 +14,9 @@
       SPRING_DATASOURCE_PASSWORD  if not set, you are asked for it (hidden); it is passed to the two commands
                                   through this process's environment only and cleared at the end.
 
+    The database must have the expected collation (SQL_Latin1_General_CP1_CI_AS unless -Collation says otherwise);
+    create it with that collation, as the doc shows. NewDatabaseCommand refuses another one.
+
     Run it from your own workstation, not from the Azure container's console (whose output is collected into the
     logs). Nothing is printed about the connection.
 
@@ -29,7 +32,9 @@ param(
     [Parameter(Mandatory = $true)] [string] $Name,
     [Parameter(Mandatory = $true)] [string] $Email,
     [string] $BaseUrl,
-    [switch] $Starter
+    [switch] $Starter,
+    # The collation the database must have; NewDatabaseCommand's default when empty.
+    [string] $Collation
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,6 +68,7 @@ try {
     Write-Host '== 1/2 Database: baseline and migrations' -ForegroundColor Cyan
     $dbArgs = @()
     if ($Starter) { $dbArgs += '--starter' }
+    if ($Collation) { $dbArgs += @('--collation', $Collation) }
     $code = Invoke-OpsCommand 'NewDatabaseCommand' $dbArgs
     if ($code -ne 0) {
         Write-Host "Stopped: the database step ended with exit code $code (see above). No admin was created." -ForegroundColor Red
