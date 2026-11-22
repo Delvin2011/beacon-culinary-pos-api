@@ -6,7 +6,6 @@ import com.beaconculinary.api.users.Role;
 import com.beaconculinary.api.users.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -235,14 +234,25 @@ class StaffManagementIntegrationTests {
         update(chef, Map.of("name", "Staff Leaver Chef", "role", "HEAD_CHEF", "active", false)).andExpect(status().isOk());
         assertThat(emailLogin("staff.leaver@canteen.local", "leaverpass")).isEqualTo(401);
 
-        var activeAdmins = userRepository.findByActiveTrueAndRoleIn(List.of(Role.ADMIN));
-        Assumptions.assumeTrue(activeAdmins.size() == 1, "only meaningful when the seeded admin is the only active admin");
-        var onlyAdmin = activeAdmins.get(0);
-        update(onlyAdmin.getId(), Map.of("name", onlyAdmin.getName(), "role", "ADMIN", "active", false))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("LAST_ADMIN"));
-        update(onlyAdmin.getId(), Map.of("name", onlyAdmin.getName(), "role", "STOCK_ADMIN"))
-                .andExpect(status().isConflict());
+        // The last-admin rule needs the seeded admin to be the only active one. Any other active admin in the shared
+        // test database (another class's, or one left behind) is switched off for this check and back on after,
+        // so the check always runs.
+        var onlyAdmin = userRepository.findByEmail(AuthTestHelper.ADMIN_EMAIL).orElseThrow();
+        var others = userRepository.findByActiveTrueAndRoleIn(List.of(Role.ADMIN)).stream()
+                .filter(user -> !user.getId().equals(onlyAdmin.getId())).toList();
+        others.forEach(user -> user.setActive(false));
+        userRepository.saveAll(others);
+        try {
+            assertThat(userRepository.findByActiveTrueAndRoleIn(List.of(Role.ADMIN))).hasSize(1);
+            update(onlyAdmin.getId(), Map.of("name", onlyAdmin.getName(), "role", "ADMIN", "active", false))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("LAST_ADMIN"));
+            update(onlyAdmin.getId(), Map.of("name", onlyAdmin.getName(), "role", "STOCK_ADMIN"))
+                    .andExpect(status().isConflict());
+        } finally {
+            others.forEach(user -> user.setActive(true));
+            userRepository.saveAll(others);
+        }
     }
 
     @Test

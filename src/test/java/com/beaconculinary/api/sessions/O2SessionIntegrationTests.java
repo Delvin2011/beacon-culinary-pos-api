@@ -122,6 +122,18 @@ class O2SessionIntegrationTests {
 
     @AfterEach
     void tearDown() {
+        // The staff cleanup is in finally: a failure above used to leave this class's ADMIN active in the shared
+        // test database, which made StaffManagementIntegrationTests skip its last-admin check.
+        try {
+            cleanUpData();
+        } finally {
+            TestStaffCleanup.delete(jdbc, staff);
+            staff.clear();
+            clock.reset();
+        }
+    }
+
+    private void cleanUpData() {
         orderAdjustmentRepository.deleteAll();
         authorizationTokenRepository.deleteAll();
         orderStatusEventRepository.deleteAll();
@@ -139,9 +151,6 @@ class O2SessionIntegrationTests {
         }
         jdbc.update("DELETE c FROM [device_credentials] c JOIN [devices] d ON d.[id] = c.[device_id] WHERE d.[name] LIKE ?", PREFIX + "%");
         jdbc.update("DELETE FROM [devices] WHERE [name] LIKE ?", PREFIX + "%");
-        TestStaffCleanup.delete(jdbc, staff);
-        staff.clear();
-        clock.reset();
     }
 
     // ---- sid ----

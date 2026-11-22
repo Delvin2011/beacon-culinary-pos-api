@@ -93,15 +93,24 @@ class O2LockIdleTillStatusIntegrationTests {
 
     @AfterEach
     void tearDown() {
+        // The staff cleanup is in finally: a failure above used to leave this class's ADMIN active in the shared
+        // test database, which made StaffManagementIntegrationTests skip its last-admin check.
+        try {
+            cleanUpData();
+        } finally {
+            TestStaffCleanup.delete(jdbc, staff);
+            staff.clear();
+            clock.reset();
+        }
+    }
+
+    private void cleanUpData() {
         shiftRepository.deleteAll();
         for (var id : staff) {
             jdbc.update("DELETE FROM [user_sessions] WHERE [user_id] = ?", id);
         }
         jdbc.update("DELETE c FROM [device_credentials] c JOIN [devices] d ON d.[id] = c.[device_id] WHERE d.[name] LIKE ?", PREFIX + "%");
         jdbc.update("DELETE FROM [devices] WHERE [name] LIKE ?", PREFIX + "%");
-        TestStaffCleanup.delete(jdbc, staff);
-        staff.clear();
-        clock.reset();
     }
 
     // ---- till status ----
