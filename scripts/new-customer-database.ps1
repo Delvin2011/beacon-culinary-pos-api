@@ -20,6 +20,9 @@
     Run it from your own workstation, not from the Azure container's console (whose output is collected into the
     logs). Nothing is printed about the connection.
 
+    The invite link is printed to this window: don't run it with Start-Transcript, and where transcription is
+    switched on by policy (the script warns), delete the transcript afterwards. Clear the window when done.
+
 .EXAMPLE
     $env:SPRING_DATASOURCE_URL = 'jdbc:sqlserver://customer.database.windows.net:1433;databaseName=pos;encrypt=true'
     $env:SPRING_DATASOURCE_USERNAME = 'operator'
@@ -52,6 +55,16 @@ if (-not (Get-Command java -ErrorAction SilentlyContinue)) { throw 'java (17 or 
 # (Not $name: PowerShell variables ignore case, so it would overwrite -Name.)
 foreach ($variable in 'SPRING_DATASOURCE_URL', 'SPRING_DATASOURCE_USERNAME') {
     if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($variable))) { throw "$variable is not set." }
+}
+
+# The first admin's invite link is printed to this window: a PowerShell transcript would keep a copy of it.
+$transcriptionPolicies = foreach ($hive in 'HKLM:', 'HKCU:') {
+    Get-ItemProperty -Path "$hive\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription" -Name EnableTranscripting `
+        -ErrorAction SilentlyContinue
+}
+if ($transcriptionPolicies | Where-Object { $_.EnableTranscripting -eq 1 }) {
+    Write-Warning ('PowerShell transcription is switched on by policy: the invite link printed below will be saved in ' +
+        'the transcript. Delete that transcript file after the run (docs/2026-11-21-first-admin-and-invites.md).')
 }
 
 $askedForPassword = $false
