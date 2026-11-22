@@ -19,8 +19,12 @@ spring:
         dialect: org.hibernate.dialect.SQLServerDialect
   flyway:
     enabled: true
+    # T0-7: db/baseline (the B116 baseline for new customer databases) is added only in the prod profile, so an
+    # empty dev or test database still replays every migration and gets the demo data the tests use.
     locations: classpath:db/migration
-    baseline-on-migrate: true
+    # T0-7: off, so a database that has tables but no migration history fails loudly instead of being marked
+    # as migrated (docs/2026-11-22-new-customer-database.md).
+    baseline-on-migrate: false
 
 server:
   port: ${SERVER_PORT:8080}
