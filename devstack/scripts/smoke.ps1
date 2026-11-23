@@ -19,11 +19,17 @@
 
 .PARAMETER Quick
     Hold the stream for 5 seconds instead of 2 minutes.
+
+.PARAMETER QuietHoldMinutes
+    Also hold a second, quiet kitchen stream (no orders) for this many minutes through the gateway, and require the
+    keepalive comments to keep it from going silent for 60 s or more (Front Door closes connections idle for about
+    4 minutes). Not part of the default run: smoke.ps1 -QuietHoldMinutes 6.
 #>
 [CmdletBinding()]
 param(
     [string] $Customer,
-    [switch] $Quick
+    [switch] $Quick,
+    [ValidateRange(0, 60)] [int] $QuietHoldMinutes = 0
 )
 . (Join-Path $PSScriptRoot '_common.ps1')
 Add-Type -AssemblyName System.Net.Http
@@ -253,6 +259,48 @@ try {
     $held = [int]((Get-Date) - $heldFrom).TotalSeconds
     Add-Result "stream after $holdSeconds s" ($stillOpen -and $again -ge 0) $(if (-not $stillOpen) { "closed after $held s" } elseif ($patched.Status -ne 200) { "status change refused: $(Describe $patched)" } elseif ($again -lt 0) { 'open, but the next event did not arrive' } else { "open for $held s and delivered the next event in {0:N2} s" -f $again })
     $null = Invoke-Api 'PATCH' "/api/kitchen/orders/$orderId/status" @{ status = 'DONE' } $token
+
+    # Optional: a quiet stream, held through the gateway with nothing but keepalives.
+    if ($QuietHoldMinutes -gt 0) {
+        $quietSeconds = $QuietHoldMinutes * 60
+        Write-Host "   ..  holding a quiet kitchen stream for $QuietHoldMinutes min (keepalives only)"
+        $quietRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, "$base/api/kitchen/orders/stream")
+        $quietRequest.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $token)
+        $quietRequest.Headers.Accept.ParseAdd('text/event-stream')
+        $quietTask = $streamClient.SendAsync($quietRequest, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead)
+        if (-not $quietTask.Wait(10000)) { Add-Result 'quiet stream' $false 'no response headers within 10 s'; throw 'Stopping.' }
+        $quietStream = $quietTask.Result.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $quietReader = [System.IO.StreamReader]::new($quietStream)
+        try {
+            $quietFrom = Get-Date
+            $lastHeard = $quietFrom
+            $keepalives = 0; $events = 0; $longestSilence = 0.0; $quietClosed = $false
+            $next = $quietReader.ReadLineAsync()
+            while (((Get-Date) - $quietFrom).TotalSeconds -lt $quietSeconds) {
+                $left = [int][Math]::Max(1, $quietSeconds * 1000 - ((Get-Date) - $quietFrom).TotalMilliseconds)
+                if (-not $next.Wait($left)) { break }
+                $line = $next.Result
+                if ($null -eq $line) { $quietClosed = $true; break }
+                if ($line -eq ':keepalive') {
+                    $silence = ((Get-Date) - $lastHeard).TotalSeconds
+                    if ($silence -gt $longestSilence) { $longestSilence = $silence }
+                    $lastHeard = Get-Date
+                    $keepalives++
+                } elseif ($line.StartsWith('data:')) { $events++ }
+                $next = $quietReader.ReadLineAsync()
+            }
+            $silence = ((Get-Date) - $lastHeard).TotalSeconds
+            if ($silence -gt $longestSilence) { $longestSilence = $silence }
+            $heldQuiet = [int]((Get-Date) - $quietFrom).TotalSeconds
+            $quietOk = -not $quietClosed -and $keepalives -gt 0 -and $longestSilence -lt 60
+            $detail = "open {0} s, {1} keepalives, longest silence {2:N0} s, {3} events" -f $heldQuiet, $keepalives, $longestSilence, $events
+            if ($quietClosed) { $detail = "closed after $heldQuiet s; " + $detail }
+            Add-Result "quiet stream $QuietHoldMinutes min" $quietOk $detail
+        } finally {
+            $quietReader.Dispose()
+            $quietStream.Dispose()
+        }
+    }
 } catch {
     if ($results.Count -eq 0 -or @($results | Where-Object { -not $_.Passed }).Count -eq 0) {
         Add-Result 'smoke check' $false $_.Exception.Message

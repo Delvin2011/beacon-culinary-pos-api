@@ -14,6 +14,8 @@ import java.io.IOException;
 public final class SseStreams {
     /** The comment sent when a stream opens. */
     public static final String CONNECTED_COMMENT = "connected";
+    /** The comment sent to every open stream at the keepalive interval ({@link SseKeepalive}). */
+    public static final String KEEPALIVE_COMMENT = "keepalive";
 
     private SseStreams() {
     }

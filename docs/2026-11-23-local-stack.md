@@ -190,6 +190,8 @@ only while the stack runs, and `reset.ps1` / `down.ps1 -Volumes` replace or dele
    `host=beaconculinary.pos.localhost`.
 4. The kitchen stream (`/api/kitchen/orders/stream`) delivers the event of an order placed through the API within
    5 seconds, stays open 2 minutes, and then still delivers the next event (the order moved to `IN_PROGRESS`).
+5. Only with `-QuietHoldMinutes 6` (not the default run): a second kitchen stream with no orders stays open through
+   Caddy for 6 minutes on keepalives alone, never silent for 60 seconds or more.
 
 The order is a real cash sale of one kitchen item on the till's open shift (the check opens one with a zero
 float if none is open, and closes it again). The demo data has nothing the till can sell straight away (its set
@@ -215,9 +217,14 @@ Two settings make the backend work behind a gateway that removes `/api`:
 
 Production needs both, with Front Door's ranges (go-live checklist).
 
-**Streams.** Caddy sends stream bytes at once (`flush_interval -1`) and sets no response timeout. The streams send
-nothing while idle; that is fine here, but Front Door closes idle connections after about 4 minutes, so they will
-need a keepalive comment before production.
+**Streams.** Caddy sends stream bytes at once (`flush_interval -1`) and sets no response timeout. Each stream opens
+with a comment (`:connected`), so the headers go out at once, and every open stream gets another comment,
+`:keepalive`, every 25 seconds (`APP_SSE_KEEPALIVEINTERVAL`, a duration; `0` turns it off). **Front Door needs
+the keepalive:** it closes connections idle for about 4 minutes, which would drop a kitchen screen on a quiet
+afternoon; keep the interval well under that. Clients ignore comments (the frontend reads only `data:` lines), and
+a keepalive isn't activity: it is the server writing into an open response, so no session, till or device is
+touched, and tills don't open streams. A stream the client has left gets no more keepalives. `smoke.ps1
+-QuietHoldMinutes 6` proves a quiet stream survives through the gateway.
 
 **Client IP.** Docker Desktop's port forwarding hides your browser's address: the backend sees the Docker gateway
 as the client. Login protection still works per address; just don't read meaning into the IPs locally.

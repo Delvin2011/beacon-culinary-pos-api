@@ -26,6 +26,8 @@ public class LoginProtectionTestDefaults implements EnvironmentPostProcessor {
         var all = new java.util.HashMap<>(values);
         // T0-7: the suite's databases have full history; a local .env can't add the baseline location.
         all.put("app.flyway.include-baseline", "false");
+        // T1-L0: no SSE keepalive in the suite, so stream content is exact; SseKeepaliveIntegrationTests turns it on.
+        all.put("app.sse.keepalive-interval", "0");
         return all;
     }
 

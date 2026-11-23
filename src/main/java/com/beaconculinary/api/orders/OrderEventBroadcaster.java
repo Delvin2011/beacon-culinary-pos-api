@@ -1,12 +1,9 @@
 package com.beaconculinary.api.orders;
 
-import com.beaconculinary.api.common.SseStreams;
+import com.beaconculinary.api.common.SseChannel;
+import com.beaconculinary.api.common.SseKeepalive;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Fan-out for order lifecycle events over SSE. Deliberately generic — the kitchen stream
@@ -15,25 +12,18 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 @Component
 public class OrderEventBroadcaster {
-    private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
+    // The open streams; they open with ":connected" and get the keepalive (common.SseChannel, SseKeepalive).
+    private final SseChannel channel;
+
+    public OrderEventBroadcaster(SseKeepalive keepalive) {
+        this.channel = keepalive.channel("kitchen");
+    }
 
     public SseEmitter subscribe() {
-        // Opens with a comment, so the headers go out at once (common.SseStreams).
-        var emitter = SseStreams.open();
-        emitters.add(emitter);
-        emitter.onCompletion(() -> emitters.remove(emitter));
-        emitter.onTimeout(() -> emitters.remove(emitter));
-        emitter.onError(e -> emitters.remove(emitter));
-        return emitter;
+        return channel.subscribe();
     }
 
     public void broadcast(Object payload) {
-        for (var emitter : emitters) {
-            try {
-                emitter.send(payload);
-            } catch (IOException | IllegalStateException e) {
-                emitters.remove(emitter);
-            }
-        }
+        channel.broadcast(payload);
     }
 }

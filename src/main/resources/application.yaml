@@ -115,6 +115,11 @@ app:
   # profile turns it off). docs/2026-11-22-new-customer-database.md
   flyway:
     include-baseline: ${APP_FLYWAY_INCLUDEBASELINE:false}
+  # T1-L0 follow-up: every open SSE stream (kitchen, bar, board) gets a comment, ":keepalive", at this interval, so a
+  # gateway that closes idle connections keeps quiet screens connected: Azure Front Door closes them after about 4
+  # minutes. A duration (25s); 0 turns it off. Clients ignore comments; it is not activity (SseKeepalive).
+  sse:
+    keepalive-interval: ${APP_SSE_KEEPALIVEINTERVAL:25s}
 
 # T0-6a: default for the site setting auth.invites.expiry-hours (1-720).
 auth:
