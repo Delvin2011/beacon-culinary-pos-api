@@ -10,6 +10,14 @@ Staff sign in by password or PIN depending on their role.
 
 ## Running it locally
 
+Two ways:
+
+- **The local stack** (T1-L0): the production layout in Docker: a gateway on
+  `https://<customer>.pos.localhost` sending `/api/*` here, SQL Server and two customer databases. One command
+  (`devstack/scripts/up.ps1`) after a one-time set-up: `docs/2026-11-23-local-stack.md`. Use it for
+  anything that depends on the gateway, cookies or several customers.
+- **The app on its own**, against your own SQL Server, as below.
+
 **You need:** Java 17 and a SQL Server instance. The Maven wrapper (`mvnw`, `mvnw.cmd`) comes
 with the repository.
 
@@ -24,6 +32,7 @@ with the repository.
    | `CORS_ALLOWED_ORIGINS` | The frontend's origin |
    | `SERVER_PORT` | HTTP port (default 8080) |
    | `LOGIN_PROTECTION_MODE` | Sign-in lockout mode |
+   | `COOKIE_PATHPREFIX` | Behind a gateway that removes `/api` (the local stack, Front Door): `/api` |
    | `FLYWAY_URL`, `FLYWAY_USER`, `FLYWAY_PASSWORD` | The Flyway Maven plugin, for local or test databases only |
    | `POS_OFFLINE_ENABLED`, `POS_OFFLINE_GRANTSIGNINGKEY` | Offline selling |
 
@@ -82,8 +91,10 @@ All under `docs/`.
 - **Till printing:** `2026-11-17-o2b-frontend-handoff.md` and
   `2026-11-17-o2b-receipt-data-api-contract.md` (receipts and kitchen tickets). There is no
   separate printer setup guide yet.
-- **Logging:** there is no logging guide yet. Requests are logged by
-  `common/LoggingFilter.java`; `/health` is left out (see the O1 resilience change report).
+- **Logging:** `2026-11-19-logging.md`. The fields on every line, the request line (with the host the
+  browser used), formats per environment and how to find a request.
+- **Local stack:** `2026-11-23-local-stack.md`. The production layout on a developer's machine
+  (`devstack/`): set-up, daily use, switching customer, troubleshooting, and how each part maps to Azure.
 - **Operations:** `2026-11-11-running-flyway-locally.md`, and the login-protection runbook
   (`2026-11-11-login-protection-recovery-runbook.md`) and monitoring queries.
 - **Change reports** (`*-change-report.md`): what each piece of work changed and how it was
