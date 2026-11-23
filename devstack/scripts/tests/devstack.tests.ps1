@@ -112,6 +112,16 @@ try {
         function global:docker { $global:DevstackDockerCalls.Add(($args -join ' ')); $global:LASTEXITCODE = 0 }
     }
 
+    # --- check-all.ps1 with every step skipped: passes, reports each step, keeps a log folder ---
+    $checkAll = Join-Path $work 'scripts\check-all.ps1'
+    $shell = (Get-Process -Id $PID).Path
+    $lines = @(& $shell -NoProfile -ExecutionPolicy Bypass -File $checkAll -SkipBackend -SkipFrontend -SkipStack *>&1 | ForEach-Object { "$_" })
+    $code = $LASTEXITCODE
+    $skips = @($lines | Where-Object { $_ -match '^\S.*\sSKIP\s' }).Count
+    $logs = @(Get-ChildItem -LiteralPath (Join-Path $work '.logs') -Directory -Filter 'check-*' -ErrorAction SilentlyContinue)
+    Assert-Case 'check-all with everything skipped passes and lists all nine steps' ($code -eq 0 -and $skips -eq 9 -and
+        ($lines -join "`n") -match 'Overall: PASS' -and $logs.Count -eq 1) "exit $code, $skips skipped rows, $($logs.Count) log folder(s)"
+
     # --- reset.ps1, run as a script from the copy ---
     $reset = Join-Path $work 'scripts\reset.ps1'
     $global:DevstackDockerCalls.Clear()

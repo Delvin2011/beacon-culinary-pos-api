@@ -118,6 +118,7 @@ Then open `https://beaconculinary.pos.localhost/` (with the frontend) or `https:
 | `plan-today.ps1` | Makes today's demo meals sellable in the active customer's database, to ring up a sale by hand (below) |
 | `down.ps1 -Volumes` | Deletes everything, including the SQL data and the certificate authority; you type `DELETE` |
 | `secret-scan.ps1` | Looks for secrets in what this branch commits |
+| `check-all.ps1` | Everything before a merge: backend tests, frontend checks, the stack and the smoke check (below) |
 
 After a backend change: `up.ps1` again (it rebuilds the jar and the image and recreates the backend container).
 
@@ -153,6 +154,21 @@ which meals a database doesn't have (a new customer's starts without them). A re
 **What the frontend container must do (for T1-L0-FE):** a `Dockerfile` at the repository root; takes the build
 argument `NEXT_PUBLIC_AUTH_API_URL`; serves on port 3000 on all interfaces (`PORT`, `HOSTNAME=0.0.0.0`); Next's
 `output: 'standalone'` server.
+
+**Before merging a slice: run `check-all.ps1`.** Until the GitHub pipelines exist, this is the gate:
+
+```powershell
+.\devstack\scripts\check-all.ps1            # everything, about 20 minutes
+.\devstack\scripts\check-all.ps1 -Quick     # no e2e tests, a 5-second stream hold
+```
+
+It runs, in order, and carries on after a failure so you see everything at once: the backend's full test suite;
+in the frontend repository (`FRONTEND_REPO`): lint, `tsc --noEmit`, Vitest, the production build and the Playwright
+e2e tests; then `up.ps1` (always: it is idempotent and rebuilds the backend, so the smoke check tests the code being
+merged), `status.ps1` and `smoke.ps1`. It ends with a table (PASS, FAIL or SKIP, counts, duration) and one overall
+result; the exit code is 1 if anything failed. Each step's full output is in `devstack/.logs/check-<time>/`
+(git-ignored; the path is printed), with invite links masked. Skip parts with `-SkipBackend`, `-SkipFrontend`,
+`-SkipE2E` or `-SkipStack`. The frontend needs its `node_modules` (`npm ci` once).
 
 ## 4. Single-customer mode and switching
 
@@ -278,6 +294,6 @@ authentication allowed. The containers reach it as `host.docker.internal`. The d
 | `devstack/compose.yaml` | The four services, the network (`172.30.0.0/24`) and volumes |
 | `devstack/Caddyfile` | The gateway's routes |
 | `devstack/stack.env.example` | The settings, names only |
-| `devstack/scripts/*.ps1` | up, down, status, reset, new-customer, smoke, secret-scan; `_common.ps1` is shared |
+| `devstack/scripts/*.ps1` | up, down, status, reset, new-customer, plan-today, smoke, check-all, secret-scan; `_common.ps1` is shared |
 | `devstack/scripts/tests/devstack.tests.ps1` | Script tests without Docker (run by `DevstackScriptsTest`) |
 | `devstack/.state/` | Git-ignored: customers made with `new-customer.ps1`, status snapshots |

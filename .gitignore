@@ -7,6 +7,8 @@ target/
 # T1-L0 local stack: real settings and local state, never committed (devstack/stack.env.example has the names).
 devstack/stack.env
 devstack/.state/
+# T1-1: check-all.ps1's logs.
+devstack/.logs/
 
 ### STS ###
 .apt_generated
