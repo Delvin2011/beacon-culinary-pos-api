@@ -136,6 +136,25 @@ function Set-ComposeEnvironment($Config, [string] $FrontendUpstream) {
     if ($FrontendUpstream) { $env:FRONTEND_UPSTREAM = $FrontendUpstream }
 }
 
+<#
+    Runs docker and returns its output lines (standard output and error together, as text); the exit code is in
+    $LASTEXITCODE. Every docker call whose output is captured goes through here: Windows PowerShell 5.1 turns a
+    native program's redirected standard error into errors, which stop the scripts ($ErrorActionPreference is
+    Stop), so a harmless notice such as "Unable to find image ... locally" before a pull would end the run.
+#>
+function Invoke-Docker([string[]] $Arguments) {
+    $ErrorActionPreference = 'Continue'
+    $output = & docker @Arguments 2>&1
+    return ,@($output | ForEach-Object { "$_" })
+}
+
+<# The id of this stack's running container for a service, or nothing. #>
+function Get-RunningContainerId($Config, [string] $Service) {
+    $ids = Invoke-Docker @('ps', '-q', '--filter', "name=^$($Config.StackName)-$Service-1$")
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return ($ids | Where-Object { $_ -match '^[0-9a-f]{12,}$' } | Select-Object -First 1)
+}
+
 function Invoke-Compose {
     $composeArgs = @('compose', '--project-directory', $script:DevstackRoot, '-f', $script:ComposeFile,
                      '--env-file', $script:StackEnvFile) + $args
@@ -147,12 +166,12 @@ function Assert-Docker {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw 'docker is not on the PATH. Install Docker Desktop (docs/2026-11-23-local-stack.md, what to install).'
     }
-    $null = & docker info --format '{{.ServerVersion}}' 2>$null
+    $null = Invoke-Docker @('info', '--format', '{{.ServerVersion}}')
     if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop is not running. Start it and wait until it says "Engine running".' }
 }
 
 function Assert-StackNetwork($Config) {
-    $null = & docker network inspect $Config.Network 2>$null
+    $null = Invoke-Docker @('network', 'inspect', $Config.Network)
     if ($LASTEXITCODE -ne 0) { throw "The stack isn't running (no network $($Config.Network)). Run devstack/scripts/up.ps1 first." }
 }
 
@@ -177,7 +196,7 @@ function Invoke-StackSql($Config, [string] $Query, [string] $Database = 'master'
             '--entrypoint', '/opt/mssql-tools18/bin/sqlcmd', $script:SqlImage,
             '-C', '-S', "$($target.Server),$($target.Port)", '-U', $Config.SqlUser, '-d', $Database,
             '-b', '-I', '-h', '-1', '-W', '-s', '|', '-Q', "SET NOCOUNT ON; $Query")
-        $output = & docker @dockerArgs 2>&1
+        $output = Invoke-Docker $dockerArgs
         if ($LASTEXITCODE -ne 0) {
             throw "sqlcmd failed on $Database (exit code $LASTEXITCODE): $(($output | Out-String).Trim())"
         }
@@ -231,7 +250,7 @@ function Initialize-FullHistoryDatabase($Config, [string] $Name) {
             '-v', "${migrations}:/flyway/sql:ro", $script:FlywayImage,
             "-url=$url", "-user=$($Config.SqlUser)", '-locations=filesystem:/flyway/sql', '-baselineOnMigrate=false',
             '-outputType=json', 'migrate')
-        $output = & docker @dockerArgs 2>&1
+        $output = Invoke-Docker $dockerArgs
         $code = $LASTEXITCODE
         # Flyway's JSON names the database and the migrations, never the password.
         $text = ($output | ForEach-Object { "$_" }) -join "`n"
@@ -306,16 +325,24 @@ function Add-ManagedCustomer([string] $Name) {
 function Initialize-CustomerDatabase($Config, [string] $Name) {
     Write-Step "Creating database $Name"
     New-EmptyStackDatabase $Config $Name
-    if ($Name -eq $script:FullHistoryCustomer) {
-        Initialize-FullHistoryDatabase $Config $Name
-    } else {
-        Initialize-CleanCustomerDatabase $Config $Name
+    try {
+        if ($Name -eq $script:FullHistoryCustomer) {
+            Initialize-FullHistoryDatabase $Config $Name
+        } else {
+            Initialize-CleanCustomerDatabase $Config $Name
+        }
+    } catch {
+        # Never leave a half-made database: the next run would find it "existing" and skip it, and the backend
+        # would then build an empty one from the baseline instead of the way this customer starts.
+        Write-Problem "Setting up $Name failed; dropping it so the next run starts it again."
+        try { Remove-StackDatabase $Config $Name } catch { Write-Problem "Could not drop ${Name}: $($_.Exception.Message)" }
+        throw
     }
 }
 
 <# The backend's /health from inside the stack (no certificate or hosts file needed). True when UP. #>
 function Test-BackendHealthy($Config) {
-    $output = & docker exec "$($Config.StackName)-caddy-1" wget -q -O - http://backend:8080/health 2>$null
+    $output = Invoke-Docker @('exec', "$($Config.StackName)-caddy-1", 'wget', '-q', '-O', '-', 'http://backend:8080/health')
     return ($LASTEXITCODE -eq 0 -and "$output" -match '"status"\s*:\s*"UP"')
 }
 

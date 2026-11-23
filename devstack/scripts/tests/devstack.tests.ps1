@@ -91,6 +91,25 @@ try {
     $managed = Get-ManagedCustomers
     Assert-Case 'new customers are remembered' (($managed -join ',') -eq 'beaconculinary,testcustomer,secondcafe') ($managed -join ',')
 
+    # --- a real native docker that writes to standard error (what Windows PowerShell 5.1 turns into errors) ---
+    $fakeBin = Join-Path $work 'fakebin'
+    $null = New-Item -ItemType Directory -Path $fakeBin
+    Set-Content -LiteralPath (Join-Path $fakeBin 'docker.cmd') -Encoding ascii -Value @(
+        '@echo Unable to find image ''example:1'' locally 1>&2', '@echo pulled-and-ran', '@exit /b 0')
+    Remove-Item Function:\docker
+    $savedPath = $env:Path
+    $env:Path = "$fakeBin;$env:Path"
+    try {
+        $ErrorActionPreference = 'Stop'
+        $lines = $null; $threw = $null
+        try { $lines = Invoke-Docker @('run', 'example:1') } catch { $threw = $_.Exception.Message }
+        Assert-Case 'docker writing to standard error does not stop the scripts' ($null -eq $threw -and $LASTEXITCODE -eq 0 -and
+            ($lines -join ' ') -like '*pulled-and-ran*') "threw: $threw"
+    } finally {
+        $env:Path = $savedPath
+        function global:docker { $global:DevstackDockerCalls.Add(($args -join ' ')); $global:LASTEXITCODE = 0 }
+    }
+
     # --- reset.ps1, run as a script from the copy ---
     $reset = Join-Path $work 'scripts\reset.ps1'
     $global:DevstackDockerCalls.Clear()

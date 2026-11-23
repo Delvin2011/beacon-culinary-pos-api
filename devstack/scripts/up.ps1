@@ -35,7 +35,7 @@ $config = Get-StackConfig -Customer $Customer -FrontendMode $Frontend
 Assert-Docker
 
 Write-Step 'Checks'
-$ourCaddy = (& docker ps -q --filter "name=^$($config.StackName)-caddy-1$" 2>$null)
+$ourCaddy = Get-RunningContainerId $config 'caddy'
 if (-not $ourCaddy) {
     foreach ($port in $config.HttpsPort, $config.HttpPort) {
         if (-not (Test-Port $port)) {
@@ -43,7 +43,7 @@ if (-not $ourCaddy) {
         }
     }
 }
-if ($config.SqlMode -eq 'container' -and -not (& docker ps -q --filter "name=^$($config.StackName)-sql-1$" 2>$null)) {
+if ($config.SqlMode -eq 'container' -and -not (Get-RunningContainerId $config 'sql')) {
     if (-not (Test-Port $config.SqlHostPort)) { throw "Port $($config.SqlHostPort) is in use. Set SQL_HOST_PORT in devstack/stack.env." }
 }
 

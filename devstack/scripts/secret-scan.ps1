@@ -90,8 +90,10 @@ try {
             Write-Host '   --  skipped: Docker is not installed (-SkipGitleaks to silence this)' -ForegroundColor Yellow
         } else {
             $range = "$Base..HEAD"
-            $output = & docker run --rm -v "${repo}:/repo:ro" --entrypoint sh zricethezav/gitleaks:v8.21.2 -c `
-                "git config --global --add safe.directory /repo && gitleaks git /repo --redact --no-banner --log-opts='$range'" 2>&1
+            # In a script block with its own error preference: Windows PowerShell 5.1 would stop on docker's
+            # standard error ("Unable to find image ... locally" before the first pull).
+            $output = & { $ErrorActionPreference = 'Continue'; & docker run --rm -v "${repo}:/repo:ro" --entrypoint sh zricethezav/gitleaks:v8.21.2 -c `
+                "git config --global --add safe.directory /repo && gitleaks git /repo --redact --no-banner --log-opts='$range'" 2>&1 }
             $code = $LASTEXITCODE
             $output | ForEach-Object { Write-Host "       $_" }
             if ($code -eq 1) { Report 'gitleaks' 'findings above (values redacted)' }

@@ -72,7 +72,7 @@ if ($Compare) {
 }
 
 Write-Step 'Health'
-$caddyRunning = (& docker ps -q --filter "name=^$($config.StackName)-caddy-1$" 2>$null)
+$caddyRunning = Get-RunningContainerId $config 'caddy'
 if (-not $caddyRunning) {
     Write-Problem 'The gateway is not running (up.ps1).'; $problems++
 } elseif (Test-BackendHealthy $config) {

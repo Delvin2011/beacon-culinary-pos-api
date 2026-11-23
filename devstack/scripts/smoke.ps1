@@ -130,7 +130,7 @@ try {
     $logLine = $null
     $deadline = (Get-Date).AddSeconds(10)
     while (-not $logLine -and (Get-Date) -lt $deadline) {
-        $logLine = & docker logs --since $since $backendContainer 2>&1 | ForEach-Object { "$_" } |
+        $logLine = Invoke-Docker @('logs', '--since', $since, $backendContainer) |
             Where-Object { $_ -like "*$requestId*" -and $_ -like '*request POST /auth/login*' } | Select-Object -First 1
         if (-not $logLine) { Start-Sleep -Milliseconds 500 }
     }
