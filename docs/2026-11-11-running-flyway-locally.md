@@ -2,7 +2,7 @@
 
 The application runs its own migrations at startup (`spring.flyway.enabled: true` in `application.yaml`), so you rarely need the Maven plugin. Use it to inspect or migrate a **local or test** database by hand.
 
-**T0-7.** `baseline-on-migrate` is off: a database with tables but no `flyway_schema_history` stops the app instead of being marked as migrated. Migrations live in `db/migration`; the baseline for new customer databases (`B116__baseline.sql`) lives in `db/baseline`, which only the `prod` profile and `NewDatabaseCommand` add to the locations. With the plugin, an empty database gets every migration from V1 unless you add `-Dflyway.locations=filesystem:src/main/resources/db/migration,filesystem:src/main/resources/db/baseline`. See `docs/2026-11-22-new-customer-database.md`.
+**T0-7.** `baseline-on-migrate` is off: a database with tables but no `flyway_schema_history` stops the app instead of being marked as migrated. Migrations live in `db/migration`; the baseline for new customer databases (`B116__baseline.sql`) lives in `db/baseline`, which the app adds to its locations when `app.flyway.include-baseline` is true (on in the `prod` profile), and `NewDatabaseCommand` always reads. With the plugin, an empty database gets every migration from V1 unless you add `-Dflyway.locations=filesystem:src/main/resources/db/migration,filesystem:src/main/resources/db/baseline`. See `docs/2026-11-22-new-customer-database.md`.
 
 ## Configuration
 

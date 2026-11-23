@@ -31,6 +31,9 @@ the first-admin command on its own (an existing database, or a rerun when the li
   rule for your workstation's address, removed afterwards).
 - **Run the command from your own workstation, not from the Azure container's console**: the console's output is
   collected into the logs, and the link would end up there.
+- **No PowerShell transcript**: the link is printed to the window, and a transcript would keep a copy. Don't run it
+  under `Start-Transcript`; where transcription is switched on by group policy, delete that run's transcript file
+  afterwards (the new-customer script warns when the policy is on). Clear the window (`Clear-Host`) when done.
 
 ## 3. Create the first admin
 

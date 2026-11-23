@@ -16,16 +16,19 @@ Both have the same schema (`BaselineSchemaIntegrationTests` proves it). Every fu
 unchanged.
 
 **How Flyway decides.** A `B` (baseline) migration runs only on an empty database, and only when its folder is in
-Flyway's locations. Databases with history ignore it.
+Flyway's locations. Databases with history ignore it. The app adds `db/baseline` to its locations when
+**`app.flyway.include-baseline`** is true (env `APP_FLYWAY_INCLUDEBASELINE`; `FlywayBaselineLocation`):
 
-| Where | `spring.flyway.locations` | An empty database gets |
+| Where | `app.flyway.include-baseline` | An empty database gets |
 |---|---|---|
-| `prod` profile (`application-prod.yaml`) | `db/migration`, `db/baseline` | The baseline |
-| Everywhere else (`application.yaml`; dev, tests) | `db/migration` | Every migration from V1, with the demo data the tests use |
-| `NewDatabaseCommand` | `db/migration`, `db/baseline` | The baseline |
+| `prod` profile (`application-prod.yaml`) | true | The baseline |
+| Default (`application.yaml`), and pinned off in the tests | false | Every migration from V1, with the demo data the tests use |
+| `NewDatabaseCommand` | (always reads `db/baseline`) | The baseline |
 
-A database built from the baseline **needs `db/baseline` in the locations** to validate: run it under the `prod`
-profile. Without it, Flyway stops the app with "Detected applied migration not resolved locally: 116".
+A database built from the baseline **needs the setting on** wherever the app runs Flyway against it; without it,
+Flyway stops the app with "Detected applied migration not resolved locally: 116". The setting isn't tied to a
+profile: a test customer on dev, for example, runs with `APP_FLYWAY_INCLUDEBASELINE=true` and, because the `dev`
+profile turns Flyway off, `SPRING_FLYWAY_ENABLED=true` (otherwise later migrations are never applied there).
 
 `baseline-on-migrate` is **off** everywhere. A database that has tables but no `flyway_schema_history` now stops
 the app instead of being marked as migrated.
@@ -34,13 +37,42 @@ the app instead of being marked as migrated.
 
 **Before you start**
 
-- An **empty** Azure SQL database for the customer (created in the portal or by T1 provisioning) and a login that
-  can create tables in it.
+- An **empty** Azure SQL database for the customer, **with the collation `SQL_Latin1_General_CP1_CI_AS`** (below),
+  and a login that can create tables in it.
 - An Azure SQL firewall rule for your workstation's address (remove it afterwards).
 - The app jar of the version being deployed (`target/beacon-culinary-api-<version>.jar`), Java 17, PowerShell.
 - The first admin's name and email, and the address staff will open the frontend at.
 - Run everything from **your own workstation**, not from the Azure container's console (its output is collected into
   the logs, and the first admin's link would end up there).
+- **No PowerShell transcript**: the first admin's link is printed to the window. Don't run it under
+  `Start-Transcript`. Where transcription is switched on by group policy (the script warns), delete that run's
+  transcript file afterwards. Clear the window (`Clear-Host`) when done.
+
+**Creating the database with the right collation**
+
+Every customer database uses **`SQL_Latin1_General_CP1_CI_AS`**, Azure SQL's default. `NewDatabaseCommand` refuses
+a database with another one (exit 3). An Azure SQL database's collation **can't be changed later**: a wrong one
+means dropping the empty database and creating it again. Any of:
+
+- Azure portal: Create SQL Database > **Additional settings** > **Collation**: `SQL_Latin1_General_CP1_CI_AS`
+  (the default; leave it as it is).
+- Azure CLI:
+
+  ```
+  az sql db create --resource-group <rg> --server <server> --name <db> --collation SQL_Latin1_General_CP1_CI_AS \
+      --edition GeneralPurpose --family Gen5 --capacity 2
+  ```
+
+- T-SQL, connected to the logical server's `master`:
+
+  ```sql
+  CREATE DATABASE [<db>] COLLATE SQL_Latin1_General_CP1_CI_AS
+      (EDITION = 'GeneralPurpose', SERVICE_OBJECTIVE = 'GP_Gen5_2');
+  ```
+
+Edition and size are the customer's plan, not part of this procedure. To use another collation on purpose (for
+example to match an existing customer), pass `-Collation <name>` to the script (`--collation` to the command, or
+`NEW_DATABASE_COLLATION`).
 
 **Run**
 
@@ -56,7 +88,7 @@ commands through its own environment only, and clears it at the end. Nothing abo
 
 | Step | What it does |
 |---|---|
-| 1. `NewDatabaseCommand [--starter]` | Refuses a database that isn't empty. Applies the baseline and every migration after it; with `-Starter`, the starter template (section 4). Prints the version reached and the time taken |
+| 1. `NewDatabaseCommand [--starter] [--collation NAME]` | Refuses a database that isn't empty or has another collation. Applies the baseline and every migration after it; with `-Starter`, the starter template (section 4). Prints the version reached and the time taken |
 | 2. `FirstAdminCommand` | The first admin, without credentials, and their one-time invite link, printed in this window only (T0-6a runbook, section 3) |
 
 Locally the whole procedure takes about 4 seconds (under a second for the database). Send the link privately.
@@ -67,7 +99,7 @@ Locally the whole procedure takes about 4 seconds (under a second for the databa
 |---|---|---|
 | 0 | Done | Done |
 | 2 | Usage: an unknown option, or `SPRING_DATASOURCE_URL` missing | Usage |
-| 3 | Refused: the database isn't empty | Refused (see the T0-6a runbook) |
+| 3 | Refused: the database isn't empty, or its collation isn't the expected one | Refused (see the T0-6a runbook) |
 | 4 | Failed: database error (the message gives the SQL state) | Failed |
 
 When step 2 fails after step 1 succeeded, the database is ready: fix the problem and run `FirstAdminCommand` on its
@@ -75,8 +107,8 @@ own (T0-6a runbook, section 3).
 
 **After**
 
-1. Point the customer's app at the database and start it with `SPRING_PROFILES_ACTIVE=prod` (it includes
-   `db/baseline`; see section 1). The startup log says `Demo accounts: none active; demo guard on`.
+1. Point the customer's app at the database and start it with `SPRING_PROFILES_ACTIVE=prod` (which turns
+   `app.flyway.include-baseline` on; see section 1). The startup log says `Demo accounts: none active; demo guard on`.
 2. The first admin accepts their link and does the onboarding settings (go-live checklist item 15): receipt
    settings and business name, VAT, first trading day, meal periods, stock locations (rename Main Store and
    Kitchen), then staff by invite link.
@@ -86,7 +118,7 @@ The commands can also be run on their own:
 
 ```
 java -cp <jar> -Dloader.main=com.beaconculinary.api.ops.NewDatabaseCommand \
-     org.springframework.boot.loader.launch.PropertiesLauncher [--starter]
+     org.springframework.boot.loader.launch.PropertiesLauncher [--starter] [--collation NAME]
 ```
 
 ## 3. What a new database contains
@@ -159,7 +191,9 @@ there is no separate demo script.
 |---|---|
 | `BaselineSchemaIntegrationTests` | A baseline-built database and a fully migrated one have identical schemas: tables, columns (type, nullability, identity, computed, default), keys, checks, foreign keys, indexes with filters, views and triggers. Fails with both sides listed |
 | `NewDatabaseIntegrationTests` | Only the REQUIRED rows; no demo data or legacy tables; the starter optional and safe twice; a later migration applies on top of both kinds; a non-empty database refused; no connection details printed |
-| `BaselineSmokeIntegrationTests` | The app trades on a new database: first admin, invite, sign-in, plan a meal, open a shift, sell |
+| `BaselineSmokeIntegrationTests` | The app trades on a new database (with `app.flyway.include-baseline` on): first admin, invite, sign-in, plan a meal, open a shift, sell |
+| `FlywayBaselineLocationTest` | The setting adds `db/baseline` once, and only when on |
+| `NewCustomerDatabaseScriptTest` | Runs `scripts/tests/new-customer-database.tests.ps1`: the script's exit codes on every path, and that a password it asked for is cleared on failure as well as success (Windows only) |
 
 They create and drop their own throwaway databases (`T07…Test`) on the test server, so the test login needs
 `CREATE DATABASE`; without it they are skipped. The rest of the suite stays on the full migration path.
@@ -178,3 +212,26 @@ FROM [flyway_schema_history];
 
 Expected: the current highest version (116 or later) and 0 failed. Local dev and test databases were checked when
 T0-7 was built (114 rows, version 116, none failed).
+
+**Collation.** New customer databases use `SQL_Latin1_General_CP1_CI_AS`. To compare an existing database (read-only):
+
+```sql
+SELECT DB_NAME() AS [database],
+       CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128)) AS [database_collation],
+       CAST(SERVERPROPERTY('Collation') AS nvarchar(128)) AS [server_collation],
+       (SELECT COUNT(*) FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id
+        WHERE c.collation_name IS NOT NULL
+          AND c.collation_name <> CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128))) AS [columns_with_other_collation];
+```
+
+| Database | Collation |
+|---|---|
+| Local server default, `master` | `Latin1_General_CI_AS` |
+| `BeaconculinaryTest` (the test suite) | `Latin1_General_CI_AS` |
+| `Beaconculinary181026` (local dev) | `SQL_Latin1_General_CP1_CI_AS` |
+| Azure SQL default for new databases | `SQL_Latin1_General_CP1_CI_AS` |
+| OptimumSCS | to be checked with the query above |
+
+Both are case- and accent-insensitive in the same way; the baseline is tested on both (the new-database tests
+create `SQL_Latin1_General_CP1_CI_AS` databases, the schema comparison uses the server default). If OptimumSCS turns
+out to use another collation, decide whether new customers should match it (`NEW_DATABASE_COLLATION`).

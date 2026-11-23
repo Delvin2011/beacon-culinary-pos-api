@@ -73,6 +73,7 @@ as for till management.
 | `pos.require-client-order-id`, `pos.session.sweep-enabled`, job switches | Platform | Rollout and job switches |
 | `reports.export.max-rows`, `dashboard.cache.enabled` | Platform | Protect the server |
 | `app.public-base-url` | Platform | The frontend address invite links point at (T0-6a; env `APP_PUBLIC_BASE_URL`); per customer in T1 |
+| `app.flyway.include-baseline` | Platform | Flyway also reads `db/baseline`, for databases built from the T0-7 baseline (env `APP_FLYWAY_INCLUDEBASELINE`; on in the prod profile) |
 | `security.demo-accounts.block-sign-in` | Platform | Refuses the seeded demo accounts; always on under the prod profile (T0-6a) |
 | `app.business.name` | Platform | Fallback only. **Blank by default** (env `APP_BUSINESS_NAME`), so one customer's name is never printed on another's reports. The customer's name is the receipt settings' `businessName`; with both blank, statement reports print no business name. **Onboarding must set the business name in the receipt settings.** |
 

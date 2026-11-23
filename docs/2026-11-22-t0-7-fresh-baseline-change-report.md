@@ -86,10 +86,27 @@ Dev and test are unchanged: they stay on the full migration path with all the de
 - Manual: the script run end to end against a throwaway database (with the starter), then again on the same
   database (refused, exit 3); throwaway databases dropped.
 
+## Follow-ups before merge
+
+| # | Commit | What |
+|---|---|---|
+| 1 | `5291dd8` | `app.flyway.include-baseline` (`FlywayBaselineLocation`) adds `db/baseline` under any profile; true in `prod`, false by default and in the tests. Replaces the `prod` profile's locations override |
+| 2 | `56a63f5` | `NewDatabaseCommand` refuses a database whose collation isn't the expected one (`SQL_Latin1_General_CP1_CI_AS`, or `--collation` / `NEW_DATABASE_COLLATION`); the script's `-Collation`; customer test databases created with that collation |
+| 3 | `af236bb` | `scripts/tests/new-customer-database.tests.ps1` and `NewCustomerDatabaseScriptTest`: the password the script asked for is cleared on every exit path (PowerShell runs `finally` on `exit`; proved, and a copy without the cleanup fails 4 cases); the script warns when transcription is on by policy |
+| 4 | `a493386` | The 18 users `O2SessionIntegrationTests` and `O2LockIdleTillStatusIntegrationTests` had left in the test database (5 active admins) removed; their `tearDown` now cleans staff in `finally`; `StaffManagementIntegrationTests` switches other admins off for its last-admin check instead of skipping |
+| 5 | (this) | Docs |
+
+**Collations found:** local server, `master` and `BeaconculinaryTest`: `Latin1_General_CI_AS`; local dev `Beaconculinary181026`: `SQL_Latin1_General_CP1_CI_AS`; Azure SQL default: `SQL_Latin1_General_CP1_CI_AS`; OptimumSCS: to be checked (query in the new-customer doc, section 8).
+
+**Full suite after the follow-ups: 1179 tests, 0 failures, 0 errors, 0 skipped.**
+
 ## Files
 
 **Created**
 - `src/main/resources/db/baseline/B116__baseline.sql`, `src/main/resources/db/starter/starter.sql`
+- `src/main/java/com/beaconculinary/api/common/FlywayBaselineLocation.java` (follow-up 1)
+- `scripts/tests/new-customer-database.tests.ps1` (follow-up 3)
+- Tests: `common/FlywayBaselineLocationTest`, `ops/NewCustomerDatabaseScriptTest` (follow-ups 1, 3)
 - `src/main/java/com/beaconculinary/api/ops/NewDatabaseCommand.java`
 - `scripts/new-customer-database.ps1`
 - `src/test/java/com/beaconculinary/api/support/baseline/`: `SchemaCatalog`, `BaselineScriptGenerator`,
@@ -99,7 +116,11 @@ Dev and test are unchanged: they stay on the full migration path with all the de
 - Docs: `2026-11-22-new-customer-database.md`, this report
 
 **Modified**
-- `src/main/resources/application.yaml`, `src/main/resources/application-prod.yaml`
+- `src/main/resources/application.yaml`, `src/main/resources/application-prod.yaml`, `.env.example`
+- Follow-ups: `ops/NewDatabaseCommand`, `scripts/new-customer-database.ps1`, `support/baseline/ThrowawayDatabase`,
+  `ops/NewDatabaseIntegrationTests`, `ops/BaselineSmokeIntegrationTests`, `support/LoginProtectionTestDefaults`,
+  `sessions/O2SessionIntegrationTests`, `tills/O2LockIdleTillStatusIntegrationTests`,
+  `staff/StaffManagementIntegrationTests`, `docs/2026-11-20-site-settings.md`
 - `src/test/java/com/beaconculinary/api/common/logging/NoConsolePrintingTest.java`
 - Docs: `README.md`, `docs/2026-11-11-go-live-checklist.md`, `docs/2026-11-21-first-admin-and-invites.md`,
   `docs/2026-11-11-running-flyway-locally.md`
