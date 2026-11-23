@@ -236,7 +236,15 @@ try {
     # Hold the stream open, then prove it still delivers: move the order on in the kitchen.
     Write-Host "   ..  holding the stream open for $holdSeconds s"
     $heldFrom = Get-Date
-    $closedEarly = $pending.Wait($holdSeconds * 1000) -and $null -eq $pending.Result
+    # Read whatever arrives (the blank line that ends each event, comments) until the time is up; only the end of
+    # the stream (a null line) counts as closed.
+    $closedEarly = $false
+    while (((Get-Date) - $heldFrom).TotalSeconds -lt $holdSeconds) {
+        $left = [int][Math]::Max(1, $holdSeconds * 1000 - ((Get-Date) - $heldFrom).TotalMilliseconds)
+        if (-not $pending.Wait($left)) { break }
+        if ($null -eq $pending.Result) { $closedEarly = $true; break }
+        $pending = $reader.ReadLineAsync()
+    }
     $stillOpen = -not $closedEarly
     $statusFrom = Get-Date
     $patched = Invoke-Api 'PATCH' "/api/kitchen/orders/$orderId/status" @{ status = 'IN_PROGRESS' } $token
