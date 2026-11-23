@@ -181,7 +181,9 @@ function Invoke-StackSql($Config, [string] $Query, [string] $Database = 'master'
         if ($LASTEXITCODE -ne 0) {
             throw "sqlcmd failed on $Database (exit code $LASTEXITCODE): $(($output | Out-String).Trim())"
         }
-        return @($output | ForEach-Object { "$_" } | Where-Object { $_ -ne '' })
+        # The leading comma keeps a one-row result an array: PowerShell would otherwise unroll it into a string,
+        # and [0] would be its first character.
+        return ,@($output | ForEach-Object { "$_" } | Where-Object { $_ -ne '' })
     } finally {
         Remove-Item Env:SQLCMDPASSWORD -ErrorAction SilentlyContinue
     }
