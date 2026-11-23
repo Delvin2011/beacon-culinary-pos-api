@@ -20,8 +20,8 @@
 param(
     [string] $Base = 'main',
     [switch] $SkipGitleaks,
-    # Files whose matches are known test fixtures (made-up values), as git path globs.
-    [string[]] $Allow = @('src/test/*')
+    # Files whose matches are known test fixtures (made-up values), as git path globs; this script itself (its patterns).
+    [string[]] $Allow = @('src/test/*', 'devstack/scripts/tests/*', 'devstack/scripts/secret-scan.ps1')
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)

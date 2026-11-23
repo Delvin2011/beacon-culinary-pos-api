@@ -1,0 +1,4 @@
+# gitleaks findings checked and found not to be secrets. One fingerprint per line (commit:file:rule:line).
+# OfflineGrantSignerTest: an unsigned dummy token ({"alg":"none"}, empty signature) that the test feeds in to prove
+# it is refused. Checked 2026-11-23 (T1-L0).
+3d8e10a9c3e1948a94640f2e2d6c78ec3e6eb0f4:src/test/java/com/beaconculinary/api/offline/OfflineGrantSignerTest.java:jwt:111
