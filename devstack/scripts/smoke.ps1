@@ -67,7 +67,7 @@ function Invoke-Api([string] $Method, [string] $Path, $Body, [string] $Token, [h
     $headers = @{}
     foreach ($header in $response.Headers) { $headers[$header.Key] = @($header.Value) }
     $parsed = $null
-    if ($text -and $text.TrimStart().StartsWith('{') -or $text -and $text.TrimStart().StartsWith('[')) {
+    if ($text -and ($text.TrimStart().StartsWith('{') -or $text.TrimStart().StartsWith('['))) {
         try { $parsed = $text | ConvertFrom-Json } catch { $parsed = $null }
     }
     return [pscustomobject]@{ Status = [int]$response.StatusCode; Headers = $headers; Text = $text; Json = $parsed }
