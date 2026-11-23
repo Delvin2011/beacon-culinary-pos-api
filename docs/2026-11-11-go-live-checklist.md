@@ -95,7 +95,7 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 - **Still to do at each go-live:** the first admin deactivates the demo accounts from the staff screen. The seeded menu and stock data remain a separate decision.
 - Depends on item 10: without the prod profile (and without the setting) the guard is off.
 
-**T0-7: new customers start without them.** A new customer's database is built from the B116 baseline (`docs/2026-11-22-new-customer-database.md`): the schema with only the required reference data, so it has no demo accounts, demo menu or demo stock at all. The guard and the deactivation step above remain for databases with full migration history (OptimumSCS). `baseline-on-migrate` is now off: before deploying to an existing database, check its `flyway_schema_history` (that doc, section 8).
+**T0-7: new customers start without them.** A new customer's database is built from the B116 baseline (`docs/2026-11-22-new-customer-database.md`): the schema with only the required reference data, so it has no demo accounts, demo menu or demo stock at all. The guard and the deactivation step above remain for databases with full migration history (Beacon Culinary's production database). `baseline-on-migrate` is now off: before deploying to an existing database, check its `flyway_schema_history` (that doc, section 8).
 
 ## 2. Datasource credentials in config files and history
 

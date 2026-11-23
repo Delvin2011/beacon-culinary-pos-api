@@ -115,10 +115,27 @@ Then open `https://beaconculinary.pos.localhost/` (with the frontend) or `https:
 | `smoke.ps1` | The end-to-end check (section 6) |
 | `reset.ps1` | Drops and recreates the stack's databases in their starting state; you type `RESET`. `-Customer <name>` for one |
 | `new-customer.ps1 <name>` | A new clean customer database, as a real new customer gets (section 4) |
+| `plan-today.ps1` | Makes today's demo meals sellable in the active customer's database, to ring up a sale by hand (below) |
 | `down.ps1 -Volumes` | Deletes everything, including the SQL data and the certificate authority; you type `DELETE` |
 | `secret-scan.ps1` | Looks for secrets in what this branch commits |
 
 After a backend change: `up.ps1` again (it rebuilds the jar and the image and recreates the backend container).
+
+**Selling by hand.** The till sells only `READY` items. The demo data plans its meals only for the day the migrations
+ran, and has no light meals, so on any other day there is nothing to sell. `plan-today.ps1` does what the kitchen
+would, through the API as an admin (`SMOKE_EMAIL` / `SMOKE_PASSWORD`):
+
+1. Plans today's demo meals if they are missing: Breakfast (07:00-10:00) Rice & Beef and Chicken & Potatoes;
+   Lunch (12:00-14:30) Rice & Chicken and Potatoes & Beef, with the extras Rice, Chicken, Potatoes and Beef.
+   `-Portions` each (default 20).
+2. Confirms the period's ingredient requirements (this also creates the stock request a real kitchen gets).
+3. Records the actual portions, which puts them on sale (`READY`).
+4. Adds the always-on light meal "Smoke check item" (R1.00) if missing: set meals are on the till only during their
+   period, the light meal at any hour.
+
+Run it again as often as you like: what is already on sale is left alone. It runs only against the stack's own
+database (one of the stack's customers, on the stack's SQL Server, and the one the backend is serving), and says
+which meals a database doesn't have (a new customer's starts without them). A reset takes the plan away again.
 
 **Frontend.** Three modes (`FRONTEND_MODE` in `stack.env`, or `up.ps1 -Frontend <mode>`):
 

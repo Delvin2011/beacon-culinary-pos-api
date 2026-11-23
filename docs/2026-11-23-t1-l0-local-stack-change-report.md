@@ -91,10 +91,26 @@ so a truly clean machine isn't possible here.)
 
 ## Open items
 
-- **Front Door, before production:** `COOKIE_PATHPREFIX=/api`, `SECURITY_LOGINPROTECTION_TRUSTEDPROXIES` with Front
-  Door's ranges, and a keepalive on the SSE streams (Front Door closes idle connections after about 4 minutes;
-  the opening comment covers the first byte, not idle time).
-- **The demo data has nothing the till can sell without planning:** its set meals are only `PLANNED`, and it has no
-  light meals. The smoke check adds one; a developer testing sales by hand plans a meal first, or uses that item.
+- **Front Door, before production:** `COOKIE_PATHPREFIX=/api` and `SECURITY_LOGINPROTECTION_TRUSTEDPROXIES` with Front
+  Door's ranges. The SSE keepalive is done (follow-up 1); keep `APP_SSE_KEEPALIVEINTERVAL` well under Front Door's
+  4-minute idle timeout.
 - **T1-L0-FE:** the frontend's `Dockerfile` (contract in the doc, section 3).
 - **T1-1:** resolving the customer from `X-Forwarded-Host` (trusted proxies only), then serving both databases.
+
+## Follow-ups (after T1-L0 was approved)
+
+| # | Commit | What |
+|---|---|---|
+| 1 | `4f3faf5` | **SSE keepalive.** Every open stream (kitchen/orders, bar, board) gets `:keepalive` every `app.sse.keepalive-interval` (`APP_SSE_KEEPALIVEINTERVAL`, default 25s, 0 = off), so Front Door's 4-minute idle timeout doesn't drop quiet screens. `common/SseChannel` (one per kind of stream; a stream leaves it on completion, timeout, error or a failed write) and `common/SseKeepalive` (one scheduled job); the three broadcasters delegate to their channel. Not activity: no request is made, so no session, till or device is touched, and tills don't open streams. Off in the suite (`LoginProtectionTestDefaults`). `smoke.ps1 -QuietHoldMinutes N` |
+| 2 | (this) | **`devstack/scripts/plan-today.ps1`**: today's demo meals made sellable through the API as an admin (plan if missing, confirm the ingredient requirements, record the actual portions), plus the always-on light meal "Smoke check item". Idempotent; refuses a customer that isn't the stack's, a database that isn't on the stack's SQL Server, or one the backend isn't serving |
+| 3 | (this) | Wording: "OptimumSCS" meaning Beacon Culinary's production database corrected to that in the go-live checklist, the new-customer database doc and the T0-7 change report (OptimumSCS is the vendor; Beacon Culinary is customer 1). Not changed: the comment in `db/baseline/B116__baseline.sql` says "(OptimumSCS, dev, test)", but editing it would change the baseline's checksum and break validation of every database built from it |
+
+**Tests:**
+
+| Test | Result |
+|---|---|
+| `SseKeepaliveIntegrationTests` (3, keepalive 200 ms): quiet kitchen, bar and board streams get `:connected` and 3+ `:keepalive` comments and nothing else (no `data:` or `event:` line, which is what makes clients ignore them); a stream the client has left leaves its channel and gets no more bytes; the latest session and device "last seen" don't change while keepalives flow | Pass |
+| `SseKeepaliveTest` (4): 0 schedules nothing; 25 s schedules one job, cancelled on shutdown; a negative interval is refused; empty channels send nothing | Pass |
+| Full suite | 1193 tests, 0 failures, 0 errors, 0 skipped (1186 + 7) |
+| `smoke.ps1 -QuietHoldMinutes 6` on the stack | 8 of 8 in 484 s; the quiet stream open 360 s through Caddy with 14 keepalives, longest silence 25 s, 0 events |
+| `plan-today.ps1` on the stack | Run 1: the four demo meals and four Lunch extras `PLANNED` to `READY` (2 stock requests). With today's Lunch plan removed: re-planned, confirmed and `READY` (20 each). Each second run: nothing changed (same counts). Refused `-Customer testcustomer` (not being served), `othercustomer` (not the stack's), `master` (reserved). A first version read the meal periods' list as one item (Windows PowerShell 5.1 returns a JSON array as one object), found on the stack before it was committed |

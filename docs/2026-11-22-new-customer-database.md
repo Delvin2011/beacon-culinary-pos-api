@@ -7,7 +7,7 @@ demo stock or other history. Introduced in T0-7. First admin and invite links: `
 
 | | Full history | From the baseline |
 |---|---|---|
-| Who | OptimumSCS, dev, test (everything that exists today) | Every new customer |
+| Who | Beacon Culinary's production database, dev, test (everything that exists today) | Every new customer |
 | How it was built | Every migration from V1 (`db/migration`) | `B116__baseline.sql` (`db/baseline`), then the migrations after V116 |
 | Data it starts with | Demo users, a demo menu and stock, and the reference data | Only the REQUIRED reference data (section 3); the starter if chosen |
 | `flyway_schema_history` | 114 rows of type `SQL` | One row of type `SQL_BASELINE` (version 116), then the later ones |
@@ -202,7 +202,7 @@ There is no CI pipeline in the repository yet; these run with the normal `./mvnw
 
 ## 8. One-time check for existing databases
 
-`baseline-on-migrate` is now off. Before deploying this version to an existing database (OptimumSCS on Azure),
+`baseline-on-migrate` is now off. Before deploying this version to an existing database (Beacon Culinary's production database on Azure),
 confirm it has its migration history:
 
 ```sql
@@ -230,8 +230,8 @@ SELECT DB_NAME() AS [database],
 | `BeaconculinaryTest` (the test suite) | `Latin1_General_CI_AS` |
 | `Beaconculinary181026` (local dev) | `SQL_Latin1_General_CP1_CI_AS` |
 | Azure SQL default for new databases | `SQL_Latin1_General_CP1_CI_AS` |
-| OptimumSCS | to be checked with the query above |
+| Beacon Culinary's production database (Azure) | to be checked with the query above |
 
 Both are case- and accent-insensitive in the same way; the baseline is tested on both (the new-database tests
-create `SQL_Latin1_General_CP1_CI_AS` databases, the schema comparison uses the server default). If OptimumSCS turns
-out to use another collation, decide whether new customers should match it (`NEW_DATABASE_COLLATION`).
+create `SQL_Latin1_General_CP1_CI_AS` databases, the schema comparison uses the server default). If Beacon Culinary's
+production database turns out to use another collation, decide whether new customers should match it (`NEW_DATABASE_COLLATION`).

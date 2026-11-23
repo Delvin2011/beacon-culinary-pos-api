@@ -11,7 +11,7 @@ credential, a demo menu and recipes, demo ingredients and stock, and other histo
 - **A baseline at V116** (`db/baseline/B116__baseline.sql`): the schema after V1..V116 with only the REQUIRED
   reference data (Main Store, Kitchen and their assignments, All Day, the three catalogue groups, the receipt
   settings row). Flyway applies it only to an empty database, and only where `db/baseline` is in its locations (the
-  `prod` profile and the new-database command). Existing databases (OptimumSCS, dev, test) never run it.
+  `prod` profile and the new-database command). Existing databases (Beacon Culinary's production database, dev, test) never run it.
 - **An optional starter template** (`db/starter/starter.sql`): Breakfast and Lunch, catalogue subcategories,
   component and count-sheet categories.
 - **An operator command and script**: `NewDatabaseCommand` and `scripts/new-customer-database.ps1` take an empty
@@ -96,7 +96,7 @@ Dev and test are unchanged: they stay on the full migration path with all the de
 | 4 | `a493386` | The 18 users `O2SessionIntegrationTests` and `O2LockIdleTillStatusIntegrationTests` had left in the test database (5 active admins) removed; their `tearDown` now cleans staff in `finally`; `StaffManagementIntegrationTests` switches other admins off for its last-admin check instead of skipping |
 | 5 | (this) | Docs |
 
-**Collations found:** local server, `master` and `BeaconculinaryTest`: `Latin1_General_CI_AS`; local dev `Beaconculinary181026`: `SQL_Latin1_General_CP1_CI_AS`; Azure SQL default: `SQL_Latin1_General_CP1_CI_AS`; OptimumSCS: to be checked (query in the new-customer doc, section 8).
+**Collations found:** local server, `master` and `BeaconculinaryTest`: `Latin1_General_CI_AS`; local dev `Beaconculinary181026`: `SQL_Latin1_General_CP1_CI_AS`; Azure SQL default: `SQL_Latin1_General_CP1_CI_AS`; Beacon Culinary's production database: to be checked (query in the new-customer doc, section 8).
 
 **Full suite after the follow-ups: 1179 tests, 0 failures, 0 errors, 0 skipped.**
 
