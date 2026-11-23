@@ -1,5 +1,6 @@
 package com.beaconculinary.api.common.logging;
 
+import com.beaconculinary.api.auth.protection.ClientIpResolver;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -10,7 +11,8 @@ import java.util.List;
 
 /**
  * T0-1: registers {@link RequestContextFilter} ahead of Spring Security (order -100). The bean is not
- * named requestContextFilter: Spring MVC already has a bean of that name.
+ * named requestContextFilter: Spring MVC already has a bean of that name. The host in the request line trusts
+ * X-Forwarded-Host only from the proxies login protection trusts (T1-L0).
  */
 @Configuration
 public class LoggingConfig {
@@ -18,8 +20,10 @@ public class LoggingConfig {
 
     @Bean
     public FilterRegistrationBean<RequestContextFilter> requestLogContextFilter(
-            @Value("${logging.request.skip-paths:/health,/**/stream}") List<String> skipPaths) {
-        var registration = new FilterRegistrationBean<>(new RequestContextFilter(skipPaths));
+            @Value("${logging.request.skip-paths:/health,/**/stream}") List<String> skipPaths,
+            ClientIpResolver clientIpResolver) {
+        var registration = new FilterRegistrationBean<>(
+                new RequestContextFilter(skipPaths, clientIpResolver::isTrustedProxy));
         registration.setOrder(REQUEST_CONTEXT_FILTER_ORDER);
         registration.addUrlPatterns("/*");
         return registration;

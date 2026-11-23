@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
@@ -24,24 +25,35 @@ import java.util.regex.Pattern;
  *       X-Request-Id response header.</li>
  *   <li>Sets the MDC: requestId, tenantId, method and path (never the query string or the body).
  *       Filters further down add the user, session and device fields.</li>
- *   <li>Writes one INFO line per request (method, route, status, duration), except for skipped
+ *   <li>Writes one INFO line per request (method, route, status, duration, host), except for skipped
  *       paths (/health polls, SSE streams) and CORS preflights.</li>
  *   <li>Always clears the MDC in finally, so nothing leaks to the next request on the thread.</li>
  * </ul>
+ *
+ * <p>T1-L0: the host is the address the browser used. Behind a proxy that is X-Forwarded-Host, believed only
+ * when the direct peer is a trusted proxy (security.login-protection.trusted-proxies, as for X-Forwarded-For);
+ * otherwise the Host header. A value that isn't a plain host name (with an optional port) is logged as
+ * "invalid", so a client can't write arbitrary text into the log.
  */
 public class RequestContextFilter extends OncePerRequestFilter {
     public static final String HEADER = "X-Request-Id";
 
     /** Letters, digits, dot, underscore and hyphen; 8 to 64 characters. Anything else is replaced. */
     static final Pattern SAFE_REQUEST_ID = Pattern.compile("[A-Za-z0-9._-]{8,64}");
+    /** A host name or IPv4 address with an optional port; at most 253 + 6 characters. */
+    static final Pattern SAFE_HOST = Pattern.compile("[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?");
+    static final String FORWARDED_HOST = "X-Forwarded-Host";
 
     private static final Logger log = LoggerFactory.getLogger(RequestContextFilter.class);
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
 
     private final List<String> skipPaths;
+    private final Predicate<String> trustedProxy;
 
-    public RequestContextFilter(List<String> skipPaths) {
+    /** @param trustedProxy true for a peer address whose X-Forwarded-Host is believed */
+    public RequestContextFilter(List<String> skipPaths, Predicate<String> trustedProxy) {
         this.skipPaths = List.copyOf(skipPaths);
+        this.trustedProxy = trustedProxy;
     }
 
     @Override
@@ -77,6 +89,22 @@ public class RequestContextFilter extends OncePerRequestFilter {
         return UUID.randomUUID().toString();
     }
 
+    /** The host the browser used: X-Forwarded-Host from a trusted proxy, otherwise Host; "invalid" if unsafe. */
+    String host(HttpServletRequest request) {
+        var forwarded = request.getHeader(FORWARDED_HOST);
+        String host;
+        if (forwarded != null && !forwarded.isBlank() && trustedProxy.test(request.getRemoteAddr())) {
+            // A proxy chain may append: the left-most entry is the host the browser used.
+            host = forwarded.split(",", 2)[0].trim();
+        } else {
+            host = request.getHeader("Host");
+        }
+        if (host == null || host.isEmpty()) {
+            return "-";
+        }
+        return SAFE_HOST.matcher(host).matches() ? host.toLowerCase(java.util.Locale.ROOT) : "invalid";
+    }
+
     private boolean shouldLog(HttpServletRequest request, String path) {
         if ("OPTIONS".equals(request.getMethod())) {
             return false;
@@ -90,10 +118,12 @@ public class RequestContextFilter extends OncePerRequestFilter {
         RequestLogContext.route(route);
         var status = failure != null ? HttpServletResponse.SC_INTERNAL_SERVER_ERROR : response.getStatus();
         var durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+        var host = host(request);
         log.atInfo()
                 .addKeyValue("status", status)
                 .addKeyValue("durationMs", durationMs)
-                .log("request {} {} status={} durationMs={}", request.getMethod(), route != null ? route : path,
-                        status, durationMs);
+                .addKeyValue("host", host)
+                .log("request {} {} status={} durationMs={} host={}", request.getMethod(),
+                        route != null ? route : path, status, durationMs, host);
     }
 }

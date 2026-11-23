@@ -18,7 +18,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** T0-1: RequestContextFilter on its own: the MDC inside the chain, failures and skip patterns. */
 @ExtendWith(OutputCaptureExtension.class)
 class RequestContextFilterTest {
-    private final RequestContextFilter filter = new RequestContextFilter(List.of("/health", "/**/stream"));
+    private static final String PROXY = "172.30.0.10";
+    private final RequestContextFilter filter =
+            new RequestContextFilter(List.of("/health", "/**/stream"), PROXY::equals);
 
     @Test
     void insideTheChain_theMdcHoldsTheRequestFields_andTheDefaultTenant() throws Exception {
@@ -55,6 +57,44 @@ class RequestContextFilterTest {
             filter.doFilter(new MockHttpServletRequest("GET", path), new MockHttpServletResponse(), (req, res) -> { });
         }
         assertThat(output.getAll()).doesNotContain("request GET");
+    }
+
+    @Test
+    void theRequestLine_namesTheForwardedHost_whenTheProxyIsTrusted(CapturedOutput output) throws Exception {
+        var request = new MockHttpServletRequest("GET", "/orders/today");
+        request.setRemoteAddr(PROXY);
+        request.addHeader("Host", "backend:8080");
+        request.addHeader("X-Forwarded-Host", "BeaconCulinary.pos.localhost");
+
+        filter.doFilter(request, new MockHttpServletResponse(), (req, res) -> { });
+
+        assertThat(output.getAll()).contains("request GET /orders/today status=200")
+                .contains("host=beaconculinary.pos.localhost");
+    }
+
+    @Test
+    void host_ignoresXForwardedHostFromAnUntrustedPeer_andRefusesUnsafeValues() {
+        var direct = new MockHttpServletRequest("GET", "/x");
+        direct.setRemoteAddr("203.0.113.9");
+        direct.addHeader("Host", "api.example.test:8443");
+        direct.addHeader("X-Forwarded-Host", "forged.example.test");
+        assertThat(filter.host(direct)).isEqualTo("api.example.test:8443");
+
+        var chained = new MockHttpServletRequest("GET", "/x");
+        chained.setRemoteAddr(PROXY);
+        chained.addHeader("X-Forwarded-Host", "testcustomer.pos.localhost, backend");
+        assertThat(filter.host(chained)).isEqualTo("testcustomer.pos.localhost");
+
+        for (var unsafe : List.of("evil host", "a\nb", "x".repeat(254), "h:123456", "<script>")) {
+            var request = new MockHttpServletRequest("GET", "/x");
+            request.setRemoteAddr(PROXY);
+            request.addHeader("X-Forwarded-Host", unsafe);
+            assertThat(filter.host(request)).as(unsafe).isEqualTo("invalid");
+        }
+
+        var noHost = new MockHttpServletRequest("GET", "/x");
+        noHost.removeHeader("Host");
+        assertThat(filter.host(noHost)).isIn("-", "localhost");
     }
 
     @Test

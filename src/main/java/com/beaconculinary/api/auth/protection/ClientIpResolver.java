@@ -56,6 +56,12 @@ public class ClientIpResolver {
         return peer;
     }
 
+    /** True when this peer address is a configured trusted proxy (T1-L0: also for X-Forwarded-Host in the log). */
+    public boolean isTrustedProxy(String remoteAddr) {
+        var peer = normalise(remoteAddr);
+        return peer != null && isTrusted(peer);
+    }
+
     private boolean isTrusted(String ip) {
         return trustedProxies.stream().anyMatch(matcher -> matcher.matches(ip));
     }
