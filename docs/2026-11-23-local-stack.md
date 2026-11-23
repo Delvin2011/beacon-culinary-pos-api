@@ -172,6 +172,13 @@ The backend runs the default profile (text lines; the demo accounts can sign in)
 `host=`: the address the browser used, from Caddy's `X-Forwarded-Host` (`docs/2026-11-19-logging.md`). Search by
 the `X-Request-Id` a response returned.
 
+**Looking at the databases (SSMS).** The stack's databases are in the SQL container, not on your own SQL Server.
+Connect with server `127.0.0.1,14333` (a comma before the port; `SQL_HOST_PORT` if you changed it), SQL Server
+Authentication, login `sa`, the `SQL_PASSWORD` from `stack.env`, and **Trust server certificate** ticked (the
+container's certificate is self-signed). Use `127.0.0.1`, not `localhost`: the port is open on the IPv4 loopback
+only, and Windows tries `localhost` as IPv6 (`::1`) first, which is refused (error 1225). The databases are there
+only while the stack runs, and `reset.ps1` / `down.ps1 -Volumes` replace or delete them.
+
 ## 6. The smoke check
 
 `smoke.ps1` checks, through the gateway and as a browser would:
