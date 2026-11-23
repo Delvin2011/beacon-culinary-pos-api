@@ -29,6 +29,12 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+# Refresh and device cookies (RefreshCookies, DeviceCookies). secure defaults to true (the dev profile turns it off).
+# T1-L0: path-prefix is the path a proxy removes in front of this API (/api for the local stack and Front Door),
+# so the refresh cookie's path is the address the browser calls. Empty when the API is called directly.
+cookie:
+  path-prefix: ${COOKIE_PATHPREFIX:}
+
 # T0-1 logging (docs/2026-11-19-logging.md). Text on the console here and in dev; JSON lines in prod.
 # Change a level by environment variable, e.g. LOGGING_LEVEL_COM_BEACONCULINARY_API_DEVICES=DEBUG.
 logging:
