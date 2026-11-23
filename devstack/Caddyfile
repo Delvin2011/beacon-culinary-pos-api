@@ -1,0 +1,46 @@
+# T1-L0 local gateway: stands in for Azure Front Door (docs/2026-11-23-local-stack.md, "How it maps to production").
+{
+	# Certificates come from Caddy's own local certificate authority (no ACME, nothing leaves the machine).
+	local_certs
+	# The root is trusted on Windows by hand, once (the doc), not from inside the container.
+	skip_install_trust
+}
+
+*.pos.localhost {
+	tls internal
+
+	# route keeps the blocks in the order written.
+	route {
+		# Single-customer mode: the backend serves one database, so only that customer's address is served.
+		@otherCustomer not host {$ACTIVE_HOST}
+		handle @otherCustomer {
+			header Content-Type "text/plain; charset=utf-8"
+			respond "{host} is not the active customer. Single-customer mode serves {$ACTIVE_HOST} only: set ACTIVE_CUSTOMER in devstack/stack.env and run devstack/scripts/up.ps1." 503
+		}
+
+		# /api/* -> backend, prefix removed (Front Door: route /api/* with "forwarding path" /).
+		handle_path /api/* {
+			reverse_proxy backend:8080 {
+				# Caddy sets X-Forwarded-For (the peer it saw), X-Forwarded-Proto and X-Forwarded-Host itself and
+				# ignores the client's copies (no trusted_proxies here). Written out so the contract is visible.
+				header_up X-Forwarded-Host {host}
+				header_up X-Forwarded-Proto {scheme}
+				# Streams (kitchen, bar, board, orders): send every byte at once, never buffer.
+				flush_interval -1
+				# No read or write timeout is set, and Caddy has none by default: a stream stays open as long as
+				# the backend keeps it (Front Door: raise the origin response timeout; it also closes idle
+				# connections, so the streams will need a keepalive there).
+				transport http {
+					dial_timeout 5s
+				}
+			}
+		}
+
+		# Everything else -> the frontend (container, or the host's dev server for hot reload).
+		handle {
+			reverse_proxy {$FRONTEND_UPSTREAM} {
+				flush_interval -1
+			}
+		}
+	}
+}

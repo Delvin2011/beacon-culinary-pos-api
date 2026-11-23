@@ -4,6 +4,9 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 .env
+# T1-L0 local stack: real settings and local state, never committed (devstack/stack.env.example has the names).
+devstack/stack.env
+devstack/.state/
 
 ### STS ###
 .apt_generated
