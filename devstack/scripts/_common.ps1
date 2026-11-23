@@ -96,6 +96,13 @@ function Get-StackConfig([string] $Customer, [string] $FrontendMode) {
     if (@('container', 'host', 'none') -notcontains $config.FrontendMode) { throw "FRONTEND_MODE must be container, host or none, was '$($config.FrontendMode)'." }
     if ($config.SqlMode -eq 'container' -and $config.SqlUser -ne 'sa') { throw 'SQL_USER must be sa (or blank) with SQL_MODE=container.' }
     if ([string]::IsNullOrEmpty($config.SqlPassword)) { throw 'SQL_PASSWORD is not set in devstack/stack.env.' }
+    if ($config.SqlMode -eq 'container') {
+        # SQL Server refuses a weaker sa password and the container never becomes healthy.
+        $classes = @('[A-Z]', '[a-z]', '\d', '[^A-Za-z0-9]' | Where-Object { $config.SqlPassword -cmatch $_ }).Count
+        if ($config.SqlPassword.Length -lt 8 -or $classes -lt 3) {
+            throw 'SQL_PASSWORD must have at least 8 characters and 3 of: upper case, lower case, digits, symbols (SQL Server''s rule for sa).'
+        }
+    }
     if ($config.JwtSecret.Length -lt 32) { throw 'JWT_SECRET in devstack/stack.env must be at least 32 characters.' }
     if (-not [IO.Path]::IsPathRooted($config.FrontendRepo)) {
         $config.FrontendRepo = [IO.Path]::GetFullPath((Join-Path $script:DevstackRoot $config.FrontendRepo))

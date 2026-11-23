@@ -68,11 +68,13 @@ try {
 
     $refusals = @{
         'no SQL password'          = @('SQL_PASSWORD=', ('JWT_SECRET=' + ('t' * 40)))
-        'short JWT secret'         = @("SQL_PASSWORD=x", 'JWT_SECRET=short')
-        'unknown SQL mode'         = @("SQL_PASSWORD=x", ('JWT_SECRET=' + ('t' * 40)), 'SQL_MODE=cloud')
-        'container mode needs sa'  = @("SQL_PASSWORD=x", ('JWT_SECRET=' + ('t' * 40)), 'SQL_USER=app')
-        'bad active customer'      = @("SQL_PASSWORD=x", ('JWT_SECRET=' + ('t' * 40)), 'ACTIVE_CUSTOMER=Beacon-Culinary')
-        'unknown frontend mode'    = @("SQL_PASSWORD=x", ('JWT_SECRET=' + ('t' * 40)), 'FRONTEND_MODE=static')
+        'SQL password too short'   = @('SQL_PASSWORD=Ab1!xyz', ('JWT_SECRET=' + ('t' * 40)))
+        'SQL password digits only' = @('SQL_PASSWORD=12345678', ('JWT_SECRET=' + ('t' * 40)))
+        'short JWT secret'         = @("SQL_PASSWORD=Test-only-1", 'JWT_SECRET=short')
+        'unknown SQL mode'         = @("SQL_PASSWORD=Test-only-1", ('JWT_SECRET=' + ('t' * 40)), 'SQL_MODE=cloud')
+        'container mode needs sa'  = @("SQL_PASSWORD=Test-only-1", ('JWT_SECRET=' + ('t' * 40)), 'SQL_USER=app')
+        'bad active customer'      = @("SQL_PASSWORD=Test-only-1", ('JWT_SECRET=' + ('t' * 40)), 'ACTIVE_CUSTOMER=Beacon-Culinary')
+        'unknown frontend mode'    = @("SQL_PASSWORD=Test-only-1", ('JWT_SECRET=' + ('t' * 40)), 'FRONTEND_MODE=static')
     }
     foreach ($case in $refusals.Keys) {
         Write-StackEnv $refusals[$case]
