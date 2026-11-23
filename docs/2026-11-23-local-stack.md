@@ -184,8 +184,10 @@ the `X-Request-Id` a response returned.
 4. The kitchen stream (`/api/kitchen/orders/stream`) delivers the event of an order placed through the API within
    5 seconds, stays open 2 minutes, and then still delivers the next event (the order moved to `IN_PROGRESS`).
 
-The order is a real cash sale of one always-on item on the till's open shift (the check opens one with a zero
-float if none is open, and closes it again). It stays in `beaconculinary`'s sales until a reset. Tokens, cookies
+The order is a real cash sale of one kitchen item on the till's open shift (the check opens one with a zero
+float if none is open, and closes it again). The demo data has nothing the till can sell straight away (its set
+meals are only planned, and it has no light meals), so the first run adds an always-on light meal, "Smoke check
+item", through the admin API; later runs reuse it. The sale and the item stay in `beaconculinary` until a reset. Tokens, cookies
 and passwords are never printed. Exit code 0 when all pass.
 
 ## 7. What the backend trusts from the gateway
@@ -236,7 +238,7 @@ authentication allowed. The containers reach it as `host.docker.internal`. The d
 | 502 on pages, `/api` fine | No frontend: no `Dockerfile` in `FRONTEND_REPO` yet, or `FRONTEND_MODE=host` without `npm run dev` running |
 | Backend not healthy | `docker compose -p beacon-devstack logs backend`. Common: a wrong `SQL_PASSWORD` after the SQL volume was created with another one (the volume keeps the first; `down.ps1 -Volumes` starts again) |
 | Smoke: sign-in fails | `SMOKE_EMAIL` / `SMOKE_PASSWORD` don't match an ADMIN in the active customer's database |
-| Smoke: "nothing sellable on today's menu" | The active customer has no always-on item with stock (`testcustomer` starts with none): run it against `beaconculinary` |
+| Smoke: "no light-meals category to add one to" | The active customer has no active light-meals category to put the smoke item in: run it against `beaconculinary` |
 
 ## 10. Files
 

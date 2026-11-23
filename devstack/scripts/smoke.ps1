@@ -10,8 +10,11 @@
       3. Our own X-Request-Id comes back, and the backend's log line for it shows host=<customer>.pos.localhost.
       4. The kitchen stream, opened through the proxy, delivers the event of an order placed through the API within
          5 s, stays open for 2 minutes (-Quick: 5 s), and still delivers the next event after that.
-    The order: one always-on item from today's menu, paid in cash, on the till's open shift (opened with a zero
-    float and closed again when the check opened it). It stays in the database's sales; reset.ps1 clears it.
+    The order: one kitchen item from today's menu (READY, kitchen station), paid in cash, on the till's open shift
+    (opened with a zero float and closed again when the check opened it). When the menu has none (the demo data's set
+    meals are only planned, and it has no light meals), the check adds an always-on light meal, "Smoke check item",
+    through the admin API, as an admin would; later runs reuse it. The sale and the item stay in the database until
+    reset.ps1.
     Tokens, cookies and passwords are never printed. Exits 0 when every check passes, 1 otherwise.
 
 .PARAMETER Quick
@@ -179,16 +182,44 @@ try {
         $openedShiftId = $shiftId
     }
 
-    $menu = Invoke-Api 'GET' '/api/menu/today' $null $token
-    $item = $null
-    if ($menu.Status -eq 200 -and $menu.Json) {
-        $item = $menu.Json.options | Where-Object {
-            $_.status -eq 'READY' -and -not $_.outToday -and $_.price -gt 0 -and
-            ($null -eq $_.portionsRemaining -or $_.portionsRemaining -gt 0) -and
-            ($null -eq $_.unitsAvailable -or $_.unitsAvailable -gt 0)
+    <# A kitchen item on today's menu that the till can sell. Light-meal stock only warns, never blocks a sale, so
+       unitsAvailable is not a condition; beverages go to the bar, not the kitchen stream. #>
+    function Select-KitchenItem($Menu) {
+        if ($Menu.Status -ne 200 -or -not $Menu.Json) { return $null }
+        return @($Menu.Json.options) | Where-Object {
+            $_ -and $_.status -eq 'READY' -and -not $_.outToday -and $_.price -gt 0 -and
+            @('SET_MEALS', 'LIGHT_MEALS') -contains $_.group -and
+            ($null -eq $_.portionsRemaining -or $_.portionsRemaining -gt 0)
         } | Select-Object -First 1
     }
-    if (-not $item) { Add-Result 'menu item' $false "nothing sellable on today's menu ($(Describe $menu))"; throw 'Stopping.' }
+    function Get-CategoryTree($Nodes) {
+        foreach ($node in @($Nodes)) {
+            if (-not $node) { continue }
+            $node
+            if ($node.PSObject.Properties.Name -contains 'children') { Get-CategoryTree $node.children }
+        }
+    }
+
+    $menu = Invoke-Api 'GET' '/api/menu/today' $null $token
+    $item = Select-KitchenItem $menu
+    if (-not $item) {
+        # No sellable kitchen item: add an always-on light meal (READY every day under All Day, no planning needed).
+        $categories = Invoke-Api 'GET' '/api/admin/catalog/categories' $null $token
+        $category = $null
+        if ($categories.Status -eq 200 -and $categories.Json) {
+            $category = Get-CategoryTree $categories.Json |
+                Where-Object { $_.group -eq 'LIGHT_MEALS' -and $_.assignable -and $_.active } | Select-Object -First 1
+        }
+        if (-not $category) { Add-Result 'menu item' $false "no sellable kitchen item, and no light-meals category to add one to ($(Describe $categories))"; throw 'Stopping.' }
+        $added = Invoke-Api 'POST' '/api/admin/meal-catalog' @{
+            name = 'Smoke check item'; description = 'Added by devstack/scripts/smoke.ps1'; price = 1.00; categoryId = $category.id
+        } $token
+        if ($added.Status -notin 200, 201) { Add-Result 'menu item' $false "could not add a light meal: $(Describe $added)"; throw 'Stopping.' }
+        Write-Host "   ..  added the always-on light meal 'Smoke check item' to '$($category.name)' (reused next time)"
+        $menu = Invoke-Api 'GET' '/api/menu/today' $null $token
+        $item = Select-KitchenItem $menu
+    }
+    if (-not $item) { Add-Result 'menu item' $false "nothing sellable in the kitchen on today's menu ($(Describe $menu))"; throw 'Stopping.' }
 
     $orderBody = @{
         clientOrderId = [Guid]::NewGuid().ToString()
