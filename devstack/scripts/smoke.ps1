@@ -214,7 +214,7 @@ try {
     Add-Result "stream after $holdSeconds s" ($stillOpen -and $again -ge 0) $(if (-not $stillOpen) { "closed after $held s" } elseif ($patched.Status -ne 200) { "status change refused: $(Describe $patched)" } elseif ($again -lt 0) { 'open, but the next event did not arrive' } else { "open for $held s and delivered the next event in {0:N2} s" -f $again })
     $null = Invoke-Api 'PATCH' "/api/kitchen/orders/$orderId/status" @{ status = 'DONE' } $token
 } catch {
-    if ($results.Count -eq 0 -or ($results | Where-Object { -not $_.Passed }).Count -eq 0) {
+    if ($results.Count -eq 0 -or @($results | Where-Object { -not $_.Passed }).Count -eq 0) {
         Add-Result 'smoke check' $false $_.Exception.Message
     }
 } finally {
