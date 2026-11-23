@@ -163,7 +163,8 @@ try {
             $line = $script:pending.Result
             if ($null -eq $line) { return -2 }
             $script:pending = $script:reader.ReadLineAsync()
-            if ($line.StartsWith('data:') -and $line -match "`"id`"\s*:\s*$OrderId\b") { return ((Get-Date) - $From).TotalSeconds }
+            # The kitchen event names the order "orderId" (inside "order"); "id" is accepted too.
+            if ($line.StartsWith('data:') -and $line -match "`"(orderId|id)`"\s*:\s*$OrderId\b") { return ((Get-Date) - $From).TotalSeconds }
         }
     }
 

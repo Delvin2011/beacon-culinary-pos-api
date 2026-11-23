@@ -381,6 +381,22 @@ class BarStationIntegrationTests {
     }
 
     @Test
+    void everyStream_opensWithAConnectedComment_beforeAnyEvent() throws Exception {
+        // T1-L0: the headers and a first line go out at once, not with the first order event, so a screen shows
+        // as connected and a gateway waiting for the first byte (Front Door) doesn't close a quiet stream.
+        var streams = List.of(
+                as(kitchenToken, get("/kitchen/orders/stream"), null).andExpect(request().asyncStarted()).andReturn(),
+                as(baristaToken, get("/bar/orders/stream"), null).andExpect(request().asyncStarted()).andReturn(),
+                mockMvc.perform(get("/public/board/stream")).andExpect(request().asyncStarted()).andReturn());
+        for (var stream : streams) {
+            var response = stream.getResponse();
+            assertThat(response.isCommitted()).as(stream.getRequest().getRequestURI() + " committed").isTrue();
+            assertThat(response.getContentType()).startsWith(MediaType.TEXT_EVENT_STREAM_VALUE);
+            assertThat(response.getContentAsString()).as(stream.getRequest().getRequestURI()).isEqualTo(":connected\n\n");
+        }
+    }
+
+    @Test
     void streams_carryOnlyEachStationsOwnOrders() throws Exception {
         var kitchenStream = as(kitchenToken, get("/kitchen/orders/stream"), null).andExpect(request().asyncStarted()).andReturn();
         var barStream = as(baristaToken, get("/bar/orders/stream"), null).andExpect(request().asyncStarted()).andReturn();
