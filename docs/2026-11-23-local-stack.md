@@ -17,7 +17,8 @@ browser ──https://beaconculinary.pos.localhost──► Caddy (gateway, :443
 | Backend | This repository's `Dockerfile`, no published port | Container Apps, reached only through Front Door |
 | Settings and secrets | `devstack/stack.env` (git-ignored) | Key Vault secrets and Container Apps settings |
 | Database | SQL Server 2022 container (or your own SQL Server), collation `SQL_Latin1_General_CP1_CI_AS` | Azure SQL, same collation |
-| Customers | `beaconculinary` and `testcustomer`, one served at a time (single-customer mode) | One database per customer (T1-1 to T1-3 add serving several) |
+| Customers | `beaconculinary` and `testcustomer`, one served at a time (single-customer mode), each with its own database login | One database per customer (T1-2 and T1-3 add serving several) |
+| Platform database | `pos_platform`: the customers, their hosts and where their databases are (T1-1, `docs/2026-11-24-platform-database.md`) | Its own Azure SQL database |
 
 ## 1. What to install (once)
 
@@ -48,8 +49,12 @@ notepad devstack\stack.env
 | `JWT_SECRET` | 32+ random characters, for this stack only: `[Convert]::ToBase64String((1..48 \| % { Get-Random -Max 256 }))` |
 | `SMOKE_EMAIL`, `SMOKE_PASSWORD` | An ADMIN account in `beaconculinary` that signs in with a password. The demo admin from the migrations is fine locally (the tests use the same account) |
 | `FRONTEND_REPO` | Only if the frontend repository isn't in the folder next to this one, e.g. `C:\Users\you\Documents\Dev\Beacon\POS_FE\beacon-culinary-pos-front-end` |
+| `PLATFORM_DB_PASSWORD` | (T1-1) A new password for the platform database's own login, `pos_platform` |
+| `SECRET_BEACONCULINARY_DB_LOGIN`, `SECRET_BEACONCULINARY_DB_PASSWORD` | (T1-1) beaconculinary's own database login: a name such as `pos_beaconculinary` (never `sa`) and a new password |
+| `SECRET_TESTCUSTOMER_DB_LOGIN`, `SECRET_TESTCUSTOMER_DB_PASSWORD` | (T1-1) The same for testcustomer, e.g. `pos_testcustomer` |
 
-Leave the rest blank for the defaults (written next to each setting). `stack.env` is git-ignored: never commit it,
+Every T1-1 password: 8+ characters, 3 of upper case, lower case, digits and symbols, no single quote, each one
+different. Leave the rest blank for the defaults (written next to each setting). `stack.env` is git-ignored: never commit it,
 never paste its values into a ticket or chat.
 
 **2. Hosts file.** Chrome and Edge already send every `*.localhost` name to this machine; PowerShell, curl and Java
@@ -111,10 +116,10 @@ Then open `https://beaconculinary.pos.localhost/` (with the frontend) or `https:
 |---|---|
 | `up.ps1` | Builds the jar, starts everything, waits until healthy. `-SkipBuild` reuses the last jar |
 | `down.ps1` | Stops everything; databases and the certificate authority are kept |
-| `status.ps1` | Containers, databases (collation, Flyway version, row counts), health, hosts file, certificate |
+| `status.ps1` | Containers, databases (collation, Flyway version, row counts), the platform database and its customers, health, hosts file, certificate |
 | `smoke.ps1` | The end-to-end check (section 6) |
-| `reset.ps1` | Drops and recreates the stack's databases in their starting state; you type `RESET`. `-Customer <name>` for one |
-| `new-customer.ps1 <name>` | A new clean customer database, as a real new customer gets (section 4) |
+| `reset.ps1` | Drops and recreates the stack's databases in their starting state, the platform database included, and registers the customers again; you type `RESET`. `-Customer <name>` for one |
+| `new-customer.ps1 <name>` | A new clean customer database, as a real new customer gets, registered in the platform database; needs `SECRET_<NAME>_DB_LOGIN` and `_PASSWORD` in `stack.env` (section 4) |
 | `plan-today.ps1` | Makes today's demo meals sellable in the active customer's database, to ring up a sale by hand (below) |
 | `down.ps1 -Volumes` | Deletes everything, including the SQL data and the certificate authority; you type `DELETE` |
 | `secret-scan.ps1` | Looks for secrets in what this branch commits |
@@ -193,6 +198,12 @@ databases stay as they are.
 The backend always runs with `APP_FLYWAY_INCLUDEBASELINE=true`: a full-history database ignores the baseline and a
 T0-7 database needs it, so both validate. Every database exists before the backend starts, so the backend never
 builds one itself.
+
+**The platform database (T1-1).** `up.ps1` also creates `pos_platform`, gives each customer database its own
+login and registers every customer as `<name>.pos.localhost`; `status.ps1` lists them. The backend still serves
+`ACTIVE_CUSTOMER` only: `up.ps1 -TenancyMode multi` (or `TENANCY_MODE=multi`) just makes it migrate the platform
+database and load the customer directory at start-up, which the log shows (`tenancy multi: ...`). Details:
+`docs/2026-11-24-platform-database.md`.
 
 ## 5. Logs
 
@@ -286,6 +297,7 @@ authentication allowed. The containers reach it as `host.docker.internal`. The d
 | Backend not healthy | `docker compose -p beacon-devstack logs backend`. Common: a wrong `SQL_PASSWORD` after the SQL volume was created with another one (the volume keeps the first; `down.ps1 -Volumes` starts again) |
 | Smoke: sign-in fails | `SMOKE_EMAIL` / `SMOKE_PASSWORD` don't match an ADMIN in the active customer's database |
 | Smoke: "no light-meals category to add one to" | The active customer has no active light-meals category to put the smoke item in: run it against `beaconculinary` |
+| "PLATFORM_DB_PASSWORD is not set" or "SECRET_..._DB_LOGIN is not set" | T1-1 settings missing from `stack.env` (section 2). The scripts check them before changing anything |
 
 ## 10. Files
 
@@ -297,3 +309,4 @@ authentication allowed. The containers reach it as `host.docker.internal`. The d
 | `devstack/scripts/*.ps1` | up, down, status, reset, new-customer, plan-today, smoke, check-all, secret-scan; `_common.ps1` is shared |
 | `devstack/scripts/tests/devstack.tests.ps1` | Script tests without Docker (run by `DevstackScriptsTest`) |
 | `devstack/.state/` | Git-ignored: customers made with `new-customer.ps1`, status snapshots |
+| `src/main/resources/db/platform/` | The platform database's migrations (T1-1) |
