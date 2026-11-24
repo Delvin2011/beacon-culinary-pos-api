@@ -104,7 +104,7 @@ class CustomerJobsIntegrationTests extends MultiCustomerIntegrationTest {
 
     @Test
     void health_probesThePlatformDatabase_andCountsTheCustomerPools() throws Exception {
-        mvc.perform(get("/health"))
+        mvc.perform(get("/health").header("Host", "localhost"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
                 .andExpect(jsonPath("$.customerPools.open").isNumber())
