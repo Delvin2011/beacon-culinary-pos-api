@@ -1,5 +1,7 @@
 package com.beaconculinary.api.common.logging;
 
+import com.beaconculinary.api.tenancy.context.CurrentCustomer;
+import com.beaconculinary.api.tenancy.context.CustomerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -33,7 +35,8 @@ public final class JobContext {
         var previous = MDC.getCopyOfContextMap();
         MDC.put(JOB_NAME, jobName);
         MDC.put(RUN_ID, UUID.randomUUID().toString().substring(0, 8));
-        MDC.put(RequestLogContext.TENANT_ID, RequestLogContext.DEFAULT_TENANT);
+        // T1-2: the customer the run is for (CustomerJobs), otherwise the default.
+        MDC.put(RequestLogContext.TENANT_ID, CustomerContext.current().map(CurrentCustomer::slug).orElse(RequestLogContext.DEFAULT_TENANT));
         var started = System.nanoTime();
         try {
             var result = job.get();

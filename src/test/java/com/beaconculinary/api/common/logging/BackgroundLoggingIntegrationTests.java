@@ -10,6 +10,7 @@ import com.beaconculinary.api.devices.DeviceAlerts;
 import com.beaconculinary.api.sessions.SessionService;
 import com.beaconculinary.api.sessions.SessionSweepJob;
 import com.beaconculinary.api.support.ClockTestConfig;
+import com.beaconculinary.api.tenancy.jobs.CustomerJobs;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BackgroundLoggingIntegrationTests {
     @Autowired private LoginAttemptRetentionJob retentionJob;
     @Autowired private SessionService sessionService;
+    @Autowired private CustomerJobs customerJobs;
     @Autowired private LoginAttemptService loginAttemptService;
     @Autowired private DeviceAlerts deviceAlerts;
 
@@ -79,7 +81,7 @@ class BackgroundLoggingIntegrationTests {
     @Test
     void theSessionSweepJob_logsWithItsJobNameAndARunId() {
         // The scheduled bean is off in tests (pos.session.sweep-enabled=false); run the job itself.
-        new SessionSweepJob(sessionService).sweep();
+        new SessionSweepJob(sessionService, customerJobs).sweep();
 
         assertThat(forJob("session-sweep")).isNotEmpty()
                 .allSatisfy(event -> assertThat(event.getMDCPropertyMap().get("runId")).matches("[0-9a-f]{8}"));

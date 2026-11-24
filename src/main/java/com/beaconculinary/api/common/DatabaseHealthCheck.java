@@ -1,13 +1,16 @@
 package com.beaconculinary.api.common;
 
 import com.beaconculinary.api.common.logging.JobContext;
+import com.beaconculinary.api.tenancy.PlatformDatabase;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -21,6 +24,9 @@ import java.util.concurrent.TimeoutException;
  * Hikari's 30-second connection timeout), and the answer reused for {@link #CACHE_FOR}, so tills
  * polling every few seconds cost at most one query per 5 seconds. A probe still hanging from an
  * earlier call is waited on rather than joined by a second one. Logs once when the answer changes.
+ *
+ * <p>T1-2: in multi-customer mode it probes the platform database (there is no customer here, and probing every
+ * customer database on every poll would be costly); customer databases show in /health as their pools' state.
  */
 @Slf4j
 @Component
@@ -42,8 +48,9 @@ public class DatabaseHealthCheck {
     private volatile long lastCheckedNanos;
 
     @Autowired
-    public DatabaseHealthCheck(JdbcTemplate jdbcTemplate) {
-        this(jdbcTemplate, TIMEOUT, CACHE_FOR);
+    public DatabaseHealthCheck(JdbcTemplate jdbcTemplate, ObjectProvider<PlatformDatabase> platformDatabase) {
+        this(Optional.ofNullable(platformDatabase.getIfAvailable()).map(PlatformDatabase::jdbc).orElse(jdbcTemplate),
+                TIMEOUT, CACHE_FOR);
     }
 
     DatabaseHealthCheck(JdbcTemplate jdbcTemplate, Duration timeout, Duration cacheFor) {
