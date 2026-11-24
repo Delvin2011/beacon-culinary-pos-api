@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import javax.sql.DataSource;
+import java.time.Clock;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 
@@ -23,6 +24,13 @@ public class TenancyConfig {
     @ConditionalOnProperty(name = "app.tenancy.mode", havingValue = "multi")
     public PlatformDatabase platformDatabase(TenancyProperties properties) {
         return new PlatformDatabase(properties);
+    }
+
+    /** Multi mode: the customer directory, read from the platform database (snapshot for directory-cache-ttl). */
+    @Bean
+    @ConditionalOnProperty(name = "app.tenancy.mode", havingValue = "multi")
+    public CustomerDirectory customerDirectory(PlatformDatabase platformDatabase, Clock clock, TenancyProperties properties) {
+        return new CustomerDirectory(platformDatabase.jdbc(), clock, properties.getDirectoryCacheTtl());
     }
 
     /**

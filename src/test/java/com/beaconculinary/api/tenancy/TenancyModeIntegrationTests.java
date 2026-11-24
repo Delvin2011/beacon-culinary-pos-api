@@ -47,6 +47,7 @@ class TenancyModeIntegrationTests {
     void singleMode_isTheDefault_andHasNoPlatformDatabase() {
         assertThat(properties.getMode()).isEqualTo(TenancyMode.SINGLE);
         assertThat(context.getBeanNamesForType(PlatformDatabase.class)).isEmpty();
+        assertThat(context.getBeanNamesForType(CustomerDirectory.class)).isEmpty();
         assertThat(context.containsBean(TenancyConfig.PLATFORM_DATABASE_BEAN)).isFalse();
     }
 
@@ -65,6 +66,7 @@ class TenancyModeIntegrationTests {
             var database = app.getBean(PlatformDatabase.class);
             assertThat(database.version()).isEqualTo("1");
             assertThat(database.jdbc().queryForObject("SELECT COUNT(*) FROM tenants", Integer.class)).isZero();
+            assertThat(app.getBean(CustomerDirectory.class).listAll()).isEmpty();
             assertThat(app.getBean(TenancyProperties.class).isMulti()).isTrue();
             // The customer data source waits for the platform database.
             assertThat(app.getBeanFactory().getBeanDefinition("dataSource").getDependsOn())
@@ -74,6 +76,7 @@ class TenancyModeIntegrationTests {
             assertThat(platformLine).isPositive();
             // Spring Boot's Hikari pool for the customer database starts after the platform migrations.
             assertThat(log.indexOf("HikariPool-", platformLine)).isGreaterThan(platformLine);
+            assertThat(log).contains("tenancy multi: customer directory loaded, 0 customer(s), 0 active");
         }
     }
 
