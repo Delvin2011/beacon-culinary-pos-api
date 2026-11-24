@@ -135,6 +135,8 @@ function Set-ComposeEnvironment($Config, [string] $FrontendUpstream) {
     if ($Config.SqlMode -eq 'container') { $profiles += 'sql' }
     if ($Config.FrontendMode -eq 'container') { $profiles += 'frontend' }
     $env:COMPOSE_PROFILES = $profiles -join ','
+    # Local builds only: no build record attached, so an unchanged image keeps its ID and its container isn't recreated.
+    $env:BUILDX_NO_DEFAULT_ATTESTATIONS = '1'
     $env:STACK_NAME = $Config.StackName
     $env:ACTIVE_CUSTOMER = $Config.ActiveCustomer
     $env:FRONTEND_REPO = $Config.FrontendRepo
