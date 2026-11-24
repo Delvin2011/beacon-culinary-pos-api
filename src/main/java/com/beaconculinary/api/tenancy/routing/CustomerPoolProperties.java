@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.time.Duration;
 
 /**
- * T1-2: each customer database's connection pool in multi-customer mode (docs/2026-11-25-routing-data-source.md).
+ * T1-2: each customer database's connection pool in multi-customer mode (docs/2026-11-24-routing-data-source.md).
  * Small on purpose: an app instance may hold a pool for every active customer.
  */
 @ConfigurationProperties(prefix = "app.tenancy.customer-pool")

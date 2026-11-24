@@ -21,7 +21,7 @@ import java.util.function.Supplier;
 
 /**
  * T1-2: one small connection pool per customer database, multi-customer mode only
- * (docs/2026-11-25-routing-data-source.md).
+ * (docs/2026-11-24-routing-data-source.md).
  *
  * <ul>
  *   <li>A pool is made on its customer's first connection, once even when several threads ask together, from the

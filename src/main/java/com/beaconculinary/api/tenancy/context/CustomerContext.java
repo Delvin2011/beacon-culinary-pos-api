@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * T1-2: the current customer of this thread (docs/2026-11-25-routing-data-source.md). In multi-customer mode the
+ * T1-2: the current customer of this thread (docs/2026-11-24-routing-data-source.md). In multi-customer mode the
  * routing data source reads it for every new connection; single mode never reads it.
  *
  * <p>Set it only with {@link #runAs}, {@link #callAs} or {@link #open} (try-with-resources), which put the previous

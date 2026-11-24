@@ -18,7 +18,7 @@ import javax.sql.DataSource;
 import java.time.Clock;
 
 /**
- * T1-2: the data layer in multi-customer mode (docs/2026-11-25-routing-data-source.md). Nothing here exists in single
+ * T1-2: the data layer in multi-customer mode (docs/2026-11-24-routing-data-source.md). Nothing here exists in single
  * mode, which keeps Spring Boot's own data source, Flyway run and Hibernate set-up exactly as before.
  *
  * <ul>

@@ -11,7 +11,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * T1-2: background work that touches a customer database (docs/2026-11-25-routing-data-source.md). Single mode: the
+ * T1-2: background work that touches a customer database (docs/2026-11-24-routing-data-source.md). Single mode: the
  * work runs once, as before. Multi mode: once per ACTIVE customer, each inside that customer's context (its database,
  * and its slug as the log lines' tenantId), and a failure for one customer is logged with its slug and doesn't stop the
  * others. T1-6 completes background work (timing per customer's time zone, spreading runs).

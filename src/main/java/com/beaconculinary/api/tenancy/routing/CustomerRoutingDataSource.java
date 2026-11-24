@@ -8,7 +8,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 
 /**
- * T1-2: the application's data source in multi-customer mode (docs/2026-11-25-routing-data-source.md). Every new
+ * T1-2: the application's data source in multi-customer mode (docs/2026-11-24-routing-data-source.md). Every new
  * connection goes to the current customer's database ({@link CustomerContext}); with no current customer it throws
  * {@link NoCurrentCustomerException}. There is no default database to fall back to.
  *
