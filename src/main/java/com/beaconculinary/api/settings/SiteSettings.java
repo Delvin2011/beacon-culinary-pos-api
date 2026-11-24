@@ -1,6 +1,7 @@
 package com.beaconculinary.api.settings;
 
 import com.beaconculinary.api.common.UtcTimestamps;
+import com.beaconculinary.api.tenancy.context.CustomerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -15,6 +16,7 @@ import java.time.LocalTime;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -24,7 +26,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>Cache: the saved values are read in one query and kept for {@link #CACHE_TTL} (30 s) on the
  * application clock (a clock that moves backwards also expires it). A save on this instance drops
  * the cache once committed ({@link #onChanged}); other instances see it within 30 s. A read that
- * started before the drop doesn't put its older values back (generation check).
+ * started before the drop doesn't put its older values back (generation check). T1-2: the cache is
+ * kept per customer, so one customer's settings are never served to another.
  *
  * <p>A saved value that no longer parses, breaks its limits (e.g. grant-max-hours was lowered below
  * a saved max-offline-hours) or breaks a cross-field rule with the other values is ignored with an
@@ -38,7 +41,8 @@ public class SiteSettings {
     private final SiteSettingsStore store;
     private final SiteSettingDefaults defaults;
     private final Clock clock;
-    private volatile Snapshot snapshot;
+    private final Map<String, Snapshot> snapshots = new ConcurrentHashMap<>();
+    private final Map<String, Object> loadLocks = new ConcurrentHashMap<>();
     private final AtomicLong generation = new AtomicLong();
 
     /** The saved values in effect (only those not ignored), and when they were read. */
@@ -167,10 +171,10 @@ public class SiteSettings {
         }
     }
 
-    /** Drops the cache, so the next read loads the saved values again. */
+    /** Drops the cache (every customer's), so the next read loads the saved values again. */
     public void invalidate() {
         generation.incrementAndGet();
-        snapshot = null;
+        snapshots.clear();
     }
 
     /** After a save or reset commits on this instance. */
@@ -180,20 +184,23 @@ public class SiteSettings {
     }
 
     private Snapshot current() {
+        // T1-2: one snapshot per customer (CustomerContext.scopeKey(); "" in single mode), each loaded under its own
+        // lock, so one customer's slow database doesn't hold up another's reads.
+        var key = CustomerContext.scopeKey();
         var now = clock.instant();
-        var cached = snapshot;
+        var cached = snapshots.get(key);
         if (cached != null && !now.isBefore(cached.loadedAt()) && now.isBefore(cached.loadedAt().plus(CACHE_TTL))) {
             return cached;
         }
-        synchronized (this) {
-            cached = snapshot;
+        synchronized (loadLocks.computeIfAbsent(key, k -> new Object())) {
+            cached = snapshots.get(key);
             if (cached != null && !now.isBefore(cached.loadedAt()) && now.isBefore(cached.loadedAt().plus(CACHE_TTL))) {
                 return cached;
             }
             var started = generation.get();
             var fresh = new Snapshot(now, Collections.unmodifiableMap(load()));
             if (generation.get() == started) {
-                snapshot = fresh;
+                snapshots.put(key, fresh);
             }
             return fresh;
         }

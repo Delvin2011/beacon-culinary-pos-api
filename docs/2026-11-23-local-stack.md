@@ -207,6 +207,12 @@ login and registers every customer as `<name>.pos.localhost`; `status.ps1` lists
 database and load the customer directory at start-up, which the log shows (`tenancy multi: ...`). Details:
 `docs/2026-11-24-platform-database.md`.
 
+**Multi mode (T1-2).** The stack stays in single mode by default. In multi mode the backend sends every database
+access to the current customer's own database (`docs/2026-11-24-routing-data-source.md`), but requests get a
+customer only from T1-3 (from their address). Until then `up.ps1 -TenancyMode multi` is for checking start-up only:
+the log shows the platform database, the directory and `customer database migrations are not run at start-up`;
+requests that need data fail with "no current customer", so `smoke.ps1` fails in that mode. Go back with `up.ps1`.
+
 ## 5. Logs
 
 ```powershell

@@ -2,6 +2,8 @@ package com.beaconculinary.api.tenancy;
 
 import com.beaconculinary.api.BeaconCulinaryApiApplication;
 import com.beaconculinary.api.support.baseline.ThrowawayDatabase;
+import com.beaconculinary.api.tenancy.routing.CustomerPools;
+import com.beaconculinary.api.tenancy.routing.CustomerRoutingDataSource;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -74,8 +76,11 @@ class TenancyModeIntegrationTests {
             var log = output.getAll();
             var platformLine = log.indexOf("tenancy multi: platform database at version 1");
             assertThat(platformLine).isPositive();
-            // Spring Boot's Hikari pool for the customer database starts after the platform migrations.
-            assertThat(log.indexOf("HikariPool-", platformLine)).isGreaterThan(platformLine);
+            // T1-2: the data source routes to the current customer's database, and nothing connects to one at
+            // start-up (no Spring Boot Hikari pool, no customer pool).
+            assertThat(app.getBean("dataSource")).isInstanceOf(CustomerRoutingDataSource.class);
+            assertThat(app.getBean(CustomerPools.class).poolsCreated()).isZero();
+            assertThat(log).doesNotContain("HikariPool-");
             assertThat(log).contains("tenancy multi: customer directory loaded, 0 customer(s), 0 active");
         }
     }

@@ -4,7 +4,8 @@ One database, separate from every customer database, that lists the customers, t
 and where their databases are. It is the base the next slices build on: T1-2 opens a connection to the right
 customer database, T1-3 picks the customer from the request's host, T1-4 provisions new customers. **T1-1 changes
 nothing about what the backend serves:** in both modes it still serves the one database in
-`spring.datasource.url` (`ACTIVE_CUSTOMER` on the local stack).
+`spring.datasource.url` (`ACTIVE_CUSTOMER` on the local stack). **T1-2** changes multi mode: every database access
+goes to the current customer's own database (`docs/2026-11-24-routing-data-source.md`).
 
 ```
                  ┌──────────── platform database (pos_platform) ────────────┐
@@ -30,7 +31,7 @@ The schema is `src/main/resources/db/platform/V1__platform.sql`, with its own Fl
 |---|---|---|
 | `tenants` | Customer | `slug` 3-40 lower-case letters, digits and hyphens, not starting or ending with a hyphen, unique (it is the first label of `<slug>.pos.optimumscs.com`). `status` is `PROVISIONING`, `ACTIVE`, `SUSPENDED`, `MIGRATION_FAILED` or `ARCHIVED` |
 | `tenant_hosts` | Address a customer is reached at | Stored lower-case, without a port or trailing dot; one customer per host; at most one primary host per customer (`UX_tenant_hosts_one_primary`) |
-| `tenant_databases` | Customer (its database) | Server, port, database name, connection options, and the **names** of the login and password secrets. Two customers never share a database (`UQ_tenant_databases_location`). The options can't hold credentials (no `password`, `pwd`, `user`, `uid=`, `secret`). Secret names follow Key Vault's rule. Also: built from the baseline or full history, the expected collation, and the last migrated version (filled from T1-2) |
+| `tenant_databases` | Customer (its database) | Server, port, database name, connection options, and the **names** of the login and password secrets. Two customers never share a database (`UQ_tenant_databases_location`). The options can't hold credentials (no `password`, `pwd`, `user`, `uid=`, `secret`). Secret names follow Key Vault's rule. Also: built from the baseline or full history, the expected collation, and the last migrated version (filled from T1-4) |
 | `provisioning_runs` | Change made by an operator (from T1-4: by provisioning) | Action, operator, start and finish, outcome `RUNNING`, `SUCCEEDED`, `UNCHANGED`, `REFUSED` or `FAILED`, and a message that is never a secret |
 
 **No secret value is ever stored here,** only secret names such as `beaconculinary-db-password`. Plans and

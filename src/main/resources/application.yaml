@@ -121,8 +121,9 @@ app:
   sse:
     keepalive-interval: ${APP_SSE_KEEPALIVEINTERVAL:25s}
   # T1-1: single (default; one customer database, no platform database) or multi (the platform database is required
-  # and migrated at startup, before the customer database; used from T1-2 on). The platform database has its own
-  # small pool and its own credentials; its URL must not carry a user or password. docs/2026-11-24-platform-database.md
+  # and migrated at startup; T1-2: every database access then goes to the current customer's own database). The
+  # platform database has its own small pool and its own credentials; its URL must not carry a user or password.
+  # docs/2026-11-24-platform-database.md, docs/2026-11-24-routing-data-source.md
   tenancy:
     mode: ${APP_TENANCY_MODE:single}
     platform:
@@ -132,6 +133,15 @@ app:
       pool-size: ${APP_TENANCY_PLATFORM_POOLSIZE:3}
     # How long the customer directory's snapshot is used before it is read again (a duration).
     directory-cache-ttl: ${APP_TENANCY_DIRECTORYCACHETTL:30s}
+    # T1-2, multi mode only: each customer database's own small pool, made on its first use and closed after
+    # evict-after unused (minimum idle 0), and the SQL Server major version Hibernate assumes (it reads no database
+    # metadata at start-up in multi mode; 12 is what Azure SQL Database reports).
+    customer-pool:
+      maximum-size: ${APP_TENANCY_CUSTOMERPOOL_MAXIMUMSIZE:5}
+      idle-timeout: ${APP_TENANCY_CUSTOMERPOOL_IDLETIMEOUT:5m}
+      evict-after: ${APP_TENANCY_CUSTOMERPOOL_EVICTAFTER:30m}
+      connection-timeout: ${APP_TENANCY_CUSTOMERPOOL_CONNECTIONTIMEOUT:10s}
+    database-major-version: ${APP_TENANCY_DATABASEMAJORVERSION:12}
 
 # T0-6a: default for the site setting auth.invites.expiry-hours (1-720).
 auth:

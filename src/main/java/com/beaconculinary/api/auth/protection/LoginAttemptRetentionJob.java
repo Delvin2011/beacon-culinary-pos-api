@@ -1,7 +1,7 @@
 package com.beaconculinary.api.auth.protection;
 
 import com.beaconculinary.api.common.UtcTimestamps;
-import com.beaconculinary.api.common.logging.JobContext;
+import com.beaconculinary.api.tenancy.jobs.CustomerJobs;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -13,6 +13,8 @@ import java.time.Duration;
  * Deletes login_attempts rows older than {@code retention-days} (decision D5), in batches so a large
  * backlog never holds a long lock. Runs daily at 03:30 business time (site.time-zone). With more
  * than one app instance every instance runs it; the delete is idempotent, so that is harmless.
+ * T1-2: in multi-customer mode it runs once per ACTIVE customer, in that customer's database
+ * ({@link CustomerJobs}); a failure for one customer doesn't stop the others.
  */
 @Slf4j
 @Component
@@ -22,17 +24,20 @@ public class LoginAttemptRetentionJob {
     private final LoginProtectionProperties properties;
     private final LoginProtectionStore store;
     private final Clock clock;
+    private final CustomerJobs customerJobs;
 
-    public LoginAttemptRetentionJob(LoginProtectionProperties properties, LoginProtectionStore store, Clock clock) {
+    public LoginAttemptRetentionJob(LoginProtectionProperties properties, LoginProtectionStore store, Clock clock,
+                                    CustomerJobs customerJobs) {
         this.properties = properties;
         this.store = store;
         this.clock = clock;
+        this.customerJobs = customerJobs;
     }
 
     @Scheduled(cron = "${security.login-protection.retention-cron:0 30 3 * * *}", zone = "${site.time-zone:Africa/Johannesburg}")
     public void scheduledPurge() {
-        // T0-1: every line of the run carries jobName and runId.
-        JobContext.run("login-attempt-retention", () -> {
+        // T0-1: every line of the run carries jobName and runId (T1-2: and the customer, in multi mode).
+        customerJobs.forEachActiveCustomer("login-attempt-retention", () -> {
             try {
                 var deleted = purge();
                 if (deleted > 0) {
