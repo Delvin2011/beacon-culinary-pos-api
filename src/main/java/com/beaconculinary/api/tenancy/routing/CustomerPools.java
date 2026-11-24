@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 /**
  * T1-2: one small connection pool per customer database, multi-customer mode only
@@ -40,18 +41,24 @@ public class CustomerPools implements AutoCloseable {
     private final SecretResolver secrets;
     private final CustomerPoolProperties properties;
     private final Clock clock;
-    private final List<FirstConnectionListener> listeners;
+    private final Supplier<List<FirstConnectionListener>> listeners;
     private final ConcurrentHashMap<String, Pool> pools = new ConcurrentHashMap<>();
     private final AtomicLong created = new AtomicLong();
 
     public CustomerPools(CustomerDirectory directory, SecretResolver secrets, CustomerPoolProperties properties,
                          Clock clock, List<FirstConnectionListener> listeners) {
+        this(directory, secrets, properties, clock, () -> listeners);
+    }
+
+    /** As above, with the listeners looked up at each pool's first connection (some use the data source themselves). */
+    public CustomerPools(CustomerDirectory directory, SecretResolver secrets, CustomerPoolProperties properties,
+                         Clock clock, Supplier<List<FirstConnectionListener>> listeners) {
         properties.validate();
         this.directory = directory;
         this.secrets = secrets;
         this.properties = properties;
         this.clock = clock;
-        this.listeners = List.copyOf(listeners);
+        this.listeners = listeners;
     }
 
     /** A connection to this customer's database, from its pool (made now if it has none). */
@@ -253,7 +260,7 @@ public class CustomerPools implements AutoCloseable {
                 log.atInfo().addKeyValue("customer", slug).addKeyValue("schemaVersion", version)
                         .log("tenancy: customer {} pool opened (database {} on {}), schema at version {}",
                                 slug, key.databaseName(), key.serverHost(), version);
-                for (var listener : listeners) {
+                for (var listener : listeners.get()) {
                     try {
                         listener.onFirstConnection(current, connection);
                     } catch (Exception e) {
