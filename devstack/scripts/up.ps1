@@ -10,9 +10,15 @@
     4. Starts the backend (single-customer mode, the database named by ACTIVE_CUSTOMER or -Customer), Caddy and the
        frontend, and waits until the backend is healthy.
     5. Checks the address from this machine (hosts file and certificate) and says what to fix if it doesn't work.
+    T1-1: between 3 and 4, the platform database (created if missing, migrated) and each customer's own database login,
+    and every customer registered in it with its <name>.pos.localhost host and its secret names (idempotent).
 
 .PARAMETER Customer
     Serve this customer's database for this run, instead of ACTIVE_CUSTOMER in stack.env.
+
+.PARAMETER TenancyMode
+    single or multi for this run, instead of TENANCY_MODE in stack.env. multi: the backend migrates the platform database
+    and loads the customer directory at startup (it still serves the active customer's database).
 
 .PARAMETER Frontend
     container | host | none, instead of FRONTEND_MODE in stack.env. host: run "npm run dev" in the frontend
@@ -26,12 +32,17 @@
 param(
     [string] $Customer,
     [ValidateSet('', 'container', 'host', 'none')] [string] $Frontend = '',
+    [ValidateSet('', 'single', 'multi')] [string] $TenancyMode = '',
     [switch] $SkipBuild
 )
 . (Join-Path $PSScriptRoot '_common.ps1')
 
 $started = Get-Date
 $config = Get-StackConfig -Customer $Customer -FrontendMode $Frontend
+if ($TenancyMode) { $config.TenancyMode = $TenancyMode }
+# T1-1: the platform and customer logins' secrets are checked before anything starts.
+Assert-PlatformSettings $config
+foreach ($name in Get-ManagedCustomers) { $null = Get-CustomerSecretValues $config $name }
 Assert-Docker
 
 Write-Step 'Checks'
@@ -88,6 +99,11 @@ if (-not (Test-StackDatabase $config $config.ActiveCustomer)) {
     throw "There is no database $($config.ActiveCustomer). Create it with devstack/scripts/new-customer.ps1 $($config.ActiveCustomer)."
 }
 Write-Ok "databases: $((Get-ManagedCustomers) -join ', ')"
+
+Write-Step "Platform database ($($config.PlatformDatabase)) and the customers' logins"
+Initialize-PlatformDatabase $config
+foreach ($name in Get-ManagedCustomers) { Register-StackCustomer $config $name }
+Write-Ok "registered: $((Get-ManagedCustomers) -join ', ') (tenancy $($config.TenancyMode))"
 
 Write-Step "Backend (serving $($config.ActiveCustomer)), gateway$(if ($config.FrontendMode -eq 'container') { ' and frontend' })"
 $services = @('backend', 'caddy')

@@ -70,6 +70,18 @@ services:
       LOGIN_PROTECTION_MODE: ${LOGIN_PROTECTION_MODE:-monitor}
       CORS_ALLOWED_ORIGINS: "https://${ACTIVE_CUSTOMER}.pos.localhost${PUBLIC_PORT_SUFFIX:-}"
       APP_PUBLIC_BASE_URL: "https://${ACTIVE_CUSTOMER}.pos.localhost${PUBLIC_PORT_SUFFIX:-}"
+      # T1-1: the platform database (docs/2026-11-24-platform-database.md). single (default): not used. multi (up.ps1
+      # -TenancyMode multi): migrated at startup and the customer directory loaded; ACTIVE_CUSTOMER is still served.
+      APP_TENANCY_MODE: ${APP_TENANCY_MODE:-single}
+      APP_TENANCY_PLATFORM_URL: "jdbc:sqlserver://${SQL_SERVER:-sql}:${SQL_PORT:-1433};databaseName=${PLATFORM_DATABASE:-pos_platform};encrypt=true;trustServerCertificate=true"
+      APP_TENANCY_PLATFORM_USERNAME: pos_platform
+      APP_TENANCY_PLATFORM_PASSWORD: ${PLATFORM_DB_PASSWORD:-}
+      # The customers' database secrets, by the names the platform database stores (SECRET_<NAME>; SecretResolver,
+      # used from T1-2). In Azure these are Key Vault references (T1-0b).
+      SECRET_BEACONCULINARY_DB_LOGIN: ${SECRET_BEACONCULINARY_DB_LOGIN:-}
+      SECRET_BEACONCULINARY_DB_PASSWORD: ${SECRET_BEACONCULINARY_DB_PASSWORD:-}
+      SECRET_TESTCUSTOMER_DB_LOGIN: ${SECRET_TESTCUSTOMER_DB_LOGIN:-}
+      SECRET_TESTCUSTOMER_DB_PASSWORD: ${SECRET_TESTCUSTOMER_DB_PASSWORD:-}
     extra_hosts:
       # For SQL_MODE=host: the developer's own SQL Server.
       - "host.docker.internal:host-gateway"
@@ -78,13 +90,12 @@ services:
 
   frontend:
     # Only with FRONTEND_MODE=container (the "frontend" profile). Built from the frontend repository's container
-    # file (T1-L0-FE). Until T1-0d the API address is baked in at build time, so there is one build per customer.
+    # file (T1-L0-FE). Since T1-0d the app calls /api on its own origin and no API address is built in: one image
+    # for every customer, so switching customer reuses it.
     profiles: [frontend]
     build:
       context: ${FRONTEND_REPO:-../../beacon-culinary-pos-front-end}
-      args:
-        NEXT_PUBLIC_AUTH_API_URL: "https://${ACTIVE_CUSTOMER}.pos.localhost${PUBLIC_PORT_SUFFIX:-}/api"
-    image: beacon-devstack/frontend:${ACTIVE_CUSTOMER}
+    image: beacon-devstack/frontend
     environment:
       PORT: "3000"
       HOSTNAME: 0.0.0.0

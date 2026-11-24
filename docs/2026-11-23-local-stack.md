@@ -17,7 +17,8 @@ browser ──https://beaconculinary.pos.localhost──► Caddy (gateway, :443
 | Backend | This repository's `Dockerfile`, no published port | Container Apps, reached only through Front Door |
 | Settings and secrets | `devstack/stack.env` (git-ignored) | Key Vault secrets and Container Apps settings |
 | Database | SQL Server 2022 container (or your own SQL Server), collation `SQL_Latin1_General_CP1_CI_AS` | Azure SQL, same collation |
-| Customers | `beaconculinary` and `testcustomer`, one served at a time (single-customer mode) | One database per customer (T1-1 to T1-3 add serving several) |
+| Customers | `beaconculinary` and `testcustomer`, one served at a time (single-customer mode), each with its own database login | One database per customer (T1-2 and T1-3 add serving several) |
+| Platform database | `pos_platform`: the customers, their hosts and where their databases are (T1-1, `docs/2026-11-24-platform-database.md`) | Its own Azure SQL database |
 
 ## 1. What to install (once)
 
@@ -48,8 +49,12 @@ notepad devstack\stack.env
 | `JWT_SECRET` | 32+ random characters, for this stack only: `[Convert]::ToBase64String((1..48 \| % { Get-Random -Max 256 }))` |
 | `SMOKE_EMAIL`, `SMOKE_PASSWORD` | An ADMIN account in `beaconculinary` that signs in with a password. The demo admin from the migrations is fine locally (the tests use the same account) |
 | `FRONTEND_REPO` | Only if the frontend repository isn't in the folder next to this one, e.g. `C:\Users\you\Documents\Dev\Beacon\POS_FE\beacon-culinary-pos-front-end` |
+| `PLATFORM_DB_PASSWORD` | (T1-1) A new password for the platform database's own login, `pos_platform` |
+| `SECRET_BEACONCULINARY_DB_LOGIN`, `SECRET_BEACONCULINARY_DB_PASSWORD` | (T1-1) beaconculinary's own database login: a name such as `pos_beaconculinary` (never `sa`) and a new password |
+| `SECRET_TESTCUSTOMER_DB_LOGIN`, `SECRET_TESTCUSTOMER_DB_PASSWORD` | (T1-1) The same for testcustomer, e.g. `pos_testcustomer` |
 
-Leave the rest blank for the defaults (written next to each setting). `stack.env` is git-ignored: never commit it,
+Every T1-1 password: 8+ characters, 3 of upper case, lower case, digits and symbols, no single quote, each one
+different. Leave the rest blank for the defaults (written next to each setting). `stack.env` is git-ignored: never commit it,
 never paste its values into a ticket or chat.
 
 **2. Hosts file.** Chrome and Edge already send every `*.localhost` name to this machine; PowerShell, curl and Java
@@ -111,13 +116,14 @@ Then open `https://beaconculinary.pos.localhost/` (with the frontend) or `https:
 |---|---|
 | `up.ps1` | Builds the jar, starts everything, waits until healthy. `-SkipBuild` reuses the last jar |
 | `down.ps1` | Stops everything; databases and the certificate authority are kept |
-| `status.ps1` | Containers, databases (collation, Flyway version, row counts), health, hosts file, certificate |
+| `status.ps1` | Containers, databases (collation, Flyway version, row counts), the platform database and its customers, health, hosts file, certificate |
 | `smoke.ps1` | The end-to-end check (section 6) |
-| `reset.ps1` | Drops and recreates the stack's databases in their starting state; you type `RESET`. `-Customer <name>` for one |
-| `new-customer.ps1 <name>` | A new clean customer database, as a real new customer gets (section 4) |
+| `reset.ps1` | Drops and recreates the stack's databases in their starting state, the platform database included, and registers the customers again; you type `RESET`. `-Customer <name>` for one |
+| `new-customer.ps1 <name>` | A new clean customer database, as a real new customer gets, registered in the platform database; needs `SECRET_<NAME>_DB_LOGIN` and `_PASSWORD` in `stack.env` (section 4) |
 | `plan-today.ps1` | Makes today's demo meals sellable in the active customer's database, to ring up a sale by hand (below) |
 | `down.ps1 -Volumes` | Deletes everything, including the SQL data and the certificate authority; you type `DELETE` |
 | `secret-scan.ps1` | Looks for secrets in what this branch commits |
+| `check-all.ps1` | Everything before a merge: backend tests, frontend checks, the stack and the smoke check (below) |
 
 After a backend change: `up.ps1` again (it rebuilds the jar and the image and recreates the backend container).
 
@@ -139,20 +145,37 @@ which meals a database doesn't have (a new customer's starts without them). A re
 
 **Frontend.** Three modes (`FRONTEND_MODE` in `stack.env`, or `up.ps1 -Frontend <mode>`):
 
-- `container` (default): built from the frontend repository's `Dockerfile` (T1-L0-FE provides it). Until T1-0d the
-  frontend reads its API address at **build time**, so the stack builds it with
-  `NEXT_PUBLIC_AUTH_API_URL=https://<customer>.pos.localhost/api` (a build argument in `compose.yaml`), one image
-  per customer; switching customer rebuilds it. If the repository has no `Dockerfile` yet, `up.ps1` says so and
-  starts without it (the API works; pages answer 502).
-- `host`: hot reload. Run the dev server yourself in the frontend repository with
-  `NEXT_PUBLIC_AUTH_API_URL=https://beaconculinary.pos.localhost/api` in its `.env.local`, then `npm run dev`; Caddy
-  sends pages to `host.docker.internal:3000`. Open `https://beaconculinary.pos.localhost/`, not `localhost:3000`,
+- `container` (default): built from the frontend repository's `Dockerfile` (T1-L0-FE provides it). Since T1-0d the
+  app calls `/api` on its own origin and no API address is built in, so it takes **no build argument**: one image,
+  `beacon-devstack/frontend`, for every customer, and switching customer reuses it. Its build runs
+  `npm run check:build`, which fails if a backend address got into the build. If the repository has no
+  `Dockerfile` yet, `up.ps1` says so and starts without it (the API works; pages answer 502).
+- `host`: hot reload. Run `npm run dev` yourself in the frontend repository, with no API setting (remove any old
+  `NEXT_PUBLIC_AUTH_API_URL` from its `.env.local`: nothing reads it). Caddy sends pages to
+  `host.docker.internal:3000` and `/api` straight to the backend, which runs with `COOKIE_PATHPREFIX=/api`, so the
+  refresh cookie's path is `/api/auth/refresh`. Open `https://beaconculinary.pos.localhost/`, not `localhost:3000`,
   so the browser sees the same origin and cookies as in production.
 - `none`: the API only.
 
-**What the frontend container must do (for T1-L0-FE):** a `Dockerfile` at the repository root; takes the build
-argument `NEXT_PUBLIC_AUTH_API_URL`; serves on port 3000 on all interfaces (`PORT`, `HOSTNAME=0.0.0.0`); Next's
+**What the frontend container must do (T1-L0-FE, T1-0d):** a `Dockerfile` at the repository root; no API address
+built in (no build argument); serves on port 3000 on all interfaces (`PORT`, `HOSTNAME=0.0.0.0`); Next's
 `output: 'standalone'` server.
+
+**Before merging a slice: run `check-all.ps1`.** Until the GitHub pipelines exist, this is the gate:
+
+```powershell
+.\devstack\scripts\check-all.ps1            # everything, about 20 minutes
+.\devstack\scripts\check-all.ps1 -Quick     # no e2e tests, a 5-second stream hold (check:build still runs)
+```
+
+It runs, in order, and carries on after a failure so you see everything at once: the backend's full test suite;
+in the frontend repository (`FRONTEND_REPO`): lint, `tsc --noEmit`, Vitest, the production build, `npm run
+check:build` (no backend address in that build; it runs with `-Quick` and `-SkipE2E` too) and the Playwright e2e
+tests; then `up.ps1` (always: it is idempotent and rebuilds the backend, so the smoke check tests the code being
+merged), `status.ps1` and `smoke.ps1`. It ends with a table (PASS, FAIL or SKIP, counts, duration) and one overall
+result; the exit code is 1 if anything failed. Each step's full output is in `devstack/.logs/check-<time>/`
+(git-ignored; the path is printed), with invite links masked. Skip parts with `-SkipBackend`, `-SkipFrontend`,
+`-SkipE2E` or `-SkipStack`. The frontend needs its `node_modules` (`npm ci` once).
 
 ## 4. Single-customer mode and switching
 
@@ -165,8 +188,8 @@ customer's data never shows under another's name.
 # or set ACTIVE_CUSTOMER=testcustomer in devstack\stack.env, then up.ps1
 ```
 
-`up.ps1` recreates the backend with the other database (and rebuilds the frontend image for its address). Both
-databases stay as they are.
+`up.ps1` recreates the backend with the other database; the frontend image is the same for every customer, so it is
+reused. Both databases stay as they are.
 
 | Database | Built by | Contents |
 |---|---|---|
@@ -177,6 +200,12 @@ databases stay as they are.
 The backend always runs with `APP_FLYWAY_INCLUDEBASELINE=true`: a full-history database ignores the baseline and a
 T0-7 database needs it, so both validate. Every database exists before the backend starts, so the backend never
 builds one itself.
+
+**The platform database (T1-1).** `up.ps1` also creates `pos_platform`, gives each customer database its own
+login and registers every customer as `<name>.pos.localhost`; `status.ps1` lists them. The backend still serves
+`ACTIVE_CUSTOMER` only: `up.ps1 -TenancyMode multi` (or `TENANCY_MODE=multi`) just makes it migrate the platform
+database and load the customer directory at start-up, which the log shows (`tenancy multi: ...`). Details:
+`docs/2026-11-24-platform-database.md`.
 
 ## 5. Logs
 
@@ -270,6 +299,7 @@ authentication allowed. The containers reach it as `host.docker.internal`. The d
 | Backend not healthy | `docker compose -p beacon-devstack logs backend`. Common: a wrong `SQL_PASSWORD` after the SQL volume was created with another one (the volume keeps the first; `down.ps1 -Volumes` starts again) |
 | Smoke: sign-in fails | `SMOKE_EMAIL` / `SMOKE_PASSWORD` don't match an ADMIN in the active customer's database |
 | Smoke: "no light-meals category to add one to" | The active customer has no active light-meals category to put the smoke item in: run it against `beaconculinary` |
+| "PLATFORM_DB_PASSWORD is not set" or "SECRET_..._DB_LOGIN is not set" | T1-1 settings missing from `stack.env` (section 2). The scripts check them before changing anything |
 
 ## 10. Files
 
@@ -278,6 +308,7 @@ authentication allowed. The containers reach it as `host.docker.internal`. The d
 | `devstack/compose.yaml` | The four services, the network (`172.30.0.0/24`) and volumes |
 | `devstack/Caddyfile` | The gateway's routes |
 | `devstack/stack.env.example` | The settings, names only |
-| `devstack/scripts/*.ps1` | up, down, status, reset, new-customer, smoke, secret-scan; `_common.ps1` is shared |
+| `devstack/scripts/*.ps1` | up, down, status, reset, new-customer, plan-today, smoke, check-all, secret-scan; `_common.ps1` is shared |
 | `devstack/scripts/tests/devstack.tests.ps1` | Script tests without Docker (run by `DevstackScriptsTest`) |
 | `devstack/.state/` | Git-ignored: customers made with `new-customer.ps1`, status snapshots |
+| `src/main/resources/db/platform/` | The platform database's migrations (T1-1) |

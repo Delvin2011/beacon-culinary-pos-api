@@ -112,7 +112,61 @@ try {
         function global:docker { $global:DevstackDockerCalls.Add(($args -join ' ')); $global:LASTEXITCODE = 0 }
     }
 
+    # --- T1-1: the customers' login secrets and the platform settings ---
+    $made = 'Made-Up-Pw1!'
+    Write-StackEnv ($validEnv + @('SECRET_BEACONCULINARY_DB_LOGIN=pos_beaconculinary', "SECRET_BEACONCULINARY_DB_PASSWORD=$made",
+        'SECRET_TESTCUSTOMER_DB_LOGIN=sa', 'SECRET_TESTCUSTOMER_DB_PASSWORD=weak'))
+    $config = Get-StackConfig
+    $secrets = Get-CustomerSecretValues $config 'beaconculinary'
+    Assert-Case 'a customer''s login and password come from SECRET_<NAME>_DB_*' ($secrets.Login -eq 'pos_beaconculinary' -and
+        $secrets.Password -eq $made -and $secrets.LoginSecret -eq 'beaconculinary-db-login' -and
+        $secrets.PasswordSecret -eq 'beaconculinary-db-password') 'wrong values'
+    $message = ''; try { $null = Get-CustomerSecretValues $config 'testcustomer' } catch { $message = $_.Exception.Message }
+    Assert-Case 'sa is refused as a customer login' ($message -like '*SECRET_TESTCUSTOMER_DB_LOGIN must be a login of its own*') $message
+    $message = ''; try { $null = Get-CustomerSecretValues $config 'secondcafe' } catch { $message = $_.Exception.Message }
+    Assert-Case 'a missing customer secret names the setting' ($message -like '*SECRET_SECONDCAFE_DB_LOGIN is not set*') $message
+    foreach ($bad in 'weak', 'alllowercase', "Quote'Pw1!") {
+        $message = ''; try { Assert-LoginPassword 'SECRET_X_DB_PASSWORD' $bad } catch { $message = $_.Exception.Message }
+        Assert-Case "a weak or quoted login password is refused, naming the setting only" ($message -like 'SECRET_X_DB_PASSWORD must*' -and
+            -not $message.Contains($bad)) $message
+    }
+    $message = ''; try { Assert-PlatformSettings $config } catch { $message = $_.Exception.Message }
+    Assert-Case 'a missing platform password is reported' ($message -like 'PLATFORM_DB_PASSWORD is not set*') $message
+    Write-StackEnv ($validEnv + 'PLATFORM_DATABASE=Pos-Platform')
+    $refused = $false; try { $null = Get-StackConfig } catch { $refused = $_.Exception.Message -like 'PLATFORM_DATABASE must*' }
+    Assert-Case 'a bad platform database name is refused' $refused 'accepted'
+    Write-StackEnv ($validEnv + 'TENANCY_MODE=both')
+    $refused = $false; try { $null = Get-StackConfig } catch { $refused = $_.Exception.Message -like 'TENANCY_MODE must*' }
+    Assert-Case 'an unknown tenancy mode is refused' $refused 'accepted'
+    Write-StackEnv $validEnv
+    $config = Get-StackConfig
+    Assert-Case 'tenancy defaults to single and the platform database to pos_platform' ($config.TenancyMode -eq 'single' -and
+        $config.PlatformDatabase -eq 'pos_platform') "$($config.TenancyMode) $($config.PlatformDatabase)"
+
+    # The login's password goes to sqlcmd as an environment variable named on the docker command line, never as a value.
+    $global:DevstackDockerCalls.Clear()
+    Set-DatabaseLogin $config 'pos_beaconculinary' $made 'beaconculinary'
+    $calls = $global:DevstackDockerCalls -join "`n"
+    Assert-Case 'a login''s password never appears on a docker command line' (-not $calls.Contains($made) -and
+        $calls.Contains('-e DEVSTACK_LOGIN_PASSWORD') -and $calls.Contains('$(DEVSTACK_LOGIN_PASSWORD)')) 'the password or the variable is wrong'
+    Assert-Case 'the login''s password is not left in the environment' ($null -eq [Environment]::GetEnvironmentVariable('DEVSTACK_LOGIN_PASSWORD')) 'still set'
+
+    # --- check-all.ps1 with every step skipped: passes, reports each step, keeps a log folder ---
+    $checkAll = Join-Path $work 'scripts\check-all.ps1'
+    $shell = (Get-Process -Id $PID).Path
+    $lines = @(& $shell -NoProfile -ExecutionPolicy Bypass -File $checkAll -SkipBackend -SkipFrontend -SkipStack *>&1 | ForEach-Object { "$_" })
+    $code = $LASTEXITCODE
+    $skips = @($lines | Where-Object { $_ -match '^\S.*\sSKIP\s' }).Count
+    $logs = @(Get-ChildItem -LiteralPath (Join-Path $work '.logs') -Directory -Filter 'check-*' -ErrorAction SilentlyContinue)
+    Assert-Case 'check-all with everything skipped passes and lists all ten steps' ($code -eq 0 -and $skips -eq 10 -and
+        ($lines -join "`n") -match 'Overall: PASS' -and $logs.Count -eq 1) "exit $code, $skips skipped rows, $($logs.Count) log folder(s)"
+
     # --- reset.ps1, run as a script from the copy ---
+    # T1-1: reset checks the platform and login secrets before it asks; made-up values let it get that far.
+    Write-StackEnv ($validEnv + @('PLATFORM_DB_PASSWORD=Made-Up-Pw2!', 'SECRET_BEACONCULINARY_DB_LOGIN=pos_beaconculinary',
+        'SECRET_BEACONCULINARY_DB_PASSWORD=Made-Up-Pw3!', 'SECRET_TESTCUSTOMER_DB_LOGIN=pos_testcustomer',
+        'SECRET_TESTCUSTOMER_DB_PASSWORD=Made-Up-Pw4!', 'SECRET_SECONDCAFE_DB_LOGIN=pos_secondcafe',
+        'SECRET_SECONDCAFE_DB_PASSWORD=Made-Up-Pw5!'))
     $reset = Join-Path $work 'scripts\reset.ps1'
     $global:DevstackDockerCalls.Clear()
     $threw = $false

@@ -41,6 +41,27 @@ if ($sqlUp) {
     }
 }
 
+Write-Step "Platform database ($($config.PlatformDatabase))"
+if ($sqlUp) {
+    if (-not (Test-PlatformDatabase $config)) {
+        Write-Problem "$($config.PlatformDatabase) : missing (up.ps1 creates it)"; $problems++
+    } else {
+        $platformState = Get-DatabaseState $config $config.PlatformDatabase
+        $states += $platformState
+        Write-Ok ("{0,-16} collation {1}, Flyway {2}" -f $config.PlatformDatabase, $platformState.Collation, $platformState.Version)
+        $registered = Get-PlatformCustomers $config
+        foreach ($customer in $registered) {
+            $line = "{0,-16} {1,-10} hosts {2}; database {3}{4}" -f $customer.Slug, $customer.Status, $customer.Hosts, $customer.Database,
+                $(if ($customer.FromBaseline) { ' (from the baseline)' } else { ' (full history)' })
+            if ($customer.Status -eq 'ACTIVE') { Write-Ok $line } else { Write-Problem $line }
+        }
+        foreach ($name in Get-ManagedCustomers) {
+            if (-not ($registered | Where-Object Slug -eq $name)) { Write-Problem "$name : not registered (up.ps1 registers it)"; $problems++ }
+        }
+    }
+    Write-Host "   Tenancy mode: $($config.TenancyMode) (the backend serves $($config.ActiveCustomer) either way until T1-2 and T1-3)"
+}
+
 if ($Snapshot -and $states.Count -gt 0) {
     if (-not (Test-Path -LiteralPath $script:StateDir)) { $null = New-Item -ItemType Directory -Path $script:StateDir }
     foreach ($state in $states) {
