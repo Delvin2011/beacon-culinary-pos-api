@@ -25,6 +25,8 @@ $script:FullHistoryCustomer = 'beaconculinary'
 $script:CleanCustomer = 'testcustomer'
 $script:CustomerNamePattern = '^[a-z][a-z0-9]{2,29}$'
 $script:ReservedNames = @('master', 'model', 'msdb', 'tempdb', 'sql', 'backend', 'frontend', 'caddy', 'api', 'www')
+# T1-1: the platform database's own login (its password is PLATFORM_DB_PASSWORD).
+$script:PlatformLogin = 'pos_platform'
 
 function Write-Step([string] $Text) { Write-Host "== $Text" -ForegroundColor Cyan }
 function Write-Ok([string] $Text) { Write-Host "   ok  $Text" -ForegroundColor Green }
@@ -86,6 +88,11 @@ function Get-StackConfig([string] $Customer, [string] $FrontendMode) {
         FirstAdminEmail    = Get-Setting $values 'FIRST_ADMIN_EMAIL' 'admin@testcustomer.test'
         SmokeEmail         = Get-Setting $values 'SMOKE_EMAIL' ''
         SmokePassword      = Get-Setting $values 'SMOKE_PASSWORD' ''
+        PlatformDatabase   = Get-Setting $values 'PLATFORM_DATABASE' 'pos_platform'
+        PlatformPassword   = Get-Setting $values 'PLATFORM_DB_PASSWORD' ''
+        TenancyMode        = Get-Setting $values 'TENANCY_MODE' 'single'
+        # The raw settings, for the customers' SECRET_<NAME>_DB_* values (never printed).
+        Values             = $values
     }
     if ($Customer) { $config.ActiveCustomer = $Customer }
     if ($FrontendMode) { $config.FrontendMode = $FrontendMode }
@@ -93,6 +100,8 @@ function Get-StackConfig([string] $Customer, [string] $FrontendMode) {
     Assert-CustomerName $config.ActiveCustomer
     if ($config.StackName -cnotmatch '^[a-z0-9][a-z0-9_-]{0,40}$') { throw 'STACK_NAME must be lower-case letters, digits, "-" and "_".' }
     if (@('container', 'host') -notcontains $config.SqlMode) { throw "SQL_MODE must be container or host, was '$($config.SqlMode)'." }
+    if ($config.PlatformDatabase -cnotmatch '^[a-z][a-z0-9_]{2,63}$') { throw 'PLATFORM_DATABASE must be lower-case letters, digits and _ (3-64), starting with a letter.' }
+    if (@('single', 'multi') -notcontains $config.TenancyMode) { throw "TENANCY_MODE must be single or multi, was '$($config.TenancyMode)'." }
     if (@('container', 'host', 'none') -notcontains $config.FrontendMode) { throw "FRONTEND_MODE must be container, host or none, was '$($config.FrontendMode)'." }
     if ($config.SqlMode -eq 'container' -and $config.SqlUser -ne 'sa') { throw 'SQL_USER must be sa (or blank) with SQL_MODE=container.' }
     if ([string]::IsNullOrEmpty($config.SqlPassword)) { throw 'SQL_PASSWORD is not set in devstack/stack.env.' }
@@ -141,6 +150,8 @@ function Set-ComposeEnvironment($Config, [string] $FrontendUpstream) {
         $env:SQL_PORT = "$($Config.SqlInstancePort)"
     }
     if ($FrontendUpstream) { $env:FRONTEND_UPSTREAM = $FrontendUpstream }
+    $env:PLATFORM_DATABASE = $Config.PlatformDatabase
+    $env:APP_TENANCY_MODE = $Config.TenancyMode
 }
 
 <#
@@ -195,11 +206,20 @@ function Get-SqlTarget($Config) {
     Runs T-SQL with sqlcmd in a throwaway container. Returns the output lines (no headers, "|" between columns).
     -Database defaults to master. Throws when sqlcmd fails.
 #>
-function Invoke-StackSql($Config, [string] $Query, [string] $Database = 'master') {
+function Invoke-StackSql($Config, [string] $Query, [string] $Database = 'master', [hashtable] $Variables) {
     $target = Get-SqlTarget $Config
     $env:SQLCMDPASSWORD = $Config.SqlPassword
+    # T1-1: values a query needs (a login's password) reach sqlcmd as environment variables, which it reads as
+    # scripting variables, $(NAME) in the query: never on a command line, removed afterwards.
+    $passed = @('-e', 'SQLCMDPASSWORD')
+    if ($Variables) {
+        foreach ($key in $Variables.Keys) {
+            [Environment]::SetEnvironmentVariable($key, [string]$Variables[$key])
+            $passed += @('-e', $key)
+        }
+    }
     try {
-        $dockerArgs = @('run', '--rm', '-e', 'SQLCMDPASSWORD') + $target.DockerArgs + @(
+        $dockerArgs = @('run', '--rm') + $passed + $target.DockerArgs + @(
             '--entrypoint', '/opt/mssql-tools18/bin/sqlcmd', $script:SqlImage,
             '-C', '-S', "$($target.Server),$($target.Port)", '-U', $Config.SqlUser, '-d', $Database,
             '-b', '-I', '-h', '-1', '-W', '-s', '|', '-Q', "SET NOCOUNT ON; $Query")
@@ -212,6 +232,7 @@ function Invoke-StackSql($Config, [string] $Query, [string] $Database = 'master'
         return ,@($output | ForEach-Object { "$_" } | Where-Object { $_ -ne '' })
     } finally {
         Remove-Item Env:SQLCMDPASSWORD -ErrorAction SilentlyContinue
+        if ($Variables) { foreach ($key in $Variables.Keys) { [Environment]::SetEnvironmentVariable($key, $null) } }
     }
 }
 
@@ -371,12 +392,138 @@ function Get-DatabaseState($Config, [string] $Name) {
     $counts = [ordered]@{}
     $rows = Invoke-StackSql $Config ("SELECT t.name, SUM(p.rows) FROM sys.tables t JOIN sys.partitions p " +
         "ON p.object_id = t.object_id AND p.index_id IN (0, 1) WHERE t.is_ms_shipped = 0 " +
-        "AND t.name <> 'flyway_schema_history' GROUP BY t.name ORDER BY t.name") $Name
+        # provisioning_runs (the platform database) is a log that grows on every up.ps1, not a starting state.
+        "AND t.name NOT IN ('flyway_schema_history', 'provisioning_runs') GROUP BY t.name ORDER BY t.name") $Name
     foreach ($row in $rows) {
         $parts = $row.Split('|')
         if ($parts.Count -eq 2) { $counts[$parts[0].Trim()] = [long]$parts[1].Trim() }
     }
     return [pscustomobject]@{ Name = $Name; Collation = $collation; Version = $version; RowCounts = $counts }
+}
+
+# --- T1-1: the platform database and the customers' database logins (docs/2026-11-24-platform-database.md) ---
+
+<#
+    A database login's password: required, SQL Server's rule (8+ characters, 3 of upper case, lower case, digits,
+    symbols), and no single quote (it reaches T-SQL as a sqlcmd variable inside N'...'). Errors name the setting only.
+#>
+function Assert-LoginPassword([string] $Setting, [string] $Value) {
+    if ([string]::IsNullOrEmpty($Value)) { throw "$Setting is not set in devstack/stack.env." }
+    $classes = @('[A-Z]', '[a-z]', '\d', '[^A-Za-z0-9]' | Where-Object { $Value -cmatch $_ }).Count
+    if ($Value.Length -lt 8 -or $classes -lt 3) {
+        throw "$Setting must have at least 8 characters and 3 of: upper case, lower case, digits, symbols."
+    }
+    if ($Value.Contains("'")) { throw "$Setting must not contain a single quote (')." }
+}
+
+function Assert-PlatformSettings($Config) {
+    Assert-LoginPassword 'PLATFORM_DB_PASSWORD' $Config.PlatformPassword
+}
+
+<#
+    A customer's database login and password, from SECRET_<NAME>_DB_LOGIN and SECRET_<NAME>_DB_PASSWORD in stack.env
+    (the values of the secrets <name>-db-login and <name>-db-password). Errors name the setting, never a value.
+#>
+function Get-CustomerSecretValues($Config, [string] $Name) {
+    Assert-CustomerName $Name
+    $upper = $Name.ToUpperInvariant()
+    $loginSetting = "SECRET_${upper}_DB_LOGIN"
+    $passwordSetting = "SECRET_${upper}_DB_PASSWORD"
+    $login = Get-Setting $Config.Values $loginSetting ''
+    if (-not $login) { throw "$loginSetting is not set in devstack/stack.env (the login of customer $Name's database, e.g. pos_$Name)." }
+    if ($login -eq 'sa' -or $login -eq $script:PlatformLogin) { throw "$loginSetting must be a login of its own, not $login." }
+    if ($login -cnotmatch '^[a-z][a-z0-9_]{2,63}$') { throw "$loginSetting must be lower-case letters, digits and _ (3-64), starting with a letter." }
+    $password = Get-Setting $Config.Values $passwordSetting ''
+    Assert-LoginPassword $passwordSetting $password
+    return [pscustomobject]@{ Login = $login; Password = $password; LoginSecret = "$Name-db-login"; PasswordSecret = "$Name-db-password" }
+}
+
+<#
+    Makes sure the login exists with this password (created, or its password set again) and is db_owner of this database
+    only (owner, so the backend's Flyway can migrate it). The password reaches sqlcmd as an environment variable.
+#>
+function Set-DatabaseLogin($Config, [string] $Login, [string] $Password, [string] $Database) {
+    if ($Login -cnotmatch '^[a-z][a-z0-9_]{2,63}$') { throw "Not a login name: $Login" }
+    $null = Invoke-StackSql $Config ("IF SUSER_ID(N'$Login') IS NULL CREATE LOGIN [$Login] WITH PASSWORD = N'" + '$(DEVSTACK_LOGIN_PASSWORD)' +
+        "', CHECK_POLICY = ON, DEFAULT_DATABASE = [$Database]; ELSE ALTER LOGIN [$Login] WITH PASSWORD = N'" + '$(DEVSTACK_LOGIN_PASSWORD)' + "';") `
+        'master' @{ DEVSTACK_LOGIN_PASSWORD = $Password }
+    $null = Invoke-StackSql $Config ("IF USER_ID(N'$Login') IS NULL CREATE USER [$Login] FOR LOGIN [$Login]; " +
+        "IF IS_ROLEMEMBER('db_owner', N'$Login') = 0 ALTER ROLE db_owner ADD MEMBER [$Login];") $Database
+}
+
+function Test-PlatformDatabase($Config) {
+    $rows = Invoke-StackSql $Config "SELECT COUNT(*) FROM sys.databases WHERE name = N'$($Config.PlatformDatabase)'"
+    return ($rows[0].Trim() -eq '1')
+}
+
+function Remove-PlatformDatabase($Config) {
+    $name = $Config.PlatformDatabase
+    $null = Invoke-StackSql $Config ("IF DB_ID(N'$name') IS NOT NULL BEGIN " +
+        "ALTER DATABASE [$name] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$name]; END")
+}
+
+<# Runs TenantRegisterCommand on this machine against the platform database, as its own login. Returns the exit code. #>
+function Invoke-TenantCommand($Config, [string[]] $Arguments) {
+    if (-not (Test-Path -LiteralPath $script:Jar)) { throw "The backend jar is missing ($script:Jar). Run up.ps1 (it builds it)." }
+    $saved = @{}
+    foreach ($variable in 'APP_TENANCY_PLATFORM_URL', 'APP_TENANCY_PLATFORM_USERNAME', 'APP_TENANCY_PLATFORM_PASSWORD') {
+        $saved[$variable] = [Environment]::GetEnvironmentVariable($variable)
+    }
+    $env:APP_TENANCY_PLATFORM_URL = Get-HostJdbcUrl $Config $Config.PlatformDatabase
+    $env:APP_TENANCY_PLATFORM_USERNAME = $script:PlatformLogin
+    $env:APP_TENANCY_PLATFORM_PASSWORD = $Config.PlatformPassword
+    try {
+        $ErrorActionPreference = 'Continue'
+        $javaArgs = @('-cp', $script:Jar, '-Dloader.main=com.beaconculinary.api.ops.TenantRegisterCommand',
+                      'org.springframework.boot.loader.launch.PropertiesLauncher') + $Arguments
+        & java @javaArgs 2>&1 | ForEach-Object { Write-Host "       $_" }
+        return $LASTEXITCODE
+    } finally {
+        foreach ($variable in $saved.Keys) { [Environment]::SetEnvironmentVariable($variable, $saved[$variable]) }
+    }
+}
+
+<# The platform database: created with the collation if missing, its own login, and migrated. #>
+function Initialize-PlatformDatabase($Config) {
+    Assert-PlatformSettings $Config
+    $name = $Config.PlatformDatabase
+    if (-not (Test-PlatformDatabase $Config)) {
+        $null = Invoke-StackSql $Config "CREATE DATABASE [$name] COLLATE $($script:Collation)"
+        Write-Ok "$name created"
+    }
+    Set-DatabaseLogin $Config $script:PlatformLogin $Config.PlatformPassword $name
+    $code = Invoke-TenantCommand $Config @('migrate')
+    if ($code -ne 0) { throw "Migrating the platform database failed (exit code $code)." }
+}
+
+<#
+    A customer: its own database login (db_owner of its database), and its registration in the platform database with
+    <name>.pos.localhost and its secret names. Idempotent (TenantRegisterCommand reports Unchanged).
+#>
+function Register-StackCustomer($Config, [string] $Name) {
+    $secrets = Get-CustomerSecretValues $Config $Name
+    Set-DatabaseLogin $Config $secrets.Login $secrets.Password $Name
+    $displayName = switch ($Name) { 'beaconculinary' { 'Beacon Culinary' } 'testcustomer' { 'Test Customer' } default { $Name } }
+    $server = 'sql'; $port = 1433
+    if ($Config.SqlMode -eq 'host') { $server = 'host.docker.internal'; $port = $Config.SqlInstancePort }
+    $fromBaseline = if ($Name -eq $script:FullHistoryCustomer) { 'false' } else { 'true' }
+    $code = Invoke-TenantCommand $Config @('register', '--slug', $Name, '--name', $displayName, '--host', "$Name.pos.localhost",
+        '--db-server', $server, '--db-port', "$port", '--db-name', $Name, '--db-options', 'encrypt=true;trustServerCertificate=true',
+        '--login-secret', $secrets.LoginSecret, '--password-secret', $secrets.PasswordSecret, '--built-from-baseline', $fromBaseline)
+    if ($code -ne 0) { throw "Registering $Name in the platform database failed (exit code $code)." }
+}
+
+<# The registered customers: slug, status, hosts (* primary), database, built from the baseline. No secrets. #>
+function Get-PlatformCustomers($Config) {
+    if (-not (Test-PlatformDatabase $Config)) { return @() }
+    $rows = Invoke-StackSql $Config ("SELECT t.slug, t.status, ISNULL((SELECT STRING_AGG(CONCAT(h.host, CASE WHEN h.is_primary = 1 " +
+        "THEN '*' ELSE '' END), ', ') WITHIN GROUP (ORDER BY h.is_primary DESC, h.host) FROM tenant_hosts h WHERE h.tenant_id = t.id), '-'), " +
+        "ISNULL(d.database_name, '-'), ISNULL(CAST(CAST(d.built_from_baseline AS int) AS varchar(1)), '-') " +
+        "FROM tenants t LEFT JOIN tenant_databases d ON d.tenant_id = t.id ORDER BY t.slug") $Config.PlatformDatabase
+    return @($rows | ForEach-Object {
+        $p = $_.Split('|')
+        [pscustomobject]@{ Slug = $p[0].Trim(); Status = $p[1].Trim(); Hosts = $p[2].Trim(); Database = $p[3].Trim(); FromBaseline = $p[4].Trim() -eq '1' }
+    })
 }
 
 function Test-Port([int] $Port) {
