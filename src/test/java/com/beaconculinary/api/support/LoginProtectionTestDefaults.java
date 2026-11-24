@@ -28,6 +28,8 @@ public class LoginProtectionTestDefaults implements EnvironmentPostProcessor {
         all.put("app.flyway.include-baseline", "false");
         // T1-L0: no SSE keepalive in the suite, so stream content is exact; SseKeepaliveIntegrationTests turns it on.
         all.put("app.sse.keepalive-interval", "0");
+        // T1-1: the suite runs single-customer, whatever a local .env says; TenancyModeIntegrationTests starts multi.
+        all.put("app.tenancy.mode", "single");
         return all;
     }
 

@@ -120,6 +120,18 @@ app:
   # minutes. A duration (25s); 0 turns it off. Clients ignore comments; it is not activity (SseKeepalive).
   sse:
     keepalive-interval: ${APP_SSE_KEEPALIVEINTERVAL:25s}
+  # T1-1: single (default; one customer database, no platform database) or multi (the platform database is required
+  # and migrated at startup, before the customer database; used from T1-2 on). The platform database has its own
+  # small pool and its own credentials; its URL must not carry a user or password. docs/2026-11-24-platform-database.md
+  tenancy:
+    mode: ${APP_TENANCY_MODE:single}
+    platform:
+      url: ${APP_TENANCY_PLATFORM_URL:}
+      username: ${APP_TENANCY_PLATFORM_USERNAME:}
+      password: ${APP_TENANCY_PLATFORM_PASSWORD:}
+      pool-size: ${APP_TENANCY_PLATFORM_POOLSIZE:3}
+    # How long the customer directory's snapshot is used before it is read again (a duration).
+    directory-cache-ttl: ${APP_TENANCY_DIRECTORYCACHETTL:30s}
 
 # T0-6a: default for the site setting auth.invites.expiry-hours (1-720).
 auth:
