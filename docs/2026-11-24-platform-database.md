@@ -160,7 +160,7 @@ Look at it in SSMS (server `127.0.0.1,14333`, the `sa` login), or ask the comman
 |---|---|
 | `PlatformMigrationIntegrationTests` (9) | Every constraint above: slug and host rules, one primary, one customer per host and per database, no credentials in options, secret-name format, statuses and outcomes |
 | `TenancyModeIntegrationTests` (4) | Single mode doesn't touch the platform settings; multi migrates the platform database before the customer data source and loads the directory; incomplete or unsafe settings stop start-up, named without values |
-| `HostNamesTest` (2), `CustomerDirectoryIntegrationTests` (5) | Case, port and trailing dot ignored; unknown and malformed hosts; suspended customers reported, not active; the cache read again after the TTL and at once on `refresh()`; a customer without a database yet listed without one. (Keeping the last good snapshot when a read fails is in the code, not yet covered by a test) |
+| `HostNamesTest` (2), `CustomerDirectoryIntegrationTests` (6) | Case, port and trailing dot ignored; unknown and malformed hosts; suspended customers reported, not active; the cache read again after the TTL and at once on `refresh()`; a customer without a database yet listed without one; when a read fails, the last good snapshot answers, one warning is logged, and the next good read after the TTL recovers |
 | `EnvironmentSecretResolverTest` (5) | Name to variable, missing secret named without a value, invalid names refused |
 | `TenantRegisterCommandIntegrationTests` (9) | Register, idempotent re-register, clashes refused, suspend and activate, hosts, every change recorded, no secret printed |
 | `devstack.tests.ps1` | The stack's settings checks, the login password never on a command line or left in the environment |

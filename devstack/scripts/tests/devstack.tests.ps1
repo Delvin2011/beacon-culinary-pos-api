@@ -158,7 +158,7 @@ try {
     $code = $LASTEXITCODE
     $skips = @($lines | Where-Object { $_ -match '^\S.*\sSKIP\s' }).Count
     $logs = @(Get-ChildItem -LiteralPath (Join-Path $work '.logs') -Directory -Filter 'check-*' -ErrorAction SilentlyContinue)
-    Assert-Case 'check-all with everything skipped passes and lists all nine steps' ($code -eq 0 -and $skips -eq 9 -and
+    Assert-Case 'check-all with everything skipped passes and lists all ten steps' ($code -eq 0 -and $skips -eq 10 -and
         ($lines -join "`n") -match 'Overall: PASS' -and $logs.Count -eq 1) "exit $code, $skips skipped rows, $($logs.Count) log folder(s)"
 
     # --- reset.ps1, run as a script from the copy ---

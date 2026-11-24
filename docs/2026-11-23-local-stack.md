@@ -145,31 +145,33 @@ which meals a database doesn't have (a new customer's starts without them). A re
 
 **Frontend.** Three modes (`FRONTEND_MODE` in `stack.env`, or `up.ps1 -Frontend <mode>`):
 
-- `container` (default): built from the frontend repository's `Dockerfile` (T1-L0-FE provides it). Until T1-0d the
-  frontend reads its API address at **build time**, so the stack builds it with
-  `NEXT_PUBLIC_AUTH_API_URL=https://<customer>.pos.localhost/api` (a build argument in `compose.yaml`), one image
-  per customer; switching customer rebuilds it. If the repository has no `Dockerfile` yet, `up.ps1` says so and
-  starts without it (the API works; pages answer 502).
-- `host`: hot reload. Run the dev server yourself in the frontend repository with
-  `NEXT_PUBLIC_AUTH_API_URL=https://beaconculinary.pos.localhost/api` in its `.env.local`, then `npm run dev`; Caddy
-  sends pages to `host.docker.internal:3000`. Open `https://beaconculinary.pos.localhost/`, not `localhost:3000`,
+- `container` (default): built from the frontend repository's `Dockerfile` (T1-L0-FE provides it). Since T1-0d the
+  app calls `/api` on its own origin and no API address is built in, so it takes **no build argument**: one image,
+  `beacon-devstack/frontend`, for every customer, and switching customer reuses it. Its build runs
+  `npm run check:build`, which fails if a backend address got into the build. If the repository has no
+  `Dockerfile` yet, `up.ps1` says so and starts without it (the API works; pages answer 502).
+- `host`: hot reload. Run `npm run dev` yourself in the frontend repository, with no API setting (remove any old
+  `NEXT_PUBLIC_AUTH_API_URL` from its `.env.local`: nothing reads it). Caddy sends pages to
+  `host.docker.internal:3000` and `/api` straight to the backend, which runs with `COOKIE_PATHPREFIX=/api`, so the
+  refresh cookie's path is `/api/auth/refresh`. Open `https://beaconculinary.pos.localhost/`, not `localhost:3000`,
   so the browser sees the same origin and cookies as in production.
 - `none`: the API only.
 
-**What the frontend container must do (for T1-L0-FE):** a `Dockerfile` at the repository root; takes the build
-argument `NEXT_PUBLIC_AUTH_API_URL`; serves on port 3000 on all interfaces (`PORT`, `HOSTNAME=0.0.0.0`); Next's
+**What the frontend container must do (T1-L0-FE, T1-0d):** a `Dockerfile` at the repository root; no API address
+built in (no build argument); serves on port 3000 on all interfaces (`PORT`, `HOSTNAME=0.0.0.0`); Next's
 `output: 'standalone'` server.
 
 **Before merging a slice: run `check-all.ps1`.** Until the GitHub pipelines exist, this is the gate:
 
 ```powershell
 .\devstack\scripts\check-all.ps1            # everything, about 20 minutes
-.\devstack\scripts\check-all.ps1 -Quick     # no e2e tests, a 5-second stream hold
+.\devstack\scripts\check-all.ps1 -Quick     # no e2e tests, a 5-second stream hold (check:build still runs)
 ```
 
 It runs, in order, and carries on after a failure so you see everything at once: the backend's full test suite;
-in the frontend repository (`FRONTEND_REPO`): lint, `tsc --noEmit`, Vitest, the production build and the Playwright
-e2e tests; then `up.ps1` (always: it is idempotent and rebuilds the backend, so the smoke check tests the code being
+in the frontend repository (`FRONTEND_REPO`): lint, `tsc --noEmit`, Vitest, the production build, `npm run
+check:build` (no backend address in that build; it runs with `-Quick` and `-SkipE2E` too) and the Playwright e2e
+tests; then `up.ps1` (always: it is idempotent and rebuilds the backend, so the smoke check tests the code being
 merged), `status.ps1` and `smoke.ps1`. It ends with a table (PASS, FAIL or SKIP, counts, duration) and one overall
 result; the exit code is 1 if anything failed. Each step's full output is in `devstack/.logs/check-<time>/`
 (git-ignored; the path is printed), with invite links masked. Skip parts with `-SkipBackend`, `-SkipFrontend`,
@@ -186,8 +188,8 @@ customer's data never shows under another's name.
 # or set ACTIVE_CUSTOMER=testcustomer in devstack\stack.env, then up.ps1
 ```
 
-`up.ps1` recreates the backend with the other database (and rebuilds the frontend image for its address). Both
-databases stay as they are.
+`up.ps1` recreates the backend with the other database; the frontend image is the same for every customer, so it is
+reused. Both databases stay as they are.
 
 | Database | Built by | Contents |
 |---|---|---|

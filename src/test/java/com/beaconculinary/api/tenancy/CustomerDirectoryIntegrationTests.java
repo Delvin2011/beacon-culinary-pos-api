@@ -8,26 +8,34 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DelegatingDataSource;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * T1-1: the customer directory on a throwaway platform database. Lookup by host ignores case, the port and a trailing
  * dot; an unknown host finds nothing; a suspended customer is found with its status and left out of the active list;
- * the snapshot is used for the TTL, read again after it, and at once after refresh(). No secret values: only names.
+ * the snapshot is used for the TTL, read again after it, and at once after refresh(); when a read fails, the last good
+ * snapshot answers (with one warning) until a read succeeds again. No secret values: only names.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@ExtendWith(OutputCaptureExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CustomerDirectoryIntegrationTests {
     private static final Duration TTL = Duration.ofSeconds(30);
@@ -134,6 +142,47 @@ class CustomerDirectoryIntegrationTests {
         jdbc.update("UPDATE tenants SET status = 'SUSPENDED' WHERE slug = 'thirdcafe'");
         directory.refresh();
         assertThat(directory.findBySlug("thirdcafe").orElseThrow().status()).as("after refresh()").isEqualTo(CustomerStatus.SUSPENDED);
+    }
+
+    @Test
+    void whenAReadFails_theLastGoodSnapshotAnswers_withOneWarning_andTheNextGoodReadRecovers(CapturedOutput output) {
+        var platformDown = new AtomicBoolean(false);
+        var flaky = new DelegatingDataSource(jdbc.getDataSource()) {
+            @Override
+            public Connection getConnection() throws SQLException {
+                if (platformDown.get()) {
+                    throw new SQLException("platform database unreachable (test)");
+                }
+                return super.getConnection();
+            }
+        };
+        var directory = new CustomerDirectory(new JdbcTemplate(flaky), clock, TTL);
+        var third = tenant("thirdcafe", "Third Cafe", "ACTIVE");
+        host(third, "thirdcafe.pos.localhost", true);
+
+        // The TTL is over and the platform database is down: the last good snapshot answers.
+        platformDown.set(true);
+        clock.setInstant(clock.instant().plus(TTL).plusSeconds(1));
+        assertThat(directory.findByHost("beaconculinary.pos.localhost")).as("from the last good snapshot").isPresent();
+        assertThat(directory.findByHost("thirdcafe.pos.localhost")).as("added after the last good read").isEmpty();
+        assertThat(directory.listActive()).extracting(Customer::slug).containsExactly("beaconculinary");
+        assertThat(warnings(output)).as("one warning for the failed read").isEqualTo(1);
+
+        // Still down, within the next TTL: no new read, so no new warning.
+        clock.setInstant(clock.instant().plus(TTL).minusSeconds(1));
+        assertThat(directory.findBySlug("testcustomer")).isPresent();
+        assertThat(warnings(output)).isEqualTo(1);
+
+        // Back up: the next read after that TTL succeeds and sees the change.
+        platformDown.set(false);
+        clock.setInstant(clock.instant().plusSeconds(2));
+        assertThat(directory.findByHost("thirdcafe.pos.localhost")).as("after recovery").isPresent();
+        assertThat(directory.listActive()).extracting(Customer::slug).containsExactly("beaconculinary", "thirdcafe");
+        assertThat(warnings(output)).as("no warning once reads succeed").isEqualTo(1);
+    }
+
+    private static int warnings(CapturedOutput output) {
+        return output.getAll().split("Customer directory: reading the platform database failed", -1).length - 1;
     }
 
     @Test

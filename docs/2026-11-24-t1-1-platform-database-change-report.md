@@ -75,7 +75,14 @@ Throwaway databases (`T07…Test`) only; none left behind. No `flyway:clean`, no
 
 - The first `check-all` run (step A) had 34 frontend unit and 2 e2e failures from the frontend repository's work in
   progress at the time (T1-0d); the final run passed them all. This branch doesn't touch the frontend.
-- No test yet for the directory keeping its last good snapshot when a read of the platform database fails (the code
-  does it and logs a warning).
 - T1-2: connect to each customer's database through the directory and `SecretResolver`; T1-3: pick the customer
   from the request's host and fill `tenantId` in the logs; T1-0b: Key Vault behind `SecretResolver`.
+
+## Follow-up (after T1-1 was approved)
+
+- The open test: `CustomerDirectoryIntegrationTests.whenAReadFails_theLastGoodSnapshotAnswers_withOneWarning_andTheNextGoodReadRecovers`.
+- The frontend image (T1-0d in the frontend repository): `compose.yaml` no longer passes `NEXT_PUBLIC_AUTH_API_URL`
+  and tags one image, `beacon-devstack/frontend`, for every customer; switching customer reuses it.
+- `check-all.ps1`: a step `frontend check:build` right after the frontend build (ten steps), run with `-Quick` and
+  `-SkipE2E` too.
+- The local stack doc: the frontend container and host mode without an API address.

@@ -10,11 +10,13 @@
       3. frontend types     npx tsc --noEmit
       4. frontend unit      npm test (Vitest)
       5. frontend build     npm run build
-      6. frontend e2e       npm run test:e2e (Playwright; builds the app again for its mock API)
-      7. stack up           up.ps1 (always: it is idempotent and rebuilds the backend, so the smoke check tests the
+      6. frontend check:build  npm run check:build (no backend address or rewrite in the build; runs with -Quick
+                            and -SkipE2E too)
+      7. frontend e2e       npm run test:e2e (Playwright; builds the app again for its mock API)
+      8. stack up           up.ps1 (always: it is idempotent and rebuilds the backend, so the smoke check tests the
                             code being merged)
-      8. stack status       status.ps1
-      9. smoke              smoke.ps1
+      9. stack status       status.ps1
+     10. smoke              smoke.ps1
     At the end: a table (PASS, FAIL or SKIP, counts where the step gives them, duration) and one overall result. Exit
     code 1 when any step failed. Each step's full output is saved under devstack/.logs/check-<time>/ (git-ignored);
     the path is printed. Invite links are masked in the logs, and no password is ever passed on a command line.
@@ -22,11 +24,11 @@
 .PARAMETER SkipBackend
     Skip the backend tests.
 .PARAMETER SkipFrontend
-    Skip every frontend step (2 to 6).
+    Skip every frontend step (2 to 7).
 .PARAMETER SkipE2E
     Skip only the Playwright e2e tests.
 .PARAMETER SkipStack
-    Skip the local stack (7 to 9).
+    Skip the local stack (8 to 10).
 .PARAMETER Quick
     No e2e tests, and the smoke check holds its stream for 5 seconds instead of 2 minutes.
 
@@ -71,10 +73,10 @@ function Invoke-Step([string] $Name, [string] $Log, [scriptblock] $Action, [scri
     $file = Join-Path $logDir "$Log.log"
     if ($SkipReason) {
         $results.Add([pscustomobject]@{ Step = $Name; Result = 'SKIP'; Counts = $SkipReason; Seconds = 0; Log = $null })
-        Write-Host ("   --  {0,-16} skipped ({1})" -f $Name, $SkipReason) -ForegroundColor DarkGray
+        Write-Host ("   --  {0,-20} skipped ({1})" -f $Name, $SkipReason) -ForegroundColor DarkGray
         return
     }
-    Write-Host ("   ..  {0,-16} running" -f $Name)
+    Write-Host ("   ..  {0,-20} running" -f $Name)
     $clock = [System.Diagnostics.Stopwatch]::StartNew()
     $passed = $false
     try {
@@ -92,7 +94,7 @@ function Invoke-Step([string] $Name, [string] $Log, [scriptblock] $Action, [scri
     $result = if ($passed) { 'PASS' } else { 'FAIL' }
     $results.Add([pscustomobject]@{ Step = $Name; Result = $result; Counts = $summary; Seconds = [int]$clock.Elapsed.TotalSeconds; Log = $file })
     $color = if ($passed) { 'Green' } else { 'Red' }
-    Write-Host ("   {0}  {1,-16} {2} ({3:N0} s)" -f $(if ($passed) { 'ok' } else { '!!' }), $Name, $summary, $clock.Elapsed.TotalSeconds) -ForegroundColor $color
+    Write-Host ("   {0}  {1,-20} {2} ({3:N0} s)" -f $(if ($passed) { 'ok' } else { '!!' }), $Name, $summary, $clock.Elapsed.TotalSeconds) -ForegroundColor $color
 }
 
 function Invoke-StackScript([string] $Script, [string[]] $Arguments) {
@@ -117,7 +119,7 @@ Invoke-Step 'backend tests' 'backend-tests' {
     "$t tests, $f failures, $e errors, $s skipped"
 } $(if ($SkipBackend) { '-SkipBackend' })
 
-# --- 2-6. frontend ---
+# --- 2-7. frontend ---
 $frontendSkip = if ($SkipFrontend) { '-SkipFrontend' } else { $null }
 $frontendRepo = if ($config) { $config.FrontendRepo } else { $null }
 
@@ -149,6 +151,14 @@ Invoke-Step 'frontend unit' 'frontend-vitest' { Invoke-Frontend { & npm test } }
 
 Invoke-Step 'frontend build' 'frontend-build' { Invoke-Frontend { & npm run build } } $null $frontendSkip
 
+# The production build just made: no backend address, setting name or rewrite in it (T1-0d). Not skipped by -Quick or
+# -SkipE2E: it reads the build, it doesn't make one.
+Invoke-Step 'frontend check:build' 'frontend-check-build' { Invoke-Frontend { & npm run check:build } } {
+    param($text)
+    $m = [regex]::Match($text, '(\d+) files searched')
+    if ($m.Success -and $text -match 'no backend address in the build') { "$($m.Groups[1].Value) files, no backend address" } else { '' }
+} $frontendSkip
+
 $e2eSkip = $frontendSkip
 if (-not $e2eSkip -and $SkipE2E) { $e2eSkip = '-SkipE2E' }
 if (-not $e2eSkip -and $Quick) { $e2eSkip = '-Quick' }
@@ -158,7 +168,7 @@ Invoke-Step 'frontend e2e' 'frontend-e2e' { Invoke-Frontend { & npm run test:e2e
     $parts -join ', '
 } $e2eSkip
 
-# --- 7-9. the local stack ---
+# --- 8-10. the local stack ---
 $stackSkip = if ($SkipStack) { '-SkipStack' } else { $null }
 Invoke-Step 'stack up' 'stack-up' {
     if ($configProblem) { throw $configProblem }
@@ -186,12 +196,12 @@ Invoke-Step 'smoke' 'stack-smoke' { Invoke-StackScript 'smoke.ps1' $smokeArgs } 
 $failed = @($results | Where-Object { $_.Result -eq 'FAIL' })
 $total = (Get-Date) - $started
 Write-Host ''
-Write-Host ('{0,-16} {1,-6} {2,-48} {3,8}' -f 'Step', 'Result', 'Counts', 'Time')
-Write-Host ('{0,-16} {1,-6} {2,-48} {3,8}' -f '----', '------', '------', '----')
+Write-Host ('{0,-20} {1,-6} {2,-48} {3,8}' -f 'Step', 'Result', 'Counts', 'Time')
+Write-Host ('{0,-20} {1,-6} {2,-48} {3,8}' -f '----', '------', '------', '----')
 foreach ($row in $results) {
     $color = switch ($row.Result) { 'PASS' { 'Green' } 'FAIL' { 'Red' } default { 'DarkGray' } }
     $time = if ($row.Result -eq 'SKIP') { '' } else { '{0:N0} s' -f $row.Seconds }
-    Write-Host ('{0,-16} {1,-6} {2,-48} {3,8}' -f $row.Step, $row.Result, $row.Counts, $time) -ForegroundColor $color
+    Write-Host ('{0,-20} {1,-6} {2,-48} {3,8}' -f $row.Step, $row.Result, $row.Counts, $time) -ForegroundColor $color
 }
 Write-Host ''
 $overall = if ($failed.Count -eq 0) { 'PASS' } else { 'FAIL' }

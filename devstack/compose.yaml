@@ -90,13 +90,12 @@ services:
 
   frontend:
     # Only with FRONTEND_MODE=container (the "frontend" profile). Built from the frontend repository's container
-    # file (T1-L0-FE). Until T1-0d the API address is baked in at build time, so there is one build per customer.
+    # file (T1-L0-FE). Since T1-0d the app calls /api on its own origin and no API address is built in: one image
+    # for every customer, so switching customer reuses it.
     profiles: [frontend]
     build:
       context: ${FRONTEND_REPO:-../../beacon-culinary-pos-front-end}
-      args:
-        NEXT_PUBLIC_AUTH_API_URL: "https://${ACTIVE_CUSTOMER}.pos.localhost${PUBLIC_PORT_SUFFIX:-}/api"
-    image: beacon-devstack/frontend:${ACTIVE_CUSTOMER}
+    image: beacon-devstack/frontend
     environment:
       PORT: "3000"
       HOSTNAME: 0.0.0.0
