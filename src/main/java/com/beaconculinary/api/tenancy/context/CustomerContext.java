@@ -40,6 +40,16 @@ public final class CustomerContext {
         return customer;
     }
 
+    /**
+     * The key in-memory customer data is kept under (caches, open streams): {@code "<id>:<slug>"} for the current
+     * customer, {@code ""} when there is none (always so in single mode). Data kept under one key is never served
+     * under another.
+     */
+    public static String scopeKey() {
+        var customer = CURRENT.get();
+        return customer == null ? "" : customer.id() + ":" + customer.slug();
+    }
+
     /** Runs the work as this customer, then puts the previous customer (or none) back. */
     public static void runAs(CurrentCustomer customer, Runnable work) {
         try (var ignored = open(customer)) {

@@ -3,6 +3,7 @@ package com.beaconculinary.api.dashboard;
 import com.beaconculinary.api.orders.OrderStatusStreamEvent;
 import com.beaconculinary.api.orders.StationViewChangedEvent;
 import com.beaconculinary.api.settings.SiteSettingsChangedEvent;
+import com.beaconculinary.api.tenancy.context.CustomerContext;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -40,8 +41,11 @@ public class DashboardCache {
         if (!settings.cacheEnabled()) {
             return new Entry(clock.instant(), compute.get());
         }
+        // T1-2: the current customer is part of every key ("" in single mode), so one customer's figures are never
+        // served to another.
+        var customerKey = CustomerContext.scopeKey() + "|" + key;
         var now = clock.instant();
-        var cached = entries.get(key);
+        var cached = entries.get(customerKey);
         if (cached != null && !now.isBefore(cached.computedAt()) && now.isBefore(cached.computedAt().plusSeconds(ttlSeconds))) {
             return cached;
         }
@@ -49,7 +53,7 @@ public class DashboardCache {
         if (entries.size() >= MAX_ENTRIES) {
             entries.clear();
         }
-        entries.put(key, fresh);
+        entries.put(customerKey, fresh);
         return fresh;
     }
 
