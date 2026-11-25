@@ -108,8 +108,15 @@ public class SecurityConfig {
             .addFilterBefore(deviceFilters.resolutionFilter(), JwtAuthenticationFilter.class)
             .addFilterAfter(deviceFilters.unboundRequestFilter(), JwtAuthenticationFilter.class)
             .exceptionHandling(c -> {
-                c.authenticationEntryPoint(
-                    new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED));
+                // T1-5: 401 TENANT_MISMATCH for a token from another customer; otherwise the plain 401 as before.
+                var unauthorized = new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED);
+                c.authenticationEntryPoint((request, response, authException) -> {
+                    if (request.getAttribute(TenantBinding.MISMATCH_ATTRIBUTE) != null) {
+                        TenantBinding.write(response, objectMapper);
+                    } else {
+                        unauthorized.commence(request, response, authException);
+                    }
+                });
                 c.accessDeniedHandler(((request, response, accessDeniedException) ->
                     response.setStatus(HttpStatus.FORBIDDEN.value())));
             });

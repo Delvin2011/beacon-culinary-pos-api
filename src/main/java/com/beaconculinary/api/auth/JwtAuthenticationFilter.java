@@ -35,6 +35,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
+        // T1-5: issued at another customer (or before T1-5, in multi mode): not authenticated; a protected path then
+        // answers 401 TENANT_MISMATCH (the entry point), a public one goes on as for any unusable token.
+        if (!TenantBinding.accepted(jwt, "token")) {
+            request.setAttribute(TenantBinding.MISMATCH_ATTRIBUTE, Boolean.TRUE);
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         var authentication = new UsernamePasswordAuthenticationToken(
             jwt.getUserId(),
