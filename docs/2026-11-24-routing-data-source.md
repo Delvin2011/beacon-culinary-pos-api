@@ -145,7 +145,7 @@ the shared multi-mode context. The local stack runs in multi mode by default.
 | Slice | What it adds |
 |---|---|
 | **T1-3** (done) | The customer from the request's address, the exceptions mapped to responses, `tenantId` on every request, the local stack in multi mode: `docs/2026-11-25-customer-from-address.md` |
-| **T1-5** | Tokens bound to their customer (until then multi mode is for the local stack only) |
+| **T1-5** (done) | Tokens bound to their customer: `docs/2026-11-25-customer-bound-credentials.md` |
 | **T1-4** | Customer database migrations per customer (provisioning), and `tenant_databases.last_migrated_version` |
 | **T1-6** | Background work completed: per-customer time zones for the daily jobs, spreading runs, other jobs as they come |
 

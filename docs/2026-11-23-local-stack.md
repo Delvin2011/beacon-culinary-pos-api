@@ -242,10 +242,11 @@ only while the stack runs, and `reset.ps1` / `down.ps1 -Volumes` replace or dele
 testcustomer in one run (beaconculinary with `SMOKE_EMAIL`, testcustomer with its smoke account), each at its own
 address; the 2-minute hold is at the first customer only. Also in multi mode: while one customer's order is placed,
 the other customer's kitchen stream receives nothing, and `nobody.pos.localhost` (a forged Host through Caddy)
-answers 404 with an empty body on `/api/health` and `/api/public/board/today`.
+answers 404 with an empty body on `/api/health` and `/api/public/board/today`. And (T1-5) beaconculinary's token
+presented at testcustomer answers 401 `TENANT_MISMATCH`.
 
 1. `GET /api/health` is `UP`, with an `X-Request-Id` header.
-2. Password sign-in sets the `refreshToken` cookie `Secure; HttpOnly; SameSite=None; Path=/api/auth/refresh`, and
+2. Password sign-in sets the `refreshToken` cookie `Secure; HttpOnly; SameSite=Lax; Path=/api/auth/refresh` (T1-5), and
    `POST /api/auth/refresh` with it returns a new token (the cookie's path matches the address the browser calls).
 3. Its own `X-Request-Id` comes back, and the backend's log line for that request shows
    `host=beaconculinary.pos.localhost`.
