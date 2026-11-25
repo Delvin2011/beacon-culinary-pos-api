@@ -56,6 +56,12 @@ public class Jwt {
         return claims.get(SignIn.SESSION_CLAIM, String.class);
     }
 
+    /** T1-5: the customer the token was issued at ({@link TenantBinding#CLAIM}), or null (single mode, older tokens). */
+    public Long getTenantId() {
+        var value = claims.get(TenantBinding.CLAIM);
+        return value instanceof Number number ? number.longValue() : null;
+    }
+
     /** The sign-in facts carried by this token, to keep them on refresh. */
     public SignIn getSignIn() {
         return new SignIn(getAmr(), getAuthTime(), getDeviceId(), getSessionId());

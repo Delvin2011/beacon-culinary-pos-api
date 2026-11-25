@@ -92,12 +92,11 @@ run after the customer is set. Tests: `CustomerFilterOrderIntegrationTests`.
 - **What counts as a database failure:** `DataAccessException`, `TransactionException` or JPA `PersistenceException`,
   or Spring Security's wrapper around one.
 
-## 7. Temporary limitation until T1-5
+## 7. Tokens are bound to their customer (T1-5)
 
-Tokens don't carry their customer yet. A token issued at customer A could be presented at customer B, where the
-same user id may belong to someone else. Multi mode logs a WARN at start-up, *"multi mode without customer-bound
-tokens: local development only"*, until T1-5 removes it. **Multi mode must not be used outside the local stack before
-T1-5.**
+Since T1-5, a token carries the customer it was issued at and is refused at any other with 401 `TENANT_MISMATCH`
+(`docs/2026-11-25-customer-bound-credentials.md`). T1-3's start-up warning is gone. Multi mode is fit to leave the local
+machine, subject to Stage A (Front Door, Key Vault).
 
 ## 8. Front Door (T1-0c)
 

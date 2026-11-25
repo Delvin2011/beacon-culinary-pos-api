@@ -52,6 +52,11 @@ public class JwtService {
         if (signIn.sessionId() != null) {
             builder.add(SignIn.SESSION_CLAIM, signIn.sessionId());
         }
+        // T1-5: the customer it is issued at (multi mode); single mode adds nothing.
+        var customerId = TenantBinding.currentCustomerId();
+        if (customerId != null) {
+            builder.add(TenantBinding.CLAIM, customerId);
+        }
         return new Jwt(builder.build(), jwtConfig.getSecretKey());
     }
 

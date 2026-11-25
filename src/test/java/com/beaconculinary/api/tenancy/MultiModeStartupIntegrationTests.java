@@ -95,7 +95,6 @@ class MultiModeStartupIntegrationTests {
                         .GET().build(), HttpResponse.BodyHandlers.ofString());
                 assertThat(health.statusCode()).as("platform health").isEqualTo(200);
                 assertThat(pools.hasPool("bravo")).isFalse();
-                assertThat(output.getAll()).contains("multi mode without customer-bound tokens: local development only");
             }
             assertThat(output.getAll().contains(SECRET_SENTINEL)).as("a secret value appears in the output").isFalse();
             assertThat(output.getAll().contains(password)).as("the database password appears in the output").isFalse();

@@ -55,7 +55,7 @@ class AuthLogoutIntegrationTests {
         assertThat(cleared).startsWith("refreshToken=;").contains("Max-Age=0").contains("Path=/auth/refresh")
                 .contains("HttpOnly").doesNotContainIgnoringCase("Domain=");
         if (secure) {
-            assertThat(cleared).contains("Secure").contains("SameSite=None");
+            assertThat(cleared).contains("Secure").contains("SameSite=Lax");
         } else {
             assertThat(cleared).doesNotContain("Secure").contains("SameSite=Lax");
         }

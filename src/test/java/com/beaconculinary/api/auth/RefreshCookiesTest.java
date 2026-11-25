@@ -19,7 +19,7 @@ class RefreshCookiesTest {
             var cleared = cookies.build("", Duration.ZERO);
             assertSameAttributes(issued, cleared);
             assertThat(issued.isSecure()).isEqualTo(secure);
-            assertThat(issued.getSameSite()).isEqualTo(secure ? "None" : "Lax");
+            assertThat(issued.getSameSite()).as("T1-5: Lax").isEqualTo("Lax");
             assertThat(issued.getPath()).isEqualTo("/auth/refresh");
             assertThat(issued.isHttpOnly()).isTrue();
             assertThat(issued.getDomain()).isNull();
@@ -33,7 +33,7 @@ class RefreshCookiesTest {
         var headers = response.getHeaders("Set-Cookie");
         assertThat(headers).hasSize(1);
         assertThat(headers.get(0)).startsWith("refreshToken=;").contains("Path=/auth/refresh").contains("Max-Age=0")
-                .contains("Secure").contains("HttpOnly").contains("SameSite=None");
+                .contains("Secure").contains("HttpOnly").contains("SameSite=Lax").doesNotContainIgnoringCase("Domain=");
     }
 
     @Test

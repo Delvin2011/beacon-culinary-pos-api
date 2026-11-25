@@ -172,6 +172,10 @@ public class AuthService {
         if (jwt == null || jwt.isExpired()) {
             throw new BadCredentialsException("Invalid refresh token");
         }
+        // T1-5: a refresh cookie from another customer (checked before the user, who may not exist here).
+        if (!TenantBinding.accepted(jwt, "refresh token")) {
+            throw new TenantBinding.MismatchException();
+        }
 
         var user = userRepository.findById(jwt.getUserId()).orElseThrow();
         // A deactivated user's existing refresh token stops working too, and so does a user whose
