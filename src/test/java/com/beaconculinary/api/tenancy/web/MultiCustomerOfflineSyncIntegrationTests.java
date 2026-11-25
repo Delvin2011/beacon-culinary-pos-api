@@ -92,18 +92,48 @@ class MultiCustomerOfflineSyncIntegrationTests extends MultiCustomerIntegrationT
     }
 
     @Test
-    void alphasGrant_meansNothingAtBravo() throws Exception {
+    void alphasGrant_fromBravosOwnTill_isRefusedAsGrantInvalid_andNothingIsWrittenAtBravo() throws Exception {
+        // The grant's signature is good (one key for every customer), but bravo has no such grant: the grant check.
         var clientOrderId = UUID.randomUUID().toString();
+        var bravoBefore = rowCounts(bravo.db());
+        var alphaBefore = rowCounts(alpha.db());
+
         var result = sendSales(bravo, List.of(alpha.grant().get("grant").asText()), List.of(sale(alpha, clientOrderId)));
-        var status = result.getResponse().getStatus();
-        if (status == 200) {
-            var first = body(result).get("results").get(0);
-            assertThat(first.get("result").asText()).as("refused, not created").doesNotStartWith("CREATED");
-        } else {
-            assertThat(status).isBetween(400, 499);
+
+        assertThat(result.getResponse().getStatus()).as(result.getResponse().getContentAsString()).isEqualTo(200);
+        var first = body(result).get("results").get(0);
+        assertThat(first.get("clientOrderId").asText()).isEqualTo(clientOrderId);
+        assertThat(first.get("result").asText()).isEqualTo("REFUSED");
+        assertThat(first.get("code").asText()).isEqualTo("GRANT_INVALID");
+        assertThat(first.hasNonNull("orderId")).as("no order").isFalse();
+        assertThat(rowCounts(bravo.db())).as("no row added or removed in any table at bravo").isEqualTo(bravoBefore);
+        assertThat(rowCounts(alpha.db())).as("nor at alpha: the sale was sent to bravo").isEqualTo(alphaBefore);
+    }
+
+    @Test
+    void alphasTillAndGrant_atBravo_isRefusedAsAnUnregisteredTill_andNothingIsWrittenAtBravo() throws Exception {
+        // Alpha's till cookie means nothing at bravo: refused before any grant is looked at.
+        var clientOrderId = UUID.randomUUID().toString();
+        var bravoBefore = rowCounts(bravo.db());
+
+        var result = bravo.mvc().perform(on(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/pos/offline/sales"), alpha.till())
+                .contentType(MediaType.APPLICATION_JSON).content(MAPPER.writeValueAsString(Map.of(
+                        "grants", List.of(alpha.grant().get("grant").asText()), "sales", List.of(sale(alpha, clientOrderId))))))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(403);
+        assertThat(body(result).get("code").asText()).isEqualTo("DEVICE_NOT_REGISTERED");
+        assertThat(rowCounts(bravo.db())).as("no row added or removed in any table at bravo").isEqualTo(bravoBefore);
+        assertThat(orders(alpha.db(), clientOrderId)).isZero();
+    }
+
+    /** Every table's exact row count in this customer's database. */
+    private static Map<String, Long> rowCounts(JdbcTemplate db) {
+        var counts = new java.util.TreeMap<String, Long>();
+        for (var table : db.queryForList("SELECT name FROM sys.tables WHERE is_ms_shipped = 0", String.class)) {
+            counts.put(table, db.queryForObject("SELECT COUNT_BIG(*) FROM [" + table.replace("]", "]]") + "]", Long.class));
         }
-        assertThat(orders(bravo.db(), clientOrderId)).as("bravo recorded no order from alpha's grant").isZero();
-        assertThat(orders(alpha.db(), clientOrderId)).as("nor did alpha: the sale was sent to bravo").isZero();
+        return counts;
     }
 
     // --- helpers ---
