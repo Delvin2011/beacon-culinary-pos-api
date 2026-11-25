@@ -8,7 +8,7 @@
     At each customer:
       1. /api/health is UP through the proxy, with an X-Request-Id header.
       2. Password sign-in (beaconculinary: SMOKE_EMAIL; the others: their smoke account smoke@<name>.test, made by up.ps1;
-         SMOKE_PASSWORD) sets the refresh cookie Secure, HttpOnly, SameSite=None, Path=/api/auth/refresh, and
+         SMOKE_PASSWORD) sets the refresh cookie Secure, HttpOnly, SameSite=Lax (T1-5), Path=/api/auth/refresh, and
          /api/auth/refresh with that cookie works.
       3. Our own X-Request-Id comes back, and the backend's log line for it shows host=<customer>.pos.localhost.
       4. The kitchen stream, opened through the proxy, delivers the event of an order placed through the API within
@@ -191,7 +191,7 @@ try {
         } else {
             $attributes = @($refresh.Split(';') | Select-Object -Skip 1 | ForEach-Object { $_.Trim() })
             $missing = @()
-            foreach ($expected in 'Secure', 'HttpOnly', 'SameSite=None', 'Path=/api/auth/refresh') {
+            foreach ($expected in 'Secure', 'HttpOnly', 'SameSite=Lax', 'Path=/api/auth/refresh') {
                 if (-not ($attributes | Where-Object { $_ -ieq $expected })) { $missing += $expected }
             }
             $shown = ($attributes | Where-Object { $_ -notlike 'Expires=*' }) -join '; '
@@ -219,6 +219,14 @@ try {
             $loggedHost = if ($hostMatch.Success) { $hostMatch.Groups[1].Value } else { '(none)' }
             Add-Result "${label}log line host" ($loggedHost -eq $expectedHost) "host=$loggedHost"
         }
+    }
+
+    # --- T1-5, multi mode: a token from one customer is refused at the other ---
+    if ($customers.Count -gt 1) {
+        $script:base = Get-CustomerUrl $config $customers[1]
+        $foreign = Invoke-Api 'GET' '/api/admin/staff' $null $tokens[$customers[0]]
+        $code = if ($foreign.Json -and $foreign.Json.PSObject.Properties.Name -contains 'code') { $foreign.Json.code } else { '' }
+        Add-Result "$($customers[0]) token at $($customers[1])" ($foreign.Status -eq 401 -and $code -eq 'TENANT_MISMATCH') "HTTP $($foreign.Status) $code"
     }
 
     # --- 4, at each customer: a sale on its kitchen stream, never on the others' ---
