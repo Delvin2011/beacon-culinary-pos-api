@@ -24,7 +24,7 @@ $problems = 0
 
 Write-Step "Containers ($($config.StackName))"
 & docker ps -a --filter "label=com.docker.compose.project=$($config.StackName)" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
-Write-Host "   Active customer: $($config.ActiveCustomer)   SQL: $($config.SqlMode)   Frontend: $($config.FrontendMode)"
+Write-Host "   Tenancy: $($config.TenancyMode)   Serving: $((Get-ServedCustomers $config) -join ', ')   SQL: $($config.SqlMode)   Frontend: $($config.FrontendMode)"
 
 Write-Step 'Customer databases'
 $sqlUp = $true
@@ -59,7 +59,7 @@ if ($sqlUp) {
             if (-not ($registered | Where-Object Slug -eq $name)) { Write-Problem "$name : not registered (up.ps1 registers it)"; $problems++ }
         }
     }
-    Write-Host "   Tenancy mode: $($config.TenancyMode) (the backend serves $($config.ActiveCustomer) either way until T1-2 and T1-3)"
+    Write-Host "   Tenancy mode: $($config.TenancyMode)"
 }
 
 if ($Snapshot -and $states.Count -gt 0) {
@@ -98,6 +98,16 @@ if (-not $caddyRunning) {
     Write-Problem 'The gateway is not running (up.ps1).'; $problems++
 } elseif (Test-BackendHealthy $config) {
     Write-Ok 'backend /health UP (inside the stack)'
+    if ($config.TenancyMode -eq 'multi') {
+        # T1-3: which customers the backend has served: its customer pools, from its own log lines (/health names none).
+        $open = [ordered]@{}
+        foreach ($line in Invoke-Docker @('logs', "$($config.StackName)-backend-1")) {
+            $m = [regex]::Match($line, 'tenancy: customer ([a-z0-9-]+) pool (opened|closed)')
+            if ($m.Success) { $open[$m.Groups[1].Value] = ($m.Groups[2].Value -eq 'opened') }
+        }
+        $served = @($open.Keys | Where-Object { $open[$_] })
+        Write-Host "   Customers served since the backend started (pools open): $(if ($served.Count) { $served -join ', ' } else { 'none yet' })"
+    }
 } else {
     Write-Problem "backend not healthy: docker compose -p $($config.StackName) logs backend"; $problems++
 }
@@ -121,12 +131,14 @@ if ($roots.Count -eq 0) {
     Write-Ok "Caddy root trusted ($($roots.Count) in the Windows store; remove old ones after down.ps1 -Volumes)"
 }
 if ($caddyRunning) {
-    $url = Get-CustomerUrl $config $config.ActiveCustomer
-    try {
-        $response = Invoke-WebRequest -Uri "$url/api/health" -UseBasicParsing -TimeoutSec 15
-        Write-Ok "$url/api/health -> $($response.StatusCode)"
-    } catch {
-        Write-Problem "$url/api/health from this machine: $($_.Exception.Message)"; $problems++
+    foreach ($name in Get-ServedCustomers $config) {
+        $url = Get-CustomerUrl $config $name
+        try {
+            $response = Invoke-WebRequest -Uri "$url/api/health" -UseBasicParsing -TimeoutSec 15
+            Write-Ok "$url/api/health -> $($response.StatusCode)"
+        } catch {
+            Write-Problem "$url/api/health from this machine: $($_.Exception.Message)"; $problems++
+        }
     }
 }
 

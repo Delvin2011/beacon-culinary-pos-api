@@ -90,7 +90,8 @@ function Get-StackConfig([string] $Customer, [string] $FrontendMode) {
         SmokePassword      = Get-Setting $values 'SMOKE_PASSWORD' ''
         PlatformDatabase   = Get-Setting $values 'PLATFORM_DATABASE' 'pos_platform'
         PlatformPassword   = Get-Setting $values 'PLATFORM_DB_PASSWORD' ''
-        TenancyMode        = Get-Setting $values 'TENANCY_MODE' 'single'
+        # T1-3: multi (every customer at its own address) by default; single serves ACTIVE_CUSTOMER only.
+        TenancyMode        = Get-Setting $values 'TENANCY_MODE' 'multi'
         # The raw settings, for the customers' SECRET_<NAME>_DB_* values (never printed).
         Values             = $values
     }
@@ -154,6 +155,114 @@ function Set-ComposeEnvironment($Config, [string] $FrontendUpstream) {
     if ($FrontendUpstream) { $env:FRONTEND_UPSTREAM = $FrontendUpstream }
     $env:PLATFORM_DATABASE = $Config.PlatformDatabase
     $env:APP_TENANCY_MODE = $Config.TenancyMode
+    # T1-3: in multi mode Caddy serves every *.pos.localhost (its single-mode guard matches nothing), and invite links
+    # are built by the frontend from its own address (one backend, many customers).
+    if ($Config.TenancyMode -eq 'multi') {
+        $env:CADDY_ACTIVE_HOST = '*.pos.localhost'
+        $env:STACK_PUBLIC_BASE_URL = ''
+    } else {
+        $env:CADDY_ACTIVE_HOST = "$($Config.ActiveCustomer).pos.localhost"
+        $env:STACK_PUBLIC_BASE_URL = Get-CustomerUrl $Config $Config.ActiveCustomer
+    }
+}
+
+<# T1-3: the customers the backend serves: every managed customer in multi mode, ACTIVE_CUSTOMER in single mode. #>
+function Get-ServedCustomers($Config) {
+    if ($Config.TenancyMode -eq 'multi') { return Get-ManagedCustomers }
+    return @($Config.ActiveCustomer)
+}
+
+<# T1-3: the account smoke.ps1 signs in with at a customer: SMOKE_EMAIL at beaconculinary, smoke@<name>.test elsewhere. #>
+function Get-SmokeEmail($Config, [string] $Name) {
+    if ($Name -eq $script:FullHistoryCustomer) { return $Config.SmokeEmail }
+    return "smoke@$Name.test"
+}
+
+<# One JSON request through the gateway; returns the status and parsed body. Nothing is printed. #>
+function Invoke-StackApi([string] $Method, [string] $Url, $Body) {
+    Add-Type -AssemblyName System.Net.Http
+    $client = [System.Net.Http.HttpClient]::new()
+    try {
+        $client.Timeout = [TimeSpan]::FromSeconds(30)
+        $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::new($Method), $Url)
+        if ($null -ne $Body) {
+            $request.Content = [System.Net.Http.StringContent]::new(($Body | ConvertTo-Json -Compress), [Text.Encoding]::UTF8, 'application/json')
+        }
+        $response = $client.SendAsync($request).GetAwaiter().GetResult()
+        $text = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        $json = $null
+        if ($text -and $text.TrimStart().StartsWith('{')) { try { $json = $text | ConvertFrom-Json } catch { $json = $null } }
+        return [pscustomobject]@{ Status = [int]$response.StatusCode; Json = $json }
+    } finally {
+        $client.Dispose()
+    }
+}
+
+<#
+    T1-3: the smoke account at a customer other than beaconculinary (which uses the demo SMOKE_EMAIL): an admin
+    smoke@<name>.test whose password is SMOKE_PASSWORD. Made when its database is (up.ps1, new-customer.ps1, and again
+    after reset.ps1): FirstAdminCommand's invite link is captured, never shown, and accepted through the gateway with
+    SMOKE_PASSWORD. Nothing to do when the account already signs in. Only for https://<name>.pos.localhost addresses.
+#>
+function Initialize-SmokeAccount($Config, [string] $Name) {
+    if ($Name -eq $script:FullHistoryCustomer) { return }
+    if (-not $Config.SmokePassword) { Write-Problem "SMOKE_PASSWORD isn't set in devstack/stack.env: no smoke account at $Name."; return }
+    $base = Get-CustomerUrl $Config $Name
+    if ($base -cnotmatch '^https://[a-z][a-z0-9]{2,29}\.pos\.localhost(:\d{1,5})?$') { throw "Smoke accounts are made only at *.pos.localhost addresses, not $base." }
+    $email = Get-SmokeEmail $Config $Name
+    $signIn = Invoke-StackApi 'POST' "$base/api/auth/login" @{ email = $email; password = $Config.SmokePassword }
+    if ($signIn.Status -eq 200) { Write-Ok "smoke account at ${Name}: $email (exists)"; return }
+
+    if (-not (Test-Path -LiteralPath $script:Jar)) { throw "The backend jar is missing ($script:Jar)." }
+    $saved = @{}
+    foreach ($variable in 'SPRING_DATASOURCE_URL', 'SPRING_DATASOURCE_USERNAME', 'SPRING_DATASOURCE_PASSWORD') {
+        $saved[$variable] = [Environment]::GetEnvironmentVariable($variable)
+    }
+    $env:SPRING_DATASOURCE_URL = Get-HostJdbcUrl $Config $Name
+    $env:SPRING_DATASOURCE_USERNAME = $Config.SqlUser
+    $env:SPRING_DATASOURCE_PASSWORD = $Config.SqlPassword
+    $token = $null
+    try {
+        $ErrorActionPreference = 'Continue'
+        $javaArgs = @('-cp', $script:Jar, '-Dloader.main=com.beaconculinary.api.ops.FirstAdminCommand',
+                      'org.springframework.boot.loader.launch.PropertiesLauncher', '--name', 'Smoke check', '--email', $email, '--base-url', $base)
+        # Captured, never shown: it holds the invite link.
+        $output = (& java @javaArgs 2>&1 | ForEach-Object { "$_" }) -join "`n"
+        if ($LASTEXITCODE -eq 3) {
+            # Another admin has set a password (a real first admin): this extra account needs --force.
+            $output = (& java @($javaArgs + @('--force', '--reason', 'local smoke check account (devstack)')) 2>&1 | ForEach-Object { "$_" }) -join "`n"
+        }
+        if ($LASTEXITCODE -ne 0) { throw "FirstAdminCommand for the smoke account at $Name failed (exit code $LASTEXITCODE; its output isn't shown: it may hold a link)." }
+        $match = [regex]::Match($output, '#t=([A-Za-z0-9_-]+)')
+        if (-not $match.Success) { throw "FirstAdminCommand gave no invite link for the smoke account at $Name." }
+        $token = $match.Groups[1].Value
+        $output = $null
+    } finally {
+        foreach ($variable in $saved.Keys) { [Environment]::SetEnvironmentVariable($variable, $saved[$variable]) }
+    }
+    # An ADMIN's invite also asks for a PIN: a random one, never stored or shown (the smoke check signs in by password).
+    # Another PIN if the PIN rules refuse it (the invite stays valid until accepted).
+    $accepted = $null
+    for ($try = 0; $try -lt 3; $try++) {
+        $bytes = [byte[]]::new(4)
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $pin = '{0:D6}' -f ([BitConverter]::ToUInt32($bytes, 0) % 1000000)
+        $accepted = Invoke-StackApi 'POST' "$base/api/auth/invites/accept" @{ token = $token; password = $Config.SmokePassword; pin = $pin }
+        $pin = $null
+        $pinRefused = $accepted.Status -eq 400 -and $accepted.Json -and $accepted.Json.PSObject.Properties.Name -contains 'details' -and
+            $accepted.Json.details.fields -and $accepted.Json.details.fields.PSObject.Properties.Name -contains 'pin' -and
+            -not ($accepted.Json.details.fields.PSObject.Properties.Name -contains 'password')
+        $pinRefused = $pinRefused -or ($accepted.Status -eq 409 -and $accepted.Json -and $accepted.Json.code -eq 'PIN_IN_USE')
+        if (-not $pinRefused) { break }
+    }
+    $token = $null
+    if ($accepted.Status -ne 200) {
+        $code = if ($accepted.Json -and $accepted.Json.PSObject.Properties.Name -contains 'code') { " $($accepted.Json.code)" } else { '' }
+        throw "Accepting the smoke account's invite at $Name failed: HTTP $($accepted.Status)$code."
+    }
+    $signIn = Invoke-StackApi 'POST' "$base/api/auth/login" @{ email = $email; password = $Config.SmokePassword }
+    if ($signIn.Status -ne 200) { throw "The new smoke account at $Name can't sign in: HTTP $($signIn.Status)." }
+    Write-Ok "smoke account at ${Name}: $email (made)"
 }
 
 <#

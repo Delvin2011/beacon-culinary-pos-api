@@ -140,7 +140,7 @@ try {
     Assert-Case 'an unknown tenancy mode is refused' $refused 'accepted'
     Write-StackEnv $validEnv
     $config = Get-StackConfig
-    Assert-Case 'tenancy defaults to single and the platform database to pos_platform' ($config.TenancyMode -eq 'single' -and
+    Assert-Case 'tenancy defaults to multi (T1-3) and the platform database to pos_platform' ($config.TenancyMode -eq 'multi' -and
         $config.PlatformDatabase -eq 'pos_platform') "$($config.TenancyMode) $($config.PlatformDatabase)"
 
     # The login's password goes to sqlcmd as an environment variable named on the docker command line, never as a value.

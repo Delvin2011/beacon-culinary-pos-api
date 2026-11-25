@@ -12,13 +12,15 @@
     5. Checks the address from this machine (hosts file and certificate) and says what to fix if it doesn't work.
     T1-1: between 3 and 4, the platform database (created if missing, migrated) and each customer's own database login,
     and every customer registered in it with its <name>.pos.localhost host and its secret names (idempotent).
+    T1-3: multi mode (the default) serves every customer at its own address; after 4, each served customer other than
+    beaconculinary gets its smoke account (smoke@<name>.test, SMOKE_PASSWORD) if it has none.
 
 .PARAMETER Customer
     Serve this customer's database for this run, instead of ACTIVE_CUSTOMER in stack.env.
 
 .PARAMETER TenancyMode
-    single or multi for this run, instead of TENANCY_MODE in stack.env. multi: the backend migrates the platform database
-    and loads the customer directory at startup (it still serves the active customer's database).
+    single or multi for this run, instead of TENANCY_MODE in stack.env (default multi). multi: every customer at its
+    own address; single: only the active customer (-Customer or ACTIVE_CUSTOMER), the others answer 503 at Caddy.
 
 .PARAMETER Frontend
     container | host | none, instead of FRONTEND_MODE in stack.env. host: run "npm run dev" in the frontend
@@ -71,7 +73,7 @@ if ($config.FrontendMode -eq 'container') {
 if ($config.FrontendMode -eq 'host') { $frontendUpstream = 'host.docker.internal:3000' }
 if ($config.FrontendMode -eq 'none') { $frontendUpstream = 'no-frontend.invalid:3000' }
 Set-ComposeEnvironment $config $frontendUpstream
-Write-Ok "customer $($config.ActiveCustomer), SQL $($config.SqlMode), frontend $($config.FrontendMode)"
+Write-Ok "tenancy $($config.TenancyMode), serving $((Get-ServedCustomers $config) -join ', '), SQL $($config.SqlMode), frontend $($config.FrontendMode)"
 
 if (-not $SkipBuild) {
     Write-Step 'Building the backend jar (mvnw package, tests skipped)'
@@ -105,7 +107,7 @@ Initialize-PlatformDatabase $config
 foreach ($name in Get-ManagedCustomers) { Register-StackCustomer $config $name }
 Write-Ok "registered: $((Get-ManagedCustomers) -join ', ') (tenancy $($config.TenancyMode))"
 
-Write-Step "Backend (serving $($config.ActiveCustomer)), gateway$(if ($config.FrontendMode -eq 'container') { ' and frontend' })"
+Write-Step "Backend (serving $((Get-ServedCustomers $config) -join ', ')), gateway$(if ($config.FrontendMode -eq 'container') { ' and frontend' })"
 $services = @('backend', 'caddy')
 if ($config.FrontendMode -eq 'container') { $services += 'frontend' }
 # --build: the backend image picks up the jar just built. A customer switch changes the backend's settings, so compose recreates it.
@@ -115,12 +117,24 @@ Write-Ok 'backend healthy'
 
 Write-Step 'From this machine'
 $url = Get-CustomerUrl $config $config.ActiveCustomer
-try {
-    $response = Invoke-WebRequest -Uri "$url/api/health" -UseBasicParsing -TimeoutSec 15
-    Write-Ok "$url/api/health -> $($response.StatusCode)"
-} catch {
-    Write-Problem "$url/api/health failed from this machine: $($_.Exception.Message)"
-    Write-Problem 'Check the hosts-file lines and that Caddy''s root certificate is trusted (devstack/scripts/status.ps1 says which).'
+$reachable = $true
+foreach ($name in Get-ServedCustomers $config) {
+    $customerUrl = Get-CustomerUrl $config $name
+    try {
+        $response = Invoke-WebRequest -Uri "$customerUrl/api/health" -UseBasicParsing -TimeoutSec 15
+        Write-Ok "$customerUrl/api/health -> $($response.StatusCode)"
+    } catch {
+        $reachable = $false
+        Write-Problem "$customerUrl/api/health failed from this machine: $($_.Exception.Message)"
+        Write-Problem 'Check the hosts-file lines and that Caddy''s root certificate is trusted (devstack/scripts/status.ps1 says which).'
+    }
+}
+
+Write-Step 'Smoke accounts'
+if ($reachable) {
+    foreach ($name in Get-ServedCustomers $config) { Initialize-SmokeAccount $config $name }
+} else {
+    Write-Problem 'Skipped: a customer address is unreachable from this machine (above).'
 }
 
 Write-Host ''
