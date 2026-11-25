@@ -4,7 +4,8 @@
     hand (docs/2026-11-23-local-stack.md, "Selling by hand").
 
 .DESCRIPTION
-    Through the API, as an admin (SMOKE_EMAIL / SMOKE_PASSWORD in stack.env), the way the kitchen would:
+    Through the API, as an admin, the way the kitchen would: SMOKE_EMAIL at beaconculinary; at the other customers
+    their smoke account (smoke@<name>.test, made by up.ps1); SMOKE_PASSWORD either way.
       1. Today's demo plan, as the demo data seeds it on the day the migrations run:
            Breakfast  Rice & Beef, Chicken & Potatoes
            Lunch      Rice & Chicken, Potatoes & Beef; extras Rice, Chicken, Potatoes, Beef
@@ -18,7 +19,8 @@
     customer's) is skipped and named.
 
     It refuses a database that isn't the stack's: the customer must be one of the stack's, its database must exist on
-    the stack's SQL Server, and the backend must be serving it. It only calls https://<customer>.pos.localhost.
+    the stack's SQL Server, and the backend must be serving it (T1-3: in multi mode, every customer at its own address;
+    in single mode, ACTIVE_CUSTOMER only). It only calls https://<customer>.pos.localhost.
 
 .PARAMETER Portions
     Portions (and extras) per item when planning (default 20).
@@ -38,12 +40,16 @@ $name = $config.ActiveCustomer
 # --- the stack's database only ---
 if ((Get-ManagedCustomers) -notcontains $name) { throw "$name isn't one of the stack's customers ($((Get-ManagedCustomers) -join ', '))." }
 if (-not (Test-StackDatabase $config $name)) { throw "There is no database $name on the stack's SQL Server." }
-$backendUrl = (Invoke-Docker @('inspect', '--format', '{{range .Config.Env}}{{println .}}{{end}}', "$($config.StackName)-backend-1")) |
-    Where-Object { $_ -like 'SPRING_DATASOURCE_URL=*' } | Select-Object -First 1
-if ($backendUrl -notmatch "databaseName=$name;") {
+$backendEnv = Invoke-Docker @('inspect', '--format', '{{range .Config.Env}}{{println .}}{{end}}', "$($config.StackName)-backend-1")
+if ($backendEnv -contains 'APP_TENANCY_MODE=multi') {
+    # T1-3: multi mode serves every registered customer at its own address.
+    if ((Invoke-StackApi 'GET' "$(Get-CustomerUrl $config $name)/api/health" $null).Status -ne 200) {
+        throw "The backend isn't serving $name at $(Get-CustomerUrl $config $name) (status.ps1 says why)."
+    }
+} elseif (-not ($backendEnv | Where-Object { $_ -like 'SPRING_DATASOURCE_URL=*' -and $_ -match "databaseName=$name;" })) {
     throw "The backend isn't serving $name. Run devstack/scripts/up.ps1 -Customer $name first."
 }
-if (-not $config.SmokeEmail -or -not $config.SmokePassword) { throw 'Set SMOKE_EMAIL and SMOKE_PASSWORD (an ADMIN of this customer) in devstack/stack.env.' }
+if (-not $config.SmokeEmail -or -not $config.SmokePassword) { throw 'Set SMOKE_EMAIL and SMOKE_PASSWORD (an ADMIN account) in devstack/stack.env.' }
 
 $base = "$(Get-CustomerUrl $config $name)/api"
 $headers = @{}
@@ -64,7 +70,7 @@ function Invoke-Admin([string] $Method, [string] $Path, $Body) {
 }
 
 Write-Step "Today's demo meals in $name"
-$login = Invoke-Admin 'POST' '/auth/login' @{ email = $config.SmokeEmail; password = $config.SmokePassword }
+$login = Invoke-Admin 'POST' '/auth/login' @{ email = (Get-SmokeEmail $config $name); password = $config.SmokePassword }
 $headers.Authorization = "Bearer $($login.token)"
 $login = $null
 
