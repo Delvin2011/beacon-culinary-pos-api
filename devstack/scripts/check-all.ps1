@@ -17,6 +17,9 @@
                             code being merged)
       9. stack status       status.ps1
      10. smoke              smoke.ps1
+    T1-3: it notes the commit it runs on (and fails if HEAD moves during the run), and stops the stack's containers
+    before the backend tests (the suite uses its own SQL Server; step 8 starts them again), so the machine doesn't run
+    out of memory. Run it from a terminal, not as a Claude Code background command (which is stopped when memory runs low).
     At the end: a table (PASS, FAIL or SKIP, counts where the step gives them, duration) and one overall result. Exit
     code 1 when any step failed. Each step's full output is saved under devstack/.logs/check-<time>/ (git-ignored);
     the path is printed. Invite links are masked in the logs, and no password is ever passed on a command line.
@@ -102,6 +105,21 @@ function Invoke-StackScript([string] $Script, [string[]] $Arguments) {
 }
 
 Write-Step "check-all ($($started.ToString('yyyy-MM-dd HH:mm'))); logs in $logDir"
+# T1-3: the commit tested, and the memory free at the start.
+$commit = (& git -C $script:RepoRoot rev-parse HEAD 2>$null | Select-Object -First 1)
+$dirty = @(& git -C $script:RepoRoot status --porcelain 2>$null | Where-Object { $_ -notmatch 'app-run\.log' })
+$freeGb = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 1)
+Write-Host "   commit $commit$(if ($dirty.Count) { " (plus $($dirty.Count) uncommitted change(s))" }); $freeGb GB memory free"
+if ($config -and -not $SkipStack -and -not $SkipBackend) {
+    # T1-3: the stack's containers (SQL Server, backend, frontend) aren't needed by the backend tests; step 8 restarts them.
+    try {
+        Set-ComposeEnvironment $config $null
+        Invoke-Compose stop
+        Write-Host '   stack containers stopped for the backend tests (stack up starts them again)'
+    } catch {
+        Write-Problem "Couldn't stop the stack's containers: $($_.Exception.Message)"
+    }
+}
 
 # --- 1. backend ---
 $backendStart = Get-Date
@@ -193,6 +211,10 @@ Invoke-Step 'smoke' 'stack-smoke' { Invoke-StackScript 'smoke.ps1' $smokeArgs } 
 } $stackSkip
 
 # --- the result ---
+$endCommit = (& git -C $script:RepoRoot rev-parse HEAD 2>$null | Select-Object -First 1)
+if ($endCommit -ne $commit) {
+    $results.Add([pscustomobject]@{ Step = 'same commit'; Result = 'FAIL'; Counts = "HEAD moved: $commit -> $endCommit"; Seconds = 0; Log = $null })
+}
 $failed = @($results | Where-Object { $_.Result -eq 'FAIL' })
 $total = (Get-Date) - $started
 Write-Host ''
@@ -208,7 +230,9 @@ $overall = if ($failed.Count -eq 0) { 'PASS' } else { 'FAIL' }
 $summaryLine = "Overall: $overall ({0} passed, {1} failed, {2} skipped) in {3:N0} min" -f @($results | Where-Object Result -eq 'PASS').Count, $failed.Count, @($results | Where-Object Result -eq 'SKIP').Count, $total.TotalMinutes
 Write-Host $summaryLine -ForegroundColor $(if ($failed.Count -eq 0) { 'Green' } else { 'Red' })
 foreach ($row in $failed) { Write-Host "  $($row.Step): $($row.Log)" -ForegroundColor Red }
+Write-Host "Commit: $commit$(if ($dirty.Count) { " (plus $($dirty.Count) uncommitted change(s))" })"
 Write-Host "Logs: $logDir"
-$results | Select-Object Step, Result, Counts, Seconds | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $logDir 'summary.json') -Encoding utf8
+[pscustomobject]@{ Commit = $commit; Uncommitted = $dirty.Count; Steps = @($results | Select-Object Step, Result, Counts, Seconds) } |
+    ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $logDir 'summary.json') -Encoding utf8
 if ($failed.Count -gt 0) { exit 1 }
 exit 0

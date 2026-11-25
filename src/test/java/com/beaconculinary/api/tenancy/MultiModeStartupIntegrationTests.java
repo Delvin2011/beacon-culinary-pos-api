@@ -2,7 +2,6 @@ package com.beaconculinary.api.tenancy;
 
 import com.beaconculinary.api.BeaconCulinaryApiApplication;
 import com.beaconculinary.api.support.baseline.ThrowawayDatabase;
-import com.beaconculinary.api.support.tenancy.TestCustomerFilter;
 import com.beaconculinary.api.tenancy.context.CurrentCustomer;
 import com.beaconculinary.api.tenancy.context.CustomerContext;
 import com.beaconculinary.api.tenancy.context.NoCurrentCustomerException;
@@ -37,8 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * T1-2: in multi-customer mode the application starts without connecting to any customer database (there is no
  * customer at start-up), here with both customers' databases unreachable. Afterwards a database access with no
- * customer is the specific error, never a fallback; and without the test-only configuration, the test header that
- * picks a customer is ignored.
+ * customer is the specific error, never a fallback; and (T1-3) the backend's own address serves /health only.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ExtendWith(OutputCaptureExtension.class)
@@ -86,19 +84,18 @@ class MultiModeStartupIntegrationTests {
                 assertThat(pools.hasPool("alpha")).isTrue();
                 assertThat(pools.hasPool("bravo")).isFalse();
 
-                // Without TestCustomerConfig the test header picks no customer.
+                // T1-3: at the backend's own address (localhost) only /health answers; no customer data is reachable.
                 var port = app.getEnvironment().getRequiredProperty("local.server.port");
-                var before = output.getAll().length();
-                // The public board reads the database without signing in (sign-in turns any error into a 401).
-                var response = HttpClient.newHttpClient().send(HttpRequest.newBuilder()
-                                .uri(URI.create("http://localhost:" + port + "/public/board/today"))
-                                .header(TestCustomerFilter.HEADER, "bravo")
-                                .GET()
-                                .build(),
-                        HttpResponse.BodyHandlers.ofString());
-                assertThat(response.statusCode()).as("the request couldn't reach a database").isGreaterThanOrEqualTo(500);
-                assertThat(output.getAll().substring(before)).contains("No current customer");
-                assertThat(pools.hasPool("bravo")).as("the header was ignored").isFalse();
+                var client = HttpClient.newHttpClient();
+                var board = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/public/board/today"))
+                        .GET().build(), HttpResponse.BodyHandlers.ofString());
+                assertThat(board.statusCode()).isEqualTo(404);
+                assertThat(board.body()).isEmpty();
+                var health = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/health"))
+                        .GET().build(), HttpResponse.BodyHandlers.ofString());
+                assertThat(health.statusCode()).as("platform health").isEqualTo(200);
+                assertThat(pools.hasPool("bravo")).isFalse();
+                assertThat(output.getAll()).contains("multi mode without customer-bound tokens: local development only");
             }
             assertThat(output.getAll().contains(SECRET_SENTINEL)).as("a secret value appears in the output").isFalse();
             assertThat(output.getAll().contains(password)).as("the database password appears in the output").isFalse();

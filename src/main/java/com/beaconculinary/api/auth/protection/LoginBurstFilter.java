@@ -1,5 +1,6 @@
 package com.beaconculinary.api.auth.protection;
 
+import com.beaconculinary.api.tenancy.context.CustomerContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -78,14 +79,19 @@ public class LoginBurstFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         Duration refusedFor = null;
         String clientIp = null;
+        ClientBucket consumedFrom = null;
         try {
             clientIp = clientIpResolver.resolve(request.getRemoteAddr(), request.getHeader("X-Forwarded-For"));
-            var key = clientIp == null ? "unknown" : clientIp;
+            var ip = clientIp == null ? "unknown" : clientIp;
+            // T1-3: per customer and IP ("" is the customer in single mode), so customers never share a limit.
+            var key = CustomerContext.scopeKey() + "|" + ip;
             var client = buckets.get(key, k -> new ClientBucket(newBucket(), new AtomicLong(Long.MIN_VALUE)));
             var probe = client.bucket().tryConsumeAndReturnRemaining(1);
             if (!probe.isConsumed()) {
                 refusedFor = Duration.ofNanos(probe.getNanosToWaitForRefill());
-                warnAtMostOncePerInterval(client, key, refusedFor);
+                warnAtMostOncePerInterval(client, ip, refusedFor);
+            } else {
+                consumedFrom = client;
             }
         } catch (RuntimeException e) {
             log.error("Login burst limit failed; letting the request through", e);
@@ -96,6 +102,10 @@ public class LoginBurstFilter extends OncePerRequestFilter {
             return;
         }
         filterChain.doFilter(request, response);
+        // T1-3: a sign-in the database couldn't serve (503) doesn't count towards the limit.
+        if (consumedFrom != null && response.getStatus() == HttpStatus.SERVICE_UNAVAILABLE.value()) {
+            consumedFrom.bucket().addTokens(1);
+        }
     }
 
     private Bucket newBucket() {

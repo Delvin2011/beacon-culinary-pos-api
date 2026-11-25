@@ -43,6 +43,8 @@ public class RequestContextFilter extends OncePerRequestFilter {
     /** A host name or IPv4 address with an optional port; at most 253 + 6 characters. */
     static final Pattern SAFE_HOST = Pattern.compile("[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?");
     static final String FORWARDED_HOST = "X-Forwarded-Host";
+    /** T1-3: the request's customer slug, left by the customer filter for the request line's tenantId. */
+    public static final String TENANT_ATTRIBUTE = "beacon.tenantId";
 
     private static final Logger log = LoggerFactory.getLogger(RequestContextFilter.class);
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
@@ -91,18 +93,24 @@ public class RequestContextFilter extends OncePerRequestFilter {
 
     /** The host the browser used: X-Forwarded-Host from a trusted proxy, otherwise Host; "invalid" if unsafe. */
     String host(HttpServletRequest request) {
-        var forwarded = request.getHeader(FORWARDED_HOST);
-        String host;
-        if (forwarded != null && !forwarded.isBlank() && trustedProxy.test(request.getRemoteAddr())) {
-            // A proxy chain may append: the left-most entry is the host the browser used.
-            host = forwarded.split(",", 2)[0].trim();
-        } else {
-            host = request.getHeader("Host");
-        }
+        var host = rawHost(request, trustedProxy);
         if (host == null || host.isEmpty()) {
             return "-";
         }
         return SAFE_HOST.matcher(host).matches() ? host.toLowerCase(java.util.Locale.ROOT) : "invalid";
+    }
+
+    /**
+     * T1-3: the host as sent, unchecked (null when none): X-Forwarded-Host from a trusted proxy, otherwise Host. Shared
+     * with the customer filter, so the customer and the logged host always come from the same header.
+     */
+    public static String rawHost(HttpServletRequest request, Predicate<String> trustedProxy) {
+        var forwarded = request.getHeader(FORWARDED_HOST);
+        if (forwarded != null && !forwarded.isBlank() && trustedProxy.test(request.getRemoteAddr())) {
+            // A proxy chain may append: the left-most entry is the host the browser used.
+            return forwarded.split(",", 2)[0].trim();
+        }
+        return request.getHeader("Host");
     }
 
     private boolean shouldLog(HttpServletRequest request, String path) {
@@ -116,6 +124,10 @@ public class RequestContextFilter extends OncePerRequestFilter {
                             Throwable failure) {
         var route = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) instanceof String r ? r : null;
         RequestLogContext.route(route);
+        if (request.getAttribute(TENANT_ATTRIBUTE) instanceof String slug) {
+            // T1-3: the customer filter has closed its scope by now, which put "default" back.
+            RequestLogContext.put(RequestLogContext.TENANT_ID, slug);
+        }
         var status = failure != null ? HttpServletResponse.SC_INTERNAL_SERVER_ERROR : response.getStatus();
         var durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
         var host = host(request);

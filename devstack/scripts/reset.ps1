@@ -70,4 +70,10 @@ foreach ($name in $targets) { Register-StackCustomer $config $name }
 Write-Step 'Starting the backend'
 Invoke-Compose start backend
 Wait-BackendHealthy $config
+
+# T1-3: the reset customers' smoke accounts (their databases are new).
+$served = @(Get-ServedCustomers $config)
+foreach ($name in $targets) {
+    if ($served -contains $name) { Initialize-SmokeAccount $config $name }
+}
 Write-Host ("Reset done in {0:N0} s: {1}." -f ((Get-Date) - $started).TotalSeconds, ($targets -join ', ')) -ForegroundColor Green

@@ -17,7 +17,7 @@ browser ──https://beaconculinary.pos.localhost──► Caddy (gateway, :443
 | Backend | This repository's `Dockerfile`, no published port | Container Apps, reached only through Front Door |
 | Settings and secrets | `devstack/stack.env` (git-ignored) | Key Vault secrets and Container Apps settings |
 | Database | SQL Server 2022 container (or your own SQL Server), collation `SQL_Latin1_General_CP1_CI_AS` | Azure SQL, same collation |
-| Customers | `beaconculinary` and `testcustomer`, one served at a time (single-customer mode), each with its own database login | One database per customer (T1-2 and T1-3 add serving several) |
+| Customers | `beaconculinary` and `testcustomer`, both served at once, each at its own address (multi mode, T1-3), each with its own database login | One database per customer |
 | Platform database | `pos_platform`: the customers, their hosts and where their databases are (T1-1, `docs/2026-11-24-platform-database.md`) | Its own Azure SQL database |
 
 ## 1. What to install (once)
@@ -177,19 +177,28 @@ result; the exit code is 1 if anything failed. Each step's full output is in `de
 (git-ignored; the path is printed), with invite links masked. Skip parts with `-SkipBackend`, `-SkipFrontend`,
 `-SkipE2E` or `-SkipStack`. The frontend needs its `node_modules` (`npm ci` once).
 
-## 4. Single-customer mode and switching
+**Memory (T1-3).** The backend suite and the stack together ran the machine out of memory. `check-all.ps1` stops the
+stack's containers before the backend tests (the suite uses your own SQL Server) and `stack up` starts them again.
+It prints the commit it runs on and the free memory, and fails if HEAD moves during the run. Run it from a terminal;
+a Claude Code background command can be stopped when memory runs low.
 
-Until T1-1 to T1-3, the backend serves one database: `ACTIVE_CUSTOMER` in `stack.env` (default `beaconculinary`).
-Only that customer's address is served; any other `*.pos.localhost` answers 503 "not the active customer", so one
-customer's data never shows under another's name.
+## 4. Multi mode (the default) and single mode
+
+**Multi mode (T1-3, `TENANCY_MODE` blank or `multi`):** every customer at its own address at the same time,
+`https://beaconculinary.pos.localhost` and `https://testcustomer.pos.localhost`. The backend works out the customer
+from the address (`docs/2026-11-25-customer-from-address.md`) and uses that customer's own database. An address no
+customer has answers 404 with an empty body.
+
+**Single mode** serves one database, `ACTIVE_CUSTOMER` (default `beaconculinary`); any other `*.pos.localhost`
+answers 503 "not the active customer" at Caddy:
 
 ```powershell
-.\devstack\scripts\up.ps1 -Customer testcustomer     # this run only
-# or set ACTIVE_CUSTOMER=testcustomer in devstack\stack.env, then up.ps1
+.\devstack\scripts\up.ps1 -TenancyMode single                         # this run only
+.\devstack\scripts\up.ps1 -TenancyMode single -Customer testcustomer  # another customer
+# or set TENANCY_MODE=single (and ACTIVE_CUSTOMER) in devstack\stack.env
 ```
 
-`up.ps1` recreates the backend with the other database; the frontend image is the same for every customer, so it is
-reused. Both databases stay as they are.
+The frontend image is the same for every customer, so switching reuses it. The databases stay as they are.
 
 | Database | Built by | Contents |
 |---|---|---|
@@ -202,16 +211,12 @@ T0-7 database needs it, so both validate. Every database exists before the backe
 builds one itself.
 
 **The platform database (T1-1).** `up.ps1` also creates `pos_platform`, gives each customer database its own
-login and registers every customer as `<name>.pos.localhost`; `status.ps1` lists them. The backend still serves
-`ACTIVE_CUSTOMER` only: `up.ps1 -TenancyMode multi` (or `TENANCY_MODE=multi`) just makes it migrate the platform
-database and load the customer directory at start-up, which the log shows (`tenancy multi: ...`). Details:
-`docs/2026-11-24-platform-database.md`.
+login and registers every customer as `<name>.pos.localhost`; `status.ps1` lists them, and in multi mode the
+customers the backend has served. Details: `docs/2026-11-24-platform-database.md`.
 
-**Multi mode (T1-2).** The stack stays in single mode by default. In multi mode the backend sends every database
-access to the current customer's own database (`docs/2026-11-24-routing-data-source.md`), but requests get a
-customer only from T1-3 (from their address). Until then `up.ps1 -TenancyMode multi` is for checking start-up only:
-the log shows the platform database, the directory and `customer database migrations are not run at start-up`;
-requests that need data fail with "no current customer", so `smoke.ps1` fails in that mode. Go back with `up.ps1`.
+**Smoke accounts (T1-3).** Each customer other than beaconculinary gets `smoke@<name>.test` with `SMOKE_PASSWORD`,
+made by `up.ps1` and `new-customer.ps1` when its database is, and again after `reset.ps1`. The invite link is
+captured, never shown. Because of it, the real first admin's `FirstAdminCommand` then needs `--force --reason`.
 
 ## 5. Logs
 
@@ -233,7 +238,11 @@ only while the stack runs, and `reset.ps1` / `down.ps1 -Volumes` replace or dele
 
 ## 6. The smoke check
 
-`smoke.ps1` checks, through the gateway and as a browser would:
+`smoke.ps1` checks, through the gateway and as a browser would. In multi mode it checks beaconculinary and
+testcustomer in one run (beaconculinary with `SMOKE_EMAIL`, testcustomer with its smoke account), each at its own
+address; the 2-minute hold is at the first customer only. Also in multi mode: while one customer's order is placed,
+the other customer's kitchen stream receives nothing, and `nobody.pos.localhost` (a forged Host through Caddy)
+answers 404 with an empty body on `/api/health` and `/api/public/board/today`.
 
 1. `GET /api/health` is `UP`, with an `X-Request-Id` header.
 2. Password sign-in sets the `refreshToken` cookie `Secure; HttpOnly; SameSite=None; Path=/api/auth/refresh`, and
@@ -300,7 +309,9 @@ authentication allowed. The containers reach it as `host.docker.internal`. The d
 | `up.ps1`: "Port 443 is in use" | IIS, IIS Express, Skype or another proxy holds it. Find it: `Get-NetTCPConnection -LocalPort 443 -State Listen \| Select OwningProcess` then `Get-Process -Id <id>`. Stop it, or set `HTTPS_PORT=8443` (and `HTTP_PORT=8080`): addresses become `https://beaconculinary.pos.localhost:8443` |
 | `up.ps1`: "Port 14333 is in use" | Set `SQL_HOST_PORT` to another port |
 | "Docker Desktop is not running" | Start it and wait for "Engine running" |
-| 503 "not the active customer" | That customer isn't the one being served (section 4) |
+| 503 "not the active customer" | Single mode: that customer isn't the one being served (section 4) |
+| 404 with an empty body | No customer has that address (multi mode): check the name, and `status.ps1` for the registered customers |
+| 503 `CUSTOMER_SUSPENDED` | The customer is suspended in the platform database (`TenantRegisterCommand activate`) |
 | 502 on pages, `/api` fine | No frontend: no `Dockerfile` in `FRONTEND_REPO` yet, or `FRONTEND_MODE=host` without `npm run dev` running |
 | Backend not healthy | `docker compose -p beacon-devstack logs backend`. Common: a wrong `SQL_PASSWORD` after the SQL volume was created with another one (the volume keeps the first; `down.ps1 -Volumes` starts again) |
 | Smoke: sign-in fails | `SMOKE_EMAIL` / `SMOKE_PASSWORD` don't match an ADMIN in the active customer's database |

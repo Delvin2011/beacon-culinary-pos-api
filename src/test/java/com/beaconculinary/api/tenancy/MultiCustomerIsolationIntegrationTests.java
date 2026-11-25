@@ -11,7 +11,6 @@ import com.beaconculinary.api.dashboard.TradingCalendar;
 import com.beaconculinary.api.menu.AlwaysOnMenuService;
 import com.beaconculinary.api.support.tenancy.MultiCustomerFixture;
 import com.beaconculinary.api.support.tenancy.MultiCustomerIntegrationTest;
-import com.beaconculinary.api.support.tenancy.TestCustomerFilter;
 import com.beaconculinary.api.tenancy.context.CurrentCustomer;
 import com.beaconculinary.api.tenancy.context.CustomerContext;
 import com.beaconculinary.api.tenancy.context.NoCurrentCustomerException;
@@ -240,19 +239,14 @@ class MultiCustomerIsolationIntegrationTests extends MultiCustomerIntegrationTes
     }
 
     @Test
-    void aRequest_usesTheCustomerItWasGiven_andWithoutOneFails() throws Exception {
-        assertThat(mvc.perform(get("/public/board/today").header(TestCustomerFilter.HEADER, "alpha"))
+    void aRequest_usesTheCustomerOfItsAddress_andTheBackendsOwnAddressServesNoCustomerData() throws Exception {
+        assertThat(mvc.perform(get("/public/board/today").header("Host", "alpha.pos.localhost"))
                 .andReturn().getResponse().getStatus()).isEqualTo(200);
-        assertThat(mvc.perform(get("/public/board/today").header(TestCustomerFilter.HEADER, "bravo"))
+        assertThat(mvc.perform(get("/public/board/today").header("Host", "bravo.pos.localhost"))
                 .andReturn().getResponse().getStatus()).isEqualTo(200);
-        int withoutCustomer;
-        try {
-            withoutCustomer = mvc.perform(get("/public/board/today")).andReturn().getResponse().getStatus();
-        } catch (Exception e) {
-            assertThat(e).hasRootCauseInstanceOf(NoCurrentCustomerException.class);
-            withoutCustomer = 500;
-        }
-        assertThat(withoutCustomer).isEqualTo(500);
+        var platform = mvc.perform(get("/public/board/today").header("Host", "localhost")).andReturn().getResponse();
+        assertThat(platform.getStatus()).isEqualTo(404);
+        assertThat(platform.getContentAsString()).isEmpty();
     }
 
     // --- helpers ---

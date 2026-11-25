@@ -133,33 +133,19 @@ customers, which at worst suppresses one log line).
 - **Per-customer logins:** each customer database's login is its own, `db_owner` of that database only. The secrets
   are named `<slug>-db-login` and `<slug>-db-password` (Key Vault from T1-0b).
 
-## 8. Proving multi mode before T1-3
+## 8. How requests get their customer
 
-Real requests get their customer from their address in T1-3. Until then, multi mode is proven in tests by a
-**test-only** filter, `TestCustomerFilter`. It sets the customer from the `X-Test-Customer` header and is
-registered by `TestCustomerConfig`.
-
-- **It can't reach production.** It lives in `src/test` only, so it's never in the jar.
-  - `TestCustomerMechanismGuardTest` checks that `target/classes` has no such class and that nothing in `src/main`
-    names the header or the classes.
-  - `MultiModeStartupIntegrationTests` shows a multi-mode app without the test configuration ignores the header.
-- **The fixture:** `MultiCustomerFixture` builds a throwaway platform database and two customer databases from the
-  B116 baseline. `MultiCustomerIntegrationTest` is the shared multi-mode context.
-
-**On the local stack:** it stays in **single mode** by default. `up.ps1 -TenancyMode multi` starts the backend in
-multi mode, which is useful only to see the start-up lines:
-- `tenancy multi: platform database at version 1`;
-- the directory loaded;
-- `customer database migrations are not run at start-up`.
-
-Requests that need data fail with "no current customer" until T1-3, so the smoke check fails in that mode. Go back
-with `up.ps1`.
+Since T1-3, from the address they were sent to (`docs/2026-11-25-customer-from-address.md`). T1-2's test-only header
+(`TestCustomerFilter`) is gone; the multi-mode tests send a `Host` header. The fixture, `MultiCustomerFixture`, builds
+a throwaway platform database and two customer databases from the B116 baseline; `MultiCustomerIntegrationTest` is
+the shared multi-mode context. The local stack runs in multi mode by default.
 
 ## 9. Limits until later slices
 
 | Slice | What it adds |
 |---|---|
-| **T1-3** | The customer from the request's host (`X-Forwarded-Host` from the gateway, through the directory), set by a filter placed where the test filter is (before Spring Security and the device filters, which read the database); `CustomerNotServedException`, `UnknownCustomerException` and `NoCurrentCustomerException` mapped to responses; `tenantId` in every request log line; the local stack in multi mode |
+| **T1-3** (done) | The customer from the request's address, the exceptions mapped to responses, `tenantId` on every request, the local stack in multi mode: `docs/2026-11-25-customer-from-address.md` |
+| **T1-5** | Tokens bound to their customer (until then multi mode is for the local stack only) |
 | **T1-4** | Customer database migrations per customer (provisioning), and `tenant_databases.last_migrated_version` |
 | **T1-6** | Background work completed: per-customer time zones for the daily jobs, spreading runs, other jobs as they come |
 
@@ -169,8 +155,7 @@ with `up.ps1`.
 |---|---|
 | `CustomerContextTest` (7) | Set, read and restore (nested, on exceptions); MDC; no inheritance by other threads; no switch inside a transaction |
 | `CustomerPoolsIntegrationTests` (9) | Routing; lazy and once under 20 concurrent first uses; closed when idle (not while in use), suspended, archived or moved; collation mismatch refused; credentials from `SecretResolver`, a missing secret named, no password in the output; unknown customer or stale id refused |
-| `MultiModeStartupIntegrationTests` (1) | Starts with every customer database offline, no pool made, Hibernate at version 12; no customer is an error; the test header is ignored without the test configuration |
-| `TestCustomerMechanismGuardTest` (2) | The test-only mechanism is absent from production |
+| `MultiModeStartupIntegrationTests` (1) | Starts with every customer database offline, no pool made, Hibernate at version 12; no customer is an error; (T1-3) the backend's own address serves `/health` only |
 | `CustomerScopedStateTest` (3) | Streams, settings and dashboard cache per customer |
 | `MultiCustomerIsolationIntegrationTests` (10) | Written as alpha, never visible as bravo, through JPA, JdbcTemplate, a native query, AppLock, REQUIRES_NEW (`LoginProtectionStore`, `AdminAuthorizationService`), a REQUIRES_NEW `TransactionTemplate` (`AlwaysOnMenuService`) and the dashboard's read-only template; no customer writes nothing anywhere; a request uses the customer it was given |
 | `CustomerJobsIntegrationTests` (5) | Once per active customer, suspended left out, failures isolated and logged with the slug, the real jobs per customer, `/health` in multi mode |

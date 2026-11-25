@@ -35,6 +35,14 @@ Initialize-CustomerDatabase $config $Name
 Add-ManagedCustomer $Name
 Initialize-PlatformDatabase $config
 Register-StackCustomer $config $Name
+# T1-3: its smoke account, when the backend already serves it (multi mode; the directory sees it within 30 s).
+if ($config.TenancyMode -eq 'multi' -and (Test-BackendHealthy $config)) {
+    $deadline = (Get-Date).AddSeconds(45)
+    while ((Invoke-StackApi 'GET' "$(Get-CustomerUrl $config $Name)/api/health" $null).Status -ne 200 -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 3 }
+    Initialize-SmokeAccount $config $Name
+} else {
+    Write-Host "  Its smoke account is made when the backend serves it: up.ps1."
+}
 
 Write-Host ''
 Write-Host "Customer $Name is ready." -ForegroundColor Green
