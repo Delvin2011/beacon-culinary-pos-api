@@ -14,8 +14,9 @@ import java.util.regex.Pattern;
  * Secure, HttpOnly, SameSite, no Domain) can't drift apart: a browser only removes a cookie when the
  * clearing Set-Cookie matches the one it holds.
  *
- * <p>{@code cookie.secure} (default true): Secure with SameSite=None, for a cross-site frontend.
- * The dev profile sets it to false: not Secure, SameSite=Lax.
+ * <p>{@code cookie.secure} (default true): Secure; the dev profile sets it to false. SameSite=Lax either way (T1-5): the
+ * app and the API share one address (T1-0d), so the browser sends it on its own sign-in, refresh and sign-out, and
+ * never from another site. With no Domain it is host-only: one customer's address never sends it to another's.
  *
  * <p>{@code cookie.path-prefix} (default empty): the path the browser sees in front of this API when a
  * proxy removes it before the request reaches the backend (T1-L0: the local stack and Front Door send
@@ -59,7 +60,7 @@ public class RefreshCookies {
         return ResponseCookie.from(NAME, value)
                 .httpOnly(true)
                 .secure(secure)
-                .sameSite(secure ? "None" : "Lax")
+                .sameSite("Lax")
                 .path(path)
                 .maxAge(maxAge)
                 .build();
