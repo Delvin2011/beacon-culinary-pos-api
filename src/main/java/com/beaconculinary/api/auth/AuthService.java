@@ -15,6 +15,7 @@ import lombok.AllArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -61,7 +62,16 @@ public class AuthService {
         }
     }
 
+    /** T1-3: a database failure is 503 DATABASE_UNAVAILABLE and records nothing; credentials answer as before. */
     public LoginResponse login(LoginRequest request) {
+        try {
+            return passwordLogin(request);
+        } catch (RuntimeException e) {
+            throw SignInUnavailableException.isDatabaseFailure(e) ? SignInUnavailableException.of(e) : e;
+        }
+    }
+
+    private LoginResponse passwordLogin(LoginRequest request) {
         // Login protection: look the account up on every attempt, known or not, so the extra query
         // adds no timing difference. Skipped when protection and the demo guard are off.
         var account = loginAttempts.isActive() || demoGuard.blocking() ? userRepository.findByEmail(request.getEmail()).orElse(null) : null;
@@ -81,6 +91,9 @@ public class AuthService {
                 )
             );
         } catch (AuthenticationException e) {
+            if (e instanceof InternalAuthenticationServiceException) {
+                throw e; // the database, not the credential: not a failed attempt (T1-3)
+            }
             loginAttempts.finish(attempt, passwordFailureOutcome(e, account), accountId);
             throw e;
         }
@@ -95,7 +108,16 @@ public class AuthService {
         return new LoginResponse(accessToken, refreshToken);
     }
 
+    /** T1-3: as for {@link #login}. */
     public LoginResponse pinLogin(PinLoginRequest request) {
+        try {
+            return checkedPinLogin(request);
+        } catch (RuntimeException e) {
+            throw SignInUnavailableException.isDatabaseFailure(e) ? SignInUnavailableException.of(e) : e;
+        }
+    }
+
+    private LoginResponse checkedPinLogin(PinLoginRequest request) {
         // Looked up first, for every attempt, so protection knows whether the cashier exists (known
         // cashiers have account state; unknown ids are tracked by id alone). Same query either way.
         var user = userRepository.findById(request.getCashierId()).orElse(null);
