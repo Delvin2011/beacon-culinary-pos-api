@@ -112,6 +112,7 @@ trusted proxy. T1-0c must set the following:
 | Front Door health probe | `GET /health` at the Container App's own address (platform health) |
 | Routes | `*.pos.optimumscs.com/api/*` to the backend with forwarding path `/`; the origin host header is the origin's own address, and the browser's host arrives in `X-Forwarded-Host` |
 | `COOKIE_PATHPREFIX` | `/api` (T1-L0) |
+| `CORS_ALLOWED_ORIGINS` | `https://*.pos.optimumscs.com` (a pattern: every customer). The browser sends its `Origin` on a sign-in POST even on its own site, and behind the gateway the backend sees `http` and its own port, so it treats the request as cross-origin; without the pattern, sign-in at any address not listed answers 403 "Invalid CORS request" |
 
 ## 9. The local stack
 

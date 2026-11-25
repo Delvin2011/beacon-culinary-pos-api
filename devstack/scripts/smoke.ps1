@@ -176,7 +176,8 @@ try {
         $requestId = 'smoke-' + [Guid]::NewGuid().ToString('N').Substring(0, 20)
         $since = (Get-Date).ToUniversalTime().AddSeconds(-5).ToString('yyyy-MM-ddTHH:mm:ssZ')
         $email = Get-SmokeEmail $config $name
-        $login = Invoke-Api 'POST' '/api/auth/login' @{ email = $email; password = $config.SmokePassword } $null @{ 'X-Request-Id' = $requestId }
+        # The browser's Origin header, as the sign-in page sends it (the backend's CORS check sees it).
+        $login = Invoke-Api 'POST' '/api/auth/login' @{ email = $email; password = $config.SmokePassword } $null @{ 'X-Request-Id' = $requestId; 'Origin' = $script:base }
         if ($login.Status -ne 200 -or -not $login.Json -or -not $login.Json.token) {
             Add-Result "${label}sign-in" $false "$(Describe $login) as $email (beaconculinary: SMOKE_EMAIL/SMOKE_PASSWORD; others: up.ps1 makes smoke@<name>.test)"
             throw 'Stopping: sign-in failed.'

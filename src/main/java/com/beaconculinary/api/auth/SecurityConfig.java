@@ -64,7 +64,9 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource(
             @Value("${cors.allowed-origins}") List<String> allowedOrigins) {
         var cors = new CorsConfiguration();
-        cors.setAllowedOrigins(allowedOrigins);
+        // T1-3: patterns, so one setting covers every customer's address (https://*.pos.localhost locally,
+        // https://*.pos.optimumscs.com in Azure); an exact address is still a valid pattern.
+        cors.setAllowedOriginPatterns(allowedOrigins);
         cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cors.setAllowedHeaders(List.of("*"));
         // WS1-1: lets the cross-origin frontend read Retry-After on a 429. O1: and the

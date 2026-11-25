@@ -160,9 +160,12 @@ function Set-ComposeEnvironment($Config, [string] $FrontendUpstream) {
     if ($Config.TenancyMode -eq 'multi') {
         $env:CADDY_ACTIVE_HOST = '*.pos.localhost'
         $env:STACK_PUBLIC_BASE_URL = ''
+        # Every customer's address may call the API (the browser's Origin, even on its own site).
+        $env:STACK_CORS_ALLOWED_ORIGINS = "https://*.pos.localhost$($Config.PortSuffix)"
     } else {
         $env:CADDY_ACTIVE_HOST = "$($Config.ActiveCustomer).pos.localhost"
         $env:STACK_PUBLIC_BASE_URL = Get-CustomerUrl $Config $Config.ActiveCustomer
+        $env:STACK_CORS_ALLOWED_ORIGINS = Get-CustomerUrl $Config $Config.ActiveCustomer
     }
 }
 
