@@ -6,7 +6,8 @@
     beaconculinary: every migration with the demo data. testcustomer and the customers made with new-customer.ps1:
     the T0-7 way (baseline, starter template, a new first admin with a new invite link, printed here only).
     T1-1: a full reset also drops and recreates the platform database and registers every customer again; resetting
-    one customer registers it again (its database login's user comes back with it).
+    one customer registers it again (its database logins' users come back with it). T1-4: then the customer migration
+    command updates the reset databases (beaconculinary gets every migration there), before the backend starts.
     Only these databases are touched; any other database on the server is left alone. The backend is stopped while
     it runs and started again at the end. Asks you to type RESET first.
 
@@ -66,6 +67,12 @@ if (-not $Customer) {
 }
 Initialize-PlatformDatabase $config
 foreach ($name in $targets) { Register-StackCustomer $config $name }
+
+Write-Step 'Customer databases (MigrateCustomersCommand)'
+$migrateArgs = @()
+if ($Customer) { $migrateArgs = @('--customer', $Customer) }
+$code = Invoke-MigrateCustomers $config $migrateArgs
+if ($code -ne 0) { throw "The customer migration command failed (exit code $code, above)." }
 
 Write-Step 'Starting the backend'
 Invoke-Compose start backend

@@ -1,6 +1,6 @@
 <#
     T1-L0: shared by the devstack scripts (dot-sourced). Reads devstack/stack.env without printing it, works out the
-    values compose needs, and runs sqlcmd and Flyway in throwaway containers, so the host needs only Docker, Java 17
+    values compose needs, and runs sqlcmd and the migration command in containers, so the host needs only Docker, Java 17
     and PowerShell. Passwords reach those containers through environment variables named on the command line
     (docker run -e NAME, value from this process), never as arguments, and are removed from this process afterwards.
     Works in Windows PowerShell 5.1 and PowerShell 7.
@@ -15,9 +15,10 @@ $script:StateDir = Join-Path $script:DevstackRoot '.state'
 $script:ComposeFile = Join-Path $script:DevstackRoot 'compose.yaml'
 $script:Jar = Join-Path $script:RepoRoot 'target\beacon-culinary-api-1.0.0.jar'
 
-# Pinned images (also in compose.yaml for sql). Flyway matches the application's Flyway (pom.xml).
+# Pinned images (also in compose.yaml for sql). T1-4: the Java image is the backend Dockerfile's base; the customer
+# migration command runs in it, on the stack network.
 $script:SqlImage = 'mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04'
-$script:FlywayImage = 'flyway/flyway:10.20.1'
+$script:JavaImage = 'eclipse-temurin:17-jre-jammy'
 $script:Collation = 'SQL_Latin1_General_CP1_CI_AS'
 
 # The two databases every stack has; new-customer.ps1 adds more (recorded in .state/customers.txt).
@@ -380,33 +381,6 @@ function Remove-StackDatabase($Config, [string] $Name) {
         "ALTER DATABASE [$Name] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$Name]; END")
 }
 
-<# beaconculinary: every migration from db/migration (none from db/baseline), as today's dev database. #>
-function Initialize-FullHistoryDatabase($Config, [string] $Name) {
-    Assert-CustomerName $Name
-    $target = Get-SqlTarget $Config
-    $migrations = Join-Path $script:RepoRoot 'src\main\resources\db\migration'
-    $url = "jdbc:sqlserver://$($target.Server):$($target.Port);databaseName=$Name;encrypt=true;trustServerCertificate=true"
-    $env:FLYWAY_PASSWORD = $Config.SqlPassword
-    try {
-        $dockerArgs = @('run', '--rm', '-e', 'FLYWAY_PASSWORD') + $target.DockerArgs + @(
-            '-v', "${migrations}:/flyway/sql:ro", $script:FlywayImage,
-            "-url=$url", "-user=$($Config.SqlUser)", '-locations=filesystem:/flyway/sql', '-baselineOnMigrate=false',
-            '-outputType=json', 'migrate')
-        $output = Invoke-Docker $dockerArgs
-        $code = $LASTEXITCODE
-        # Flyway's JSON names the database and the migrations, never the password.
-        $text = ($output | ForEach-Object { "$_" }) -join "`n"
-        if ($code -ne 0) { throw "Flyway failed on $Name (exit code $code): $text" }
-        $start = $text.IndexOf('{')
-        if ($start -ge 0) {
-            $result = $text.Substring($start) | ConvertFrom-Json
-            Write-Ok "$Name : $($result.migrationsExecuted) migrations applied, now at version $($result.targetSchemaVersion)"
-        }
-    } finally {
-        Remove-Item Env:FLYWAY_PASSWORD -ErrorAction SilentlyContinue
-    }
-}
-
 <# The JDBC address of a database for Java on this machine (NewDatabaseCommand, FirstAdminCommand). #>
 function Get-HostJdbcUrl($Config, [string] $Name) {
     $port = $Config.SqlHostPort
@@ -463,19 +437,22 @@ function Add-ManagedCustomer([string] $Name) {
     if ((Get-ManagedCustomers) -notcontains $Name) { Add-Content -LiteralPath $file -Value $Name -Encoding ascii }
 }
 
-<# Creates a managed customer's database the way it starts: full history for beaconculinary, T0-7 for the rest. #>
+<#
+    Creates a managed customer's database the way it starts. beaconculinary: empty here; once it is registered (full
+    history), the customer migration command gives it every migration from V1 with the demo data (T1-4). The rest: the
+    T0-7 way.
+#>
 function Initialize-CustomerDatabase($Config, [string] $Name) {
     Write-Step "Creating database $Name"
     New-EmptyStackDatabase $Config $Name
+    if ($Name -eq $script:FullHistoryCustomer) {
+        Write-Ok "$Name : created empty; the customer migration command fills it"
+        return
+    }
     try {
-        if ($Name -eq $script:FullHistoryCustomer) {
-            Initialize-FullHistoryDatabase $Config $Name
-        } else {
-            Initialize-CleanCustomerDatabase $Config $Name
-        }
+        Initialize-CleanCustomerDatabase $Config $Name
     } catch {
-        # Never leave a half-made database: the next run would find it "existing" and skip it, and the backend
-        # would then build an empty one from the baseline instead of the way this customer starts.
+        # Never leave a half-made database: the next run would find it "existing" and skip setting it up.
         Write-Problem "Setting up $Name failed; dropping it so the next run starts it again."
         try { Remove-StackDatabase $Config $Name } catch { Write-Problem "Could not drop ${Name}: $($_.Exception.Message)" }
         throw
@@ -535,8 +512,10 @@ function Assert-PlatformSettings($Config) {
 }
 
 <#
-    A customer's database login and password, from SECRET_<NAME>_DB_LOGIN and SECRET_<NAME>_DB_PASSWORD in stack.env
-    (the values of the secrets <name>-db-login and <name>-db-password). Errors name the setting, never a value.
+    A customer's two database logins (T1-4), errors naming the setting, never a value:
+      the app login (the backend): SECRET_<NAME>_DB_LOGIN and _DB_PASSWORD, the secrets <name>-db-login and -db-password;
+      the migration login (the migration command only): SECRET_<NAME>_DB_MIGRATION_LOGIN and _DB_MIGRATION_PASSWORD,
+      the secrets <name>-db-migration-login and -db-migration-password.
 #>
 function Get-CustomerSecretValues($Config, [string] $Name) {
     Assert-CustomerName $Name
@@ -549,20 +528,43 @@ function Get-CustomerSecretValues($Config, [string] $Name) {
     if ($login -cnotmatch '^[a-z][a-z0-9_]{2,63}$') { throw "$loginSetting must be lower-case letters, digits and _ (3-64), starting with a letter." }
     $password = Get-Setting $Config.Values $passwordSetting ''
     Assert-LoginPassword $passwordSetting $password
-    return [pscustomobject]@{ Login = $login; Password = $password; LoginSecret = "$Name-db-login"; PasswordSecret = "$Name-db-password" }
+    $migrationLoginSetting = "SECRET_${upper}_DB_MIGRATION_LOGIN"
+    $migrationPasswordSetting = "SECRET_${upper}_DB_MIGRATION_PASSWORD"
+    $migrationLogin = Get-Setting $Config.Values $migrationLoginSetting ''
+    if (-not $migrationLogin) { throw "$migrationLoginSetting is not set in devstack/stack.env (the migration login of customer $Name's database, e.g. pos_${Name}_migrate)." }
+    if ($migrationLogin -eq 'sa' -or $migrationLogin -eq $script:PlatformLogin -or $migrationLogin -eq $login) {
+        throw "$migrationLoginSetting must be a login of its own, not $migrationLogin."
+    }
+    if ($migrationLogin -cnotmatch '^[a-z][a-z0-9_]{2,63}$') { throw "$migrationLoginSetting must be lower-case letters, digits and _ (3-64), starting with a letter." }
+    $migrationPassword = Get-Setting $Config.Values $migrationPasswordSetting ''
+    Assert-LoginPassword $migrationPasswordSetting $migrationPassword
+    return [pscustomobject]@{ Login = $login; Password = $password; LoginSecret = "$Name-db-login"; PasswordSecret = "$Name-db-password"
+                              MigrationLogin = $migrationLogin; MigrationPassword = $migrationPassword
+                              MigrationLoginSecret = "$Name-db-migration-login"; MigrationPasswordSecret = "$Name-db-migration-password" }
 }
 
 <#
-    Makes sure the login exists with this password (created, or its password set again) and is db_owner of this database
-    only (owner, so the backend's Flyway can migrate it). The password reaches sqlcmd as an environment variable.
+    Makes sure the login exists with this password (created, or its password set again) and has its rights in this
+    database only. owner (the platform login, a customer's migration login): db_owner. app (T1-4, a customer's app
+    login, what the backend uses): read, write and execute only (db_datareader, db_datawriter, GRANT EXECUTE), and out of
+    db_owner if an earlier stack made it one. The password reaches sqlcmd as an environment variable.
 #>
-function Set-DatabaseLogin($Config, [string] $Login, [string] $Password, [string] $Database) {
+function Set-DatabaseLogin($Config, [string] $Login, [string] $Password, [string] $Database,
+                           [ValidateSet('owner', 'app')] [string] $Rights = 'owner') {
     if ($Login -cnotmatch '^[a-z][a-z0-9_]{2,63}$') { throw "Not a login name: $Login" }
     $null = Invoke-StackSql $Config ("IF SUSER_ID(N'$Login') IS NULL CREATE LOGIN [$Login] WITH PASSWORD = N'" + '$(DEVSTACK_LOGIN_PASSWORD)' +
         "', CHECK_POLICY = ON, DEFAULT_DATABASE = [$Database]; ELSE ALTER LOGIN [$Login] WITH PASSWORD = N'" + '$(DEVSTACK_LOGIN_PASSWORD)' + "';") `
         'master' @{ DEVSTACK_LOGIN_PASSWORD = $Password }
-    $null = Invoke-StackSql $Config ("IF USER_ID(N'$Login') IS NULL CREATE USER [$Login] FOR LOGIN [$Login]; " +
-        "IF IS_ROLEMEMBER('db_owner', N'$Login') = 0 ALTER ROLE db_owner ADD MEMBER [$Login];") $Database
+    $user = "IF USER_ID(N'$Login') IS NULL CREATE USER [$Login] FOR LOGIN [$Login]; "
+    if ($Rights -eq 'owner') {
+        $user += "IF IS_ROLEMEMBER('db_owner', N'$Login') = 0 ALTER ROLE db_owner ADD MEMBER [$Login];"
+    } else {
+        $user += "IF IS_ROLEMEMBER('db_owner', N'$Login') = 1 ALTER ROLE db_owner DROP MEMBER [$Login]; " +
+            "IF IS_ROLEMEMBER('db_datareader', N'$Login') = 0 ALTER ROLE db_datareader ADD MEMBER [$Login]; " +
+            "IF IS_ROLEMEMBER('db_datawriter', N'$Login') = 0 ALTER ROLE db_datawriter ADD MEMBER [$Login]; " +
+            "GRANT EXECUTE TO [$Login];"
+    }
+    $null = Invoke-StackSql $Config $user $Database
 }
 
 function Test-PlatformDatabase($Config) {
@@ -611,32 +613,80 @@ function Initialize-PlatformDatabase($Config) {
 }
 
 <#
-    A customer: its own database login (db_owner of its database), and its registration in the platform database with
-    <name>.pos.localhost and its secret names. Idempotent (TenantRegisterCommand reports Unchanged).
+    A customer: its two database logins (T1-4: the app login, read, write and execute; the migration login, db_owner),
+    and its registration in the platform database with <name>.pos.localhost and the four secret names. Idempotent
+    (TenantRegisterCommand reports Unchanged).
 #>
 function Register-StackCustomer($Config, [string] $Name) {
     $secrets = Get-CustomerSecretValues $Config $Name
-    Set-DatabaseLogin $Config $secrets.Login $secrets.Password $Name
+    Set-DatabaseLogin $Config $secrets.Login $secrets.Password $Name 'app'
+    Set-DatabaseLogin $Config $secrets.MigrationLogin $secrets.MigrationPassword $Name 'owner'
     $displayName = switch ($Name) { 'beaconculinary' { 'Beacon Culinary' } 'testcustomer' { 'Test Customer' } default { $Name } }
     $server = 'sql'; $port = 1433
     if ($Config.SqlMode -eq 'host') { $server = 'host.docker.internal'; $port = $Config.SqlInstancePort }
     $fromBaseline = if ($Name -eq $script:FullHistoryCustomer) { 'false' } else { 'true' }
     $code = Invoke-TenantCommand $Config @('register', '--slug', $Name, '--name', $displayName, '--host', "$Name.pos.localhost",
         '--db-server', $server, '--db-port', "$port", '--db-name', $Name, '--db-options', 'encrypt=true;trustServerCertificate=true',
-        '--login-secret', $secrets.LoginSecret, '--password-secret', $secrets.PasswordSecret, '--built-from-baseline', $fromBaseline)
+        '--login-secret', $secrets.LoginSecret, '--password-secret', $secrets.PasswordSecret, '--built-from-baseline', $fromBaseline,
+        '--migration-login-secret', $secrets.MigrationLoginSecret, '--migration-password-secret', $secrets.MigrationPasswordSecret)
     if ($code -ne 0) { throw "Registering $Name in the platform database failed (exit code $code)." }
 }
 
-<# The registered customers: slug, status, hosts (* primary), database, built from the baseline. No secrets. #>
+<#
+    T1-4: MigrateCustomersCommand (docs/2026-11-26-customer-migrations.md) in a throwaway Java container on the stack
+    network, as a pipeline job runs it: the database addresses the platform database holds are the stack's own (sql,
+    as the backend sees them). The platform password and every customer's migration login reach it as environment
+    variables named on the command line (-e NAME), never as values, and are removed from this process afterwards.
+    Prints its table; returns its exit code (0 all updated or unchanged, 4 a customer failed).
+#>
+function Invoke-MigrateCustomers($Config, [string[]] $Arguments = @()) {
+    if (-not (Test-Path -LiteralPath $script:Jar)) { throw "The backend jar is missing ($script:Jar). Run up.ps1 (it builds it)." }
+    $target = Get-SqlTarget $Config
+    $values = [ordered]@{
+        APP_TENANCY_PLATFORM_URL      = "jdbc:sqlserver://$($target.Server):$($target.Port);databaseName=$($Config.PlatformDatabase);encrypt=true;trustServerCertificate=true"
+        APP_TENANCY_PLATFORM_USERNAME = $script:PlatformLogin
+        APP_TENANCY_PLATFORM_PASSWORD = $Config.PlatformPassword
+    }
+    foreach ($name in Get-ManagedCustomers) {
+        $secrets = Get-CustomerSecretValues $Config $name
+        $upper = $name.ToUpperInvariant()
+        $values["SECRET_${upper}_DB_MIGRATION_LOGIN"] = $secrets.MigrationLogin
+        $values["SECRET_${upper}_DB_MIGRATION_PASSWORD"] = $secrets.MigrationPassword
+    }
+    $passed = @()
+    foreach ($key in $values.Keys) {
+        [Environment]::SetEnvironmentVariable($key, [string]$values[$key])
+        $passed += @('-e', $key)
+    }
+    try {
+        $dockerArgs = @('run', '--rm') + $passed + $target.DockerArgs + @('-v', "$($script:Jar):/app.jar:ro", $script:JavaImage,
+            'java', '-Duser.name=devstack', '-cp', '/app.jar', '-Dloader.main=com.beaconculinary.api.ops.MigrateCustomersCommand',
+            'org.springframework.boot.loader.launch.PropertiesLauncher') + $Arguments
+        $output = Invoke-Docker $dockerArgs
+        $code = $LASTEXITCODE
+        foreach ($line in $output) { Write-Host "       $line" }
+        return $code
+    } finally {
+        foreach ($key in $values.Keys) { [Environment]::SetEnvironmentVariable($key, $null) }
+    }
+}
+
+<#
+    The registered customers: slug, status, hosts (* primary), database, built from the baseline; T1-4: the schema
+    version the migration command last left it at, and its last update (outcome and UTC time). No secrets.
+#>
 function Get-PlatformCustomers($Config) {
     if (-not (Test-PlatformDatabase $Config)) { return @() }
     $rows = Invoke-StackSql $Config ("SELECT t.slug, t.status, ISNULL((SELECT STRING_AGG(CONCAT(h.host, CASE WHEN h.is_primary = 1 " +
         "THEN '*' ELSE '' END), ', ') WITHIN GROUP (ORDER BY h.is_primary DESC, h.host) FROM tenant_hosts h WHERE h.tenant_id = t.id), '-'), " +
-        "ISNULL(d.database_name, '-'), ISNULL(CAST(CAST(d.built_from_baseline AS int) AS varchar(1)), '-') " +
+        "ISNULL(d.database_name, '-'), ISNULL(CAST(CAST(d.built_from_baseline AS int) AS varchar(1)), '-'), " +
+        "ISNULL(d.last_migrated_version, '-'), ISNULL((SELECT TOP (1) CONCAT(r.outcome, ' ', CONVERT(varchar(16), r.started_at, 120), ' UTC') " +
+        "FROM provisioning_runs r WHERE r.tenant_id = t.id AND r.action = 'MIGRATE' ORDER BY r.id DESC), 'never') " +
         "FROM tenants t LEFT JOIN tenant_databases d ON d.tenant_id = t.id ORDER BY t.slug") $Config.PlatformDatabase
     return @($rows | ForEach-Object {
         $p = $_.Split('|')
-        [pscustomobject]@{ Slug = $p[0].Trim(); Status = $p[1].Trim(); Hosts = $p[2].Trim(); Database = $p[3].Trim(); FromBaseline = $p[4].Trim() -eq '1' }
+        [pscustomobject]@{ Slug = $p[0].Trim(); Status = $p[1].Trim(); Hosts = $p[2].Trim(); Database = $p[3].Trim(); FromBaseline = $p[4].Trim() -eq '1'
+                           SchemaVersion = $p[5].Trim(); LastUpdate = $p[6].Trim() }
     })
 }
 

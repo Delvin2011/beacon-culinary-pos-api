@@ -54,6 +54,10 @@ if ($sqlUp) {
             $line = "{0,-16} {1,-10} hosts {2}; database {3}{4}" -f $customer.Slug, $customer.Status, $customer.Hosts, $customer.Database,
                 $(if ($customer.FromBaseline) { ' (from the baseline)' } else { ' (full history)' })
             if ($customer.Status -eq 'ACTIVE') { Write-Ok $line } else { Write-Problem $line }
+            # T1-4: the version the migration command left it at, and its last update.
+            $update = "{0,-16} schema {1}, last update {2}" -f '', $customer.SchemaVersion, $customer.LastUpdate
+            if ($customer.Status -eq 'MIGRATION_FAILED' -or $customer.LastUpdate -match '^(FAILED|REFUSED)') { Write-Problem $update; $problems++ }
+            else { Write-Host "       $update" }
         }
         foreach ($name in Get-ManagedCustomers) {
             if (-not ($registered | Where-Object Slug -eq $name)) { Write-Problem "$name : not registered (up.ps1 registers it)"; $problems++ }

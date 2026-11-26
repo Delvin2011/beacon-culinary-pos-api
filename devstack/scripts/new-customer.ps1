@@ -7,7 +7,8 @@
     the starter template and a first admin (admin@<name>.test) whose invite link is printed here only. The name is
     remembered (devstack/.state/customers.txt), so status.ps1 and reset.ps1 include it. T1-1: it gets its own database
     login (SECRET_<NAME>_DB_LOGIN and SECRET_<NAME>_DB_PASSWORD must be in stack.env) and is registered in the platform
-    database with <name>.pos.localhost. Until T1-2 and T1-3, the
+    database with <name>.pos.localhost. T1-4: and its migration login (SECRET_<NAME>_DB_MIGRATION_LOGIN and
+    _DB_MIGRATION_PASSWORD); the customer migration command then records its schema version. Until T1-2 and T1-3, the
     backend serves one database: switch to the new one with up.ps1 -Customer <name>.
 
 .EXAMPLE
@@ -35,6 +36,8 @@ Initialize-CustomerDatabase $config $Name
 Add-ManagedCustomer $Name
 Initialize-PlatformDatabase $config
 Register-StackCustomer $config $Name
+$code = Invoke-MigrateCustomers $config @('--customer', $Name)
+if ($code -ne 0) { throw "The customer migration command failed for $Name (exit code $code, above)." }
 # T1-3: its smoke account, when the backend already serves it (multi mode; the directory sees it within 30 s).
 if ($config.TenancyMode -eq 'multi' -and (Test-BackendHealthy $config)) {
     $deadline = (Get-Date).AddSeconds(45)
