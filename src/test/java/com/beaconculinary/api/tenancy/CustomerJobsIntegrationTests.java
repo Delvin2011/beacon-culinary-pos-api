@@ -22,7 +22,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -37,7 +39,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * its slug as tenantId), a failure for one customer doesn't stop the next, the real jobs (login-attempt retention,
  * session sweep) work per customer, and GET /health probes the platform database and reports the customer pools as
  * counts, without connecting to any customer database. T1-6: a customer that can't be served (suspended, or its
- * database behind) is skipped with one WARN and resumes with one INFO, not a log line per run.
+ * database behind) is skipped with one WARN and resumes with one INFO, not a log line per run; a daily job runs at its
+ * local time in each customer's own zone, once per local date.
  */
 @ExtendWith(OutputCaptureExtension.class)
 class CustomerJobsIntegrationTests extends MultiCustomerIntegrationTest {
@@ -145,6 +148,73 @@ class CustomerJobsIntegrationTests extends MultiCustomerIntegrationTest {
         }
     }
 
+    /**
+     * T1-6: alpha in Johannesburg (no zone stored: site.time-zone), bravo in New York. Ticking every minute for two days,
+     * each runs at 03:30 local plus its offset (alpha 17, bravo 13 minutes), once per local date. The first tick finds
+     * New York's previous day not yet run, so bravo runs it at once: the late run after a (re)start.
+     */
+    @Test
+    void aDailyJob_runsAtItsLocalTime_inEachCustomersOwnZone_oncePerLocalDay() {
+        var platform = MultiCustomerFixture.get().platform();
+        platform.update("UPDATE tenants SET time_zone = 'America/New_York' WHERE slug = 'bravo'");
+        var runs = new ArrayList<String>();
+        var start = Instant.parse("2030-06-01T01:00:00Z"); // 03:00 in Johannesburg; 21:00 on 31 May in New York (EDT)
+        try {
+            directory.refresh();
+            for (var now = start; now.isBefore(start.plus(Duration.ofDays(2))); now = now.plusSeconds(60)) {
+                clock.setInstant(now);
+                assertThat(customerJobs.daily("t1-6-daily", LocalTime.of(3, 30),
+                        () -> runs.add(CustomerContext.require().slug() + " " + clock.instant()))).isZero();
+            }
+        } finally {
+            platform.update("UPDATE tenants SET time_zone = NULL WHERE slug = 'bravo'");
+            clock.reset();
+            directory.refresh();
+        }
+        assertThat(runs).containsExactly(
+                "bravo 2030-06-01T01:00:00Z",  // 31 May in New York, late
+                "alpha 2030-06-01T01:47:00Z",  // 03:47 in Johannesburg
+                "bravo 2030-06-01T07:43:00Z",  // 03:43 in New York
+                "alpha 2030-06-02T01:47:00Z",
+                "bravo 2030-06-02T07:43:00Z");
+    }
+
+    /**
+     * T1-6: a daily run failing for one customer doesn't stop the other, and isn't retried that day (counted when it
+     * starts). A time zone that isn't valid is logged once and the default (Johannesburg) used.
+     */
+    @Test
+    void aDailyJobFailingForOneCustomer_doesNotStopTheOther_andABadZoneFallsBackToTheDefault(CapturedOutput output) {
+        var platform = MultiCustomerFixture.get().platform();
+        platform.update("UPDATE tenants SET time_zone = 'Mars/Olympus' WHERE slug = 'bravo'");
+        var runs = new ArrayList<String>();
+        Runnable work = () -> {
+            var slug = CustomerContext.require().slug();
+            runs.add(slug);
+            if (slug.equals("alpha")) {
+                throw new IllegalStateException("alpha's daily run breaks");
+            }
+        };
+        try {
+            directory.refresh();
+            clock.setInstant(Instant.parse("2031-02-01T01:30:00Z")); // 03:30 in Johannesburg: before both offsets
+            assertThat(customerJobs.daily("t1-6-daily-failing", LocalTime.of(3, 30), work)).isZero();
+            assertThat(runs).isEmpty();
+            clock.setInstant(Instant.parse("2031-02-01T02:00:00Z")); // 04:00 in Johannesburg
+            assertThat(customerJobs.daily("t1-6-daily-failing", LocalTime.of(3, 30), work)).isEqualTo(1);
+            assertThat(runs).containsExactly("alpha", "bravo");
+            clock.setInstant(Instant.parse("2031-02-01T02:01:00Z"));
+            assertThat(customerJobs.daily("t1-6-daily-failing", LocalTime.of(3, 30), work)).isZero();
+            assertThat(runs).as("not retried the same day").containsExactly("alpha", "bravo");
+        } finally {
+            platform.update("UPDATE tenants SET time_zone = NULL WHERE slug = 'bravo'");
+            clock.reset();
+            directory.refresh();
+        }
+        assertThat(output.getAll()).contains("job t1-6-daily-failing failed for customer alpha; the other customers' runs go on");
+        assertThat(count(output, "jobs: customer bravo has time zone 'Mars/Olympus', not a valid IANA zone id")).isEqualTo(1);
+    }
+
     private static int count(CapturedOutput output, String text) {
         var all = output.getAll();
         var found = 0;
@@ -178,7 +248,14 @@ class CustomerJobsIntegrationTests extends MultiCustomerIntegrationTest {
             fixture.direct(slug).update("INSERT INTO login_attempts (attempted_at, method, identifier, outcome) "
                     + "VALUES (DATEADD(day, -400, SYSUTCDATETIME()), 'PASSWORD', ?, 'BAD_CREDENTIAL')", marker);
         }
-        retentionJob.scheduledPurge();
+        // T1-6: 04:00 in Johannesburg, after both customers' 03:30 + spread; the minute tick is off in tests.
+        clock.setInstant(Instant.parse("2031-01-15T02:00:00Z"));
+        try {
+            assertThat(retentionJob.purgeWhenDue()).isZero();
+        } finally {
+            clock.reset();
+            directory.refresh();
+        }
         for (var slug : List.of("alpha", "bravo")) {
             assertThat(fixture.direct(slug).queryForObject("SELECT COUNT(*) FROM login_attempts WHERE identifier = ?",
                     Integer.class, marker)).as(slug + "'s old attempt purged").isZero();

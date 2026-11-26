@@ -1,5 +1,6 @@
 package com.beaconculinary.api.auth.protection;
 
+import com.beaconculinary.api.tenancy.jobs.DailySchedule;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
@@ -12,6 +13,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -80,6 +82,13 @@ public class LoginProtectionProperties {
     @Min(100)
     private int retentionBatchSize = 5000;
 
+    /** T1-6: the local time the retention job runs each day, in each customer's own time zone (plus its spread). */
+    @NotNull
+    private LocalTime retentionTime = LocalTime.of(3, 30);
+
+    /** T1-6: the retention job's minute tick. The test suite turns it off and runs the job itself. */
+    private boolean retentionEnabled = true;
+
     /** Per-client-IP burst limit on /auth/** and the manager-PIN endpoints. */
     @Valid @NotNull
     private Burst burst = new Burst();
@@ -95,6 +104,11 @@ public class LoginProtectionProperties {
                 && (lockDurations == null || lockDurations.stream().allMatch(LoginProtectionProperties::positive))
                 && (burst == null || (positive(burst.getRefillPeriod()) && positive(burst.getIdleExpiry())
                         && positive(burst.getWarnInterval())));
+    }
+
+    @AssertTrue(message = "security.login-protection.retention-time must be 23:39 or earlier (the daily spread adds up to 20 minutes)")
+    public boolean isRetentionTimeValid() {
+        return retentionTime == null || !retentionTime.isAfter(DailySchedule.LATEST_TIME);
     }
 
     public boolean isActive() {

@@ -30,6 +30,9 @@ public class LoginProtectionTestDefaults implements EnvironmentPostProcessor {
         all.put("app.sse.keepalive-interval", "0");
         // T1-1: the suite runs single-customer, whatever a local .env says; TenancyModeIntegrationTests starts multi.
         all.put("app.tenancy.mode", "single");
+        // T1-6: the retention job's minute tick is off: it would purge on real time while tests insert old attempts;
+        // tests run it themselves (purgeWhenDue) with the clock set.
+        all.put("security.login-protection.retention-enabled", "false");
         return all;
     }
 
