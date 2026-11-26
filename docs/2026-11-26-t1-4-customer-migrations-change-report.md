@@ -25,7 +25,8 @@ merged. **Doc:** `docs/2026-11-26-customer-migrations.md`.
 | 2 | `7ca6bff` | `MigrateCustomersCommand` and its tests; a test-only V117 | +756 / -3 |
 | 3 | `cde7fc8` | The version check (behind: 503 and recheck; ahead: WARN); the multi-mode tests run as a restricted app login | +445 / -13 |
 | 4 | `fd5e254` | Local stack: two logins, the command in `up.ps1`, `reset.ps1` and `new-customer.ps1`, schema in `status.ps1`; the stack's Flyway container removed | +192 / -67 |
-| 5 | this commit | This doc and the customer migrations doc; the platform, routing and local stack docs | see `git show --stat` |
+| 5 | `9cbc2f8` | This doc and the customer migrations doc; the platform, routing and local stack docs | +321 / -11 |
+| Fix | `661959a` | The command records the database's own version after migrating, and never an older one than recorded | +24 / -3 |
 
 ## Decisions (approved)
 
@@ -46,6 +47,7 @@ merged. **Doc:** `docs/2026-11-26-customer-migrations.md`.
 |---|---|
 | `up.ps1` had no step that migrated **existing** databases; only a new beaconculinary got migrations (the Flyway container). In multi mode nothing updated a customer database once it existed | The command now does both; the container step is deleted |
 | "Two copies: one waits or skips": Flyway on SQL Server locks **per migration**, not per run | The copies take turns: each migration is applied by exactly one, and both end SUCCEEDED or UNCHANGED (tested) |
+| `check-all.ps1` on `9cbc2f8` failed once: with two copies taking turns, the one finishing last could record the version **it** stopped at (116) over the other's 117. The schema was right; only `last_migrated_version` was stale | Fixed in `661959a`: the version is read from the database after migrating and never recorded older than what is stored (row lock); the test passed 5 runs in a row |
 | The plan had the command run on this machine (`java -cp`), like `TenantRegisterCommand` | The platform database stores the addresses as the stack sees them (`sql`). The command runs in a throwaway Java container on the stack network, like a job in Azure; passwords only as `-e NAME` |
 | Spring Boot's start-up log and comment said the local stack migrated every database before the backend | Corrected to name the migration command |
 | `TenancyModeIntegrationTests`, **run on its own**, fails at "no `HikariPool-` line": its own context starts inside the capture. Pre-existing (same failure without T1-4) | Not changed (out of scope); passes in the suite, as `check-all.ps1` runs it |
