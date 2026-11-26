@@ -9,8 +9,11 @@ import com.beaconculinary.api.tenancy.secrets.SecretNames;
 import com.beaconculinary.api.tenancy.secrets.SecretResolver;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
+import org.flywaydb.core.api.MigrationVersion;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.PrintStream;
 import java.sql.DriverManager;
@@ -204,11 +207,11 @@ public final class MigrateCustomersCommand {
                 var flyway = flyway(database, login);
                 from = version(flyway.info().current());
                 var applied = flyway.migrate();
-                var to = applied.targetSchemaVersion == null ? from : applied.targetSchemaVersion;
+                // The database's own version now: with a second copy taking turns, it may have applied later ones.
+                var to = version(flyway.info().current());
                 var outcome = applied.migrationsExecuted > 0 ? "SUCCEEDED" : "UNCHANGED";
                 var now = Timestamp.from(clock.instant());
-                platform.update("UPDATE tenant_databases SET last_migrated_version = ?, last_migrated_at = ?, updated_at = ? WHERE tenant_id = ?",
-                        to, now, now, customer.id());
+                recordVersion(platform, customer.id(), to, now);
                 var back = platform.update("UPDATE tenants SET status = 'ACTIVE', updated_at = ? WHERE id = ? AND status = 'MIGRATION_FAILED'",
                         now, customer.id()) > 0;
                 result = new Result(customer.slug(), from, to, outcome, Duration.between(started, clock.instant()),
@@ -226,6 +229,24 @@ public final class MigrateCustomersCommand {
         platform.update("UPDATE provisioning_runs SET finished_at = ?, outcome = ?, message = ? WHERE id = ?",
                 Timestamp.from(clock.instant()), result.outcome(), cut(result.message(), 1000), runId);
         return result;
+    }
+
+    /**
+     * Records the version reached, never an older one than recorded: two copies take turns on Flyway's lock per
+     * migration, so the one that finishes last may have seen fewer migrations. Under an update lock on the row.
+     */
+    private static void recordVersion(JdbcTemplate platform, long tenantId, String version, Timestamp now) {
+        if (version.startsWith("none")) {
+            return;
+        }
+        new TransactionTemplate(new DataSourceTransactionManager(platform.getDataSource())).executeWithoutResult(status -> {
+            var recorded = platform.queryForObject("SELECT last_migrated_version FROM tenant_databases WITH (UPDLOCK, HOLDLOCK) "
+                    + "WHERE tenant_id = ?", String.class, tenantId);
+            if (recorded == null || MigrationVersion.fromVersion(version).compareTo(MigrationVersion.fromVersion(recorded)) >= 0) {
+                platform.update("UPDATE tenant_databases SET last_migrated_version = ?, last_migrated_at = ?, updated_at = ? "
+                        + "WHERE tenant_id = ?", version, now, now, tenantId);
+            }
+        });
     }
 
     /** --dry-run: what would be applied; nothing written anywhere. */
