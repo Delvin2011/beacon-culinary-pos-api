@@ -48,7 +48,7 @@ public class InviteLinks {
     /**
      * Null for blank; otherwise the URL without trailing slashes. Refuses anything that isn't an
      * absolute http(s) URL without query or fragment, naming {@code name} in the message. Used by
-     * {@code FirstAdminCommand --base-url}.
+     * the first-admin command's --base-url option.
      */
     public static String normalizeBase(String url, String name) {
         if (url == null || url.isBlank()) {
