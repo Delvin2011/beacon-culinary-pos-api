@@ -610,6 +610,11 @@ function Initialize-PlatformDatabase($Config) {
     if ($code -ne 0) { throw "Migrating the platform database failed (exit code $code)." }
 }
 
+<# A stack customer's name in the platform database (tenants.display_name); T1-7: smoke.ps1 expects it from /api/public/branding. #>
+function Get-StackDisplayName([string] $Name) {
+    switch ($Name) { 'beaconculinary' { return 'Beacon Culinary' } 'testcustomer' { return 'Test Customer' } default { return $Name } }
+}
+
 <#
     A customer: its two database logins (T1-4: the app login, read, write and execute; the migration login, db_owner),
     and its registration in the platform database with <name>.pos.localhost and the four secret names. Idempotent
@@ -619,7 +624,7 @@ function Register-StackCustomer($Config, [string] $Name) {
     $secrets = Get-CustomerSecretValues $Config $Name
     Set-DatabaseLogin $Config $secrets.Login $secrets.Password $Name 'app'
     Set-DatabaseLogin $Config $secrets.MigrationLogin $secrets.MigrationPassword $Name 'owner'
-    $displayName = switch ($Name) { 'beaconculinary' { 'Beacon Culinary' } 'testcustomer' { 'Test Customer' } default { $Name } }
+    $displayName = Get-StackDisplayName $Name
     $server = 'sql'; $port = 1433
     if ($Config.SqlMode -eq 'host') { $server = 'host.docker.internal'; $port = $Config.SqlInstancePort }
     $fromBaseline = if ($Name -eq $script:FullHistoryCustomer) { 'false' } else { 'true' }

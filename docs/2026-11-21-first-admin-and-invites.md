@@ -22,8 +22,8 @@ the first-admin command in one go: see `docs/2026-11-22-new-customer-database.md
 the first-admin command on its own (an existing database, or a rerun when the link expired).
 
 - The app has started once against the customer's database (it applies the migrations, V116 included).
-- `APP_PUBLIC_BASE_URL` is set on the app to the address staff open the frontend at (for example
-  `https://pos.customer.co.za`). Without it, staff links from the staff screen are built by the frontend.
+- T1-7: links from the staff screen are on the customer's primary host (multi mode), or built by the frontend from
+  its own address (single mode). There is no base-URL setting on the app.
 - **The app runs with `SPRING_PROFILES_ACTIVE=prod`** (go-live checklist item 10). The startup log shows either
   `LOGIN_PROTECTION_ALERT type=DEMO_ACCOUNTS_ACTIVE count=N guard=on` or `Demo accounts: none active; demo guard
   on`. If it says `guard off`, stop: the prod profile isn't active.
@@ -58,8 +58,8 @@ the first-admin command on its own (an existing database, or a rerun when the li
         --base-url https://pos.customer.co.za
    ```
 
-   `--base-url` can be left out when `APP_PUBLIC_BASE_URL` is set in the same terminal. Without either, the command
-   prints the bare token and you build `{frontend}/invite#t=<token>` yourself.
+   `--base-url` is the customer's address (its primary host). Without it, the command prints the bare token and you
+   build `{frontend}/invite#t=<token>` yourself.
 
 4. Output (exit code 0):
 

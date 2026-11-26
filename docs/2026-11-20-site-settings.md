@@ -72,10 +72,13 @@ as for till management.
 | `site.time-zone`, `site.currency-code`, `site.currency-symbol` | Platform | Locale (T0-2); the SQL report views assume SAST, so the zone can't vary per customer yet |
 | `pos.require-client-order-id`, `pos.session.sweep-enabled`, job switches | Platform | Rollout and job switches |
 | `reports.export.max-rows`, `dashboard.cache.enabled` | Platform | Protect the server |
-| `app.public-base-url` | Platform | The frontend address invite links point at (T0-6a; env `APP_PUBLIC_BASE_URL`); per customer in T1 |
 | `app.flyway.include-baseline` | Platform | Flyway also reads `db/baseline`, for databases built from the T0-7 baseline (env `APP_FLYWAY_INCLUDEBASELINE`; on in the prod profile) |
 | `security.demo-accounts.block-sign-in` | Platform | Refuses the seeded demo accounts; always on under the prod profile (T0-6a) |
-| `app.business.name` | Platform | Fallback only. **Blank by default** (env `APP_BUSINESS_NAME`), so one customer's name is never printed on another's reports. The customer's name is the receipt settings' `businessName`; with both blank, statement reports print no business name. **Onboarding must set the business name in the receipt settings.** |
+
+T1-7 removed two platform settings: `app.public-base-url` (invite links are on the customer's primary host) and
+`app.business.name` (the business name is the receipt settings' `businessName`, else the customer's name in the
+customer directory; reports and `GET /api/public/branding` use it). **Onboarding should still set the business name
+in the receipt settings.** docs/2026-11-25-customer-from-address.md section 11.
 
 Hard-coded customer values (meal periods, the `PM` account prefix, location names) are out of scope
 here; see analysis A.1.
