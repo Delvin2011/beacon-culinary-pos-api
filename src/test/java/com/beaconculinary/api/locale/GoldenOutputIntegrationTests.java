@@ -35,8 +35,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(ClockTestConfig.class)
-// T0-4a: app.business.name is blank by default; the golden files were recorded with this name.
-@TestPropertySource(properties = {"reports.close-day.first-trading-day=2026-10-05", "app.business.name=Beacon Culinary"})
+// T1-7: the golden files were recorded with the business name "Beacon Culinary"; setUp saves it in the receipt settings.
+@TestPropertySource(properties = "reports.close-day.first-trading-day=2026-10-05")
 class GoldenOutputIntegrationTests {
     /** Tue 6 Oct 2026 13:00 Johannesburg. */
     private static final Instant TUESDAY_13_00 = Instant.parse("2026-10-06T11:00:00Z");
@@ -64,6 +64,7 @@ class GoldenOutputIntegrationTests {
     @BeforeEach
     void setUp() throws Exception {
         clock.setInstant(TUESDAY_13_00);
+        jdbc.update("UPDATE [receipt_settings] SET [business_name] = 'Beacon Culinary' WHERE [id] = 1");
         adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
         LocaleTestData.clearOfflineAndTillLeftovers(jdbc);
         ReportFixture.clear(jdbc);
@@ -107,6 +108,7 @@ class GoldenOutputIntegrationTests {
         parkedRequests.forEach((id, status) -> jdbc.update("UPDATE stock_requests SET status = ? WHERE id = ?", status, id));
         parkedCounts.forEach(id -> jdbc.update("UPDATE stock_takes SET status = 'SUBMITTED' WHERE id = ?", id));
         clock.reset();
+        jdbc.update("UPDATE [receipt_settings] SET [business_name] = NULL WHERE [id] = 1");
         cache.clear();
         ReportFixture.clear(jdbc);
     }

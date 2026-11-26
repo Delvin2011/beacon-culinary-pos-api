@@ -101,12 +101,9 @@ pos:
 vat:
   standard-rate: 0.15
 
-# T0-4a: the platform fallback for the business name on statement reports, used only when the receipt
-# settings have none. Blank by default so no customer's name is printed on another's reports; onboarding
-# sets the name in the receipt settings.
+# T1-7: a customer's name is in its own receipt settings, else its name in the customer directory; there is no
+# platform-wide business name (app.business.name is gone).
 app:
-  business:
-    name: ${APP_BUSINESS_NAME:}
   # T0-7: true adds classpath:db/baseline to Flyway's locations (FlywayBaselineLocation): an empty database
   # starts from the B116 baseline without demo data, and a database built from it validates. Off here, so an
   # empty dev or test database replays every migration; on in the prod profile. Needs Flyway enabled (the dev

@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -18,12 +17,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * O2b (contract 8.2, item 1): statement reports print the receipt settings' business name, falling
- * back to app.business.name while it's empty. That is blank by default (T0-4a), so these tests set it;
- * T04aBlankBusinessNameIntegrationTests covers both blank.
+ * O2b (contract 8.2, item 1): statement reports print the receipt settings' business name. T1-7: while
+ * it's empty, the customer directory's name (multi mode, CustomerBrandingIntegrationTests); here, in single
+ * mode, none (app.business.name is gone). T04aBlankBusinessNameIntegrationTests covers the empty report.
  */
 @SpringBootTest
-@TestPropertySource(properties = "app.business.name=Beacon Culinary")
 @AutoConfigureMockMvc
 class O2bReportBusinessNameIntegrationTests {
     private static final String DAY = "2026-01-05";
@@ -48,13 +46,6 @@ class O2bReportBusinessNameIntegrationTests {
     }
 
     @Test
-    void withNoNameSaved_theServerSettingIsPrinted() throws Exception {
-        xReading().andExpect(status().isOk())
-                .andExpect(jsonPath("$.meta.business.name").value("Beacon Culinary"))
-                .andExpect(jsonPath(HEADER_BUSINESS, contains("Beacon Culinary")));
-    }
-
-    @Test
     void withANameSaved_theReceiptSettingsNameIsPrinted() throws Exception {
         setBusinessName("Canteen at Riverside Park");
 
@@ -64,11 +55,11 @@ class O2bReportBusinessNameIntegrationTests {
     }
 
     @Test
-    void aBlankStoredName_fallsBackToTheServerSetting() throws Exception {
+    void aBlankStoredName_countsAsNone() throws Exception {
         setBusinessName("   ");
 
         xReading().andExpect(status().isOk())
-                .andExpect(jsonPath("$.meta.business.name").value("Beacon Culinary"));
+                .andExpect(jsonPath("$.meta.business").doesNotExist());
     }
 
     private ResultActions xReading() throws Exception {
