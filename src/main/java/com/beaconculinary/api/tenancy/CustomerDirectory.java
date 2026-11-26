@@ -100,12 +100,14 @@ public class CustomerDirectory {
         });
         var databases = new HashMap<Long, Customer.DatabaseLocation>();
         jdbc.query("SELECT tenant_id, server_host, server_port, database_name, connection_options, login_secret_name, "
-                + "password_secret_name, built_from_baseline, expected_collation, last_migrated_version FROM tenant_databases", rs -> {
+                + "password_secret_name, built_from_baseline, expected_collation, last_migrated_version, "
+                + "migration_login_secret_name, migration_password_secret_name FROM tenant_databases", rs -> {
             databases.put(rs.getLong("tenant_id"), new Customer.DatabaseLocation(rs.getString("server_host"),
                     rs.getInt("server_port"), rs.getString("database_name"), rs.getString("connection_options"),
                     rs.getString("login_secret_name"), rs.getString("password_secret_name"),
                     rs.getBoolean("built_from_baseline"), rs.getString("expected_collation"),
-                    rs.getString("last_migrated_version")));
+                    rs.getString("last_migrated_version"), rs.getString("migration_login_secret_name"),
+                    rs.getString("migration_password_secret_name")));
         });
         var customers = new ArrayList<Customer>();
         jdbc.query("SELECT id, slug, display_name, status FROM tenants ORDER BY slug", rs -> {

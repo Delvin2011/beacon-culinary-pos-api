@@ -66,7 +66,7 @@ class TenancyModeIntegrationTests {
                      "app.tenancy.platform.username", platform.username(),
                      "app.tenancy.platform.password", platform.password()))) {
             var database = app.getBean(PlatformDatabase.class);
-            assertThat(database.version()).isEqualTo("1");
+            assertThat(database.version()).isEqualTo("2");
             assertThat(database.jdbc().queryForObject("SELECT COUNT(*) FROM tenants", Integer.class)).isZero();
             assertThat(app.getBean(CustomerDirectory.class).listAll()).isEmpty();
             assertThat(app.getBean(TenancyProperties.class).isMulti()).isTrue();
@@ -74,7 +74,7 @@ class TenancyModeIntegrationTests {
             assertThat(app.getBeanFactory().getBeanDefinition("dataSource").getDependsOn())
                     .contains(TenancyConfig.PLATFORM_DATABASE_BEAN);
             var log = output.getAll();
-            var platformLine = log.indexOf("tenancy multi: platform database at version 1");
+            var platformLine = log.indexOf("tenancy multi: platform database at version 2");
             assertThat(platformLine).isPositive();
             // T1-2: the data source routes to the current customer's database, and nothing connects to one at
             // start-up (no Spring Boot Hikari pool, no customer pool).
