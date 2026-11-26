@@ -184,6 +184,6 @@ class CustomerResolutionFilterTest {
     }
 
     private void add(long id, String slug, CustomerStatus status) {
-        customers.put(slug + ".pos.localhost", new Customer(id, slug, "Display " + slug, status, List.of(slug + ".pos.localhost"), null));
+        customers.put(slug + ".pos.localhost", new Customer(id, slug, "Display " + slug, status, List.of(slug + ".pos.localhost"), null, null));
     }
 }

@@ -6,9 +6,11 @@ import java.util.List;
  * T1-1: a customer as the directory knows it: who it is, its status, its addresses (the primary first) and where its
  * database is. No secret values: the database location carries only the NAMES of the login and password secrets
  * (resolved with {@link com.beaconculinary.api.tenancy.secrets.SecretResolver} when a connection is made, T1-2).
+ * T1-6: {@code timeZone} is tenants.time_zone as stored (an IANA zone id, not yet checked), or null for the app's
+ * site.time-zone; it times the customer's daily jobs ({@link com.beaconculinary.api.tenancy.jobs.CustomerJobs}).
  */
 public record Customer(long id, String slug, String displayName, CustomerStatus status, List<String> hosts,
-                       DatabaseLocation database) {
+                       DatabaseLocation database, String timeZone) {
 
     public Customer {
         hosts = List.copyOf(hosts);

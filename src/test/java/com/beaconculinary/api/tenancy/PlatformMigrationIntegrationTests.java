@@ -58,7 +58,7 @@ class PlatformMigrationIntegrationTests {
             assertThat(strings(c, "SELECT name FROM sys.tables ORDER BY name"))
                     .containsExactly("flyway_schema_history", "provisioning_runs", "tenant_databases", "tenant_hosts", "tenants");
             assertThat(strings(c, "SELECT CONCAT(version, ':', type, ':', success) FROM flyway_schema_history ORDER BY installed_rank"))
-                    .containsExactly("1:SQL:1", "2:SQL:1");
+                    .containsExactly("1:SQL:1", "2:SQL:1", "3:SQL:1");
         }
     }
 
