@@ -19,7 +19,7 @@ request host ──► │ tenant_hosts ──► tenants ──► tenant_datab
 |---|---|---|
 | Platform database | `pos_platform` on the stack's SQL Server | Its own Azure SQL database |
 | Its login | `pos_platform`, its password `PLATFORM_DB_PASSWORD` in `devstack/stack.env` | A dedicated login (or managed identity); password in Key Vault |
-| A customer's database login | One per customer (`pos_<customer>`), `db_owner` of that database only | The same |
+| A customer's database logins | T1-4: two per customer database, of that database only: the app login (`pos_<customer>`: read, write, execute) and the migration login (`pos_<customer>_migrate`: `db_owner`) | The same; only the migration job may read the migration login's secrets |
 | Secret values | `SECRET_<NAME>` environment variables, from `stack.env` | Key Vault secrets with the same names (T1-0b) |
 
 ## 1. What it holds
@@ -31,8 +31,8 @@ The schema is `src/main/resources/db/platform/V1__platform.sql`, with its own Fl
 |---|---|---|
 | `tenants` | Customer | `slug` 3-40 lower-case letters, digits and hyphens, not starting or ending with a hyphen, unique (it is the first label of `<slug>.pos.optimumscs.com`). `status` is `PROVISIONING`, `ACTIVE`, `SUSPENDED`, `MIGRATION_FAILED` or `ARCHIVED` |
 | `tenant_hosts` | Address a customer is reached at | Stored lower-case, without a port or trailing dot; one customer per host; at most one primary host per customer (`UX_tenant_hosts_one_primary`) |
-| `tenant_databases` | Customer (its database) | Server, port, database name, connection options, and the **names** of the login and password secrets. Two customers never share a database (`UQ_tenant_databases_location`). The options can't hold credentials (no `password`, `pwd`, `user`, `uid=`, `secret`). Secret names follow Key Vault's rule. Also: built from the baseline or full history, the expected collation, and the last migrated version (filled from T1-4) |
-| `provisioning_runs` | Change made by an operator (from T1-4: by provisioning) | Action, operator, start and finish, outcome `RUNNING`, `SUCCEEDED`, `UNCHANGED`, `REFUSED` or `FAILED`, and a message that is never a secret |
+| `tenant_databases` | Customer (its database) | Server, port, database name, connection options, and the **names** of the login and password secrets. Two customers never share a database (`UQ_tenant_databases_location`). The options can't hold credentials (no `password`, `pwd`, `user`, `uid=`, `secret`). Secret names follow Key Vault's rule. Also: built from the baseline or full history, the expected collation, and the last migrated version and time (filled by the migration command, T1-4). T1-4 (`V2`): the **names** of the migration login's secrets, both or neither |
+| `provisioning_runs` | Change made by an operator (T1-4: and each `MIGRATE` run of the migration command) | Action, operator, start and finish, outcome `RUNNING`, `SUCCEEDED`, `UNCHANGED`, `REFUSED` or `FAILED`, and a message that is never a secret |
 
 **No secret value is ever stored here,** only secret names such as `beaconculinary-db-password`. Plans and
 entitlements (T2) and platform operators (T3) come later as their own tables.
@@ -125,6 +125,7 @@ case, digits and symbols, no `'`, used nowhere else):
 | `SECRET_BEACONCULINARY_DB_LOGIN`, `SECRET_BEACONCULINARY_DB_PASSWORD` | beaconculinary's own login, e.g. `pos_beaconculinary` (never `sa` or `pos_platform`), and its password |
 | `SECRET_TESTCUSTOMER_DB_LOGIN`, `SECRET_TESTCUSTOMER_DB_PASSWORD` | The same for testcustomer |
 | `SECRET_<NAME>_DB_LOGIN`, `SECRET_<NAME>_DB_PASSWORD` | For each customer made with `new-customer.ps1 <name>` |
+| `SECRET_<NAME>_DB_MIGRATION_LOGIN`, `SECRET_<NAME>_DB_MIGRATION_PASSWORD` | T1-4: each customer's migration login (e.g. `pos_beaconculinary_migrate`, not its app login) and its password: `docs/2026-11-26-customer-migrations.md` |
 | `PLATFORM_DATABASE`, `TENANCY_MODE` | Optional: default `pos_platform` and `single` |
 
 The scripts check these before they change anything, and name a missing or weak setting, never its value.
@@ -135,6 +136,10 @@ The scripts check these before they change anything, and name a missing or weak 
 | `status.ps1` | Section "Platform database": its version and each customer's status, hosts and database. `-Snapshot` and `-Compare` include it |
 | `reset.ps1` | A full reset also drops and recreates `pos_platform` and registers every customer again; `-Customer <name>` registers that customer again |
 | `new-customer.ps1` | Checks the new customer's secrets first, then registers it |
+
+T1-4: the customer logins are two per database (the app login loses `db_owner`), `register` stores the migration
+login's secret names too, and `up.ps1`, `reset.ps1` and `new-customer.ps1` run the migration command after
+registering: `docs/2026-11-26-customer-migrations.md`.
 
 Passwords reach `sqlcmd` as environment variables (`-e`), never on a command line or in a file. The backend
 container gets the `SECRET_*` values, ready for T1-2; in Azure they become Key Vault references.
