@@ -11,10 +11,14 @@ import java.time.Duration;
 
 /**
  * Deletes login_attempts rows older than {@code retention-days} (decision D5), in batches so a large
- * backlog never holds a long lock. Runs daily at 03:30 business time (site.time-zone). With more
- * than one app instance every instance runs it; the delete is idempotent, so that is harmless.
+ * backlog never holds a long lock. With more than one app instance every instance runs it; the
+ * delete is idempotent, so that is harmless.
  * T1-2: in multi-customer mode it runs once per ACTIVE customer, in that customer's database
  * ({@link CustomerJobs}); a failure for one customer doesn't stop the others.
+ * T1-6: daily at {@code retention-time} (03:30) in each customer's own time zone, plus its 0-20 minute
+ * spread ({@link CustomerJobs#daily}), checked every minute. A late run (after a restart) and a missed
+ * day (the app down) are both harmless: the next run deletes everything past the retention period.
+ * The test suite turns the minute tick off ({@code retention-enabled=false}) and runs {@link #purgeWhenDue()}.
  */
 @Slf4j
 @Component
@@ -34,10 +38,17 @@ public class LoginAttemptRetentionJob {
         this.customerJobs = customerJobs;
     }
 
-    @Scheduled(cron = "${security.login-protection.retention-cron:0 30 3 * * *}", zone = "${site.time-zone:Africa/Johannesburg}")
+    @Scheduled(initialDelay = 60_000, fixedDelay = 60_000)
     public void scheduledPurge() {
+        if (properties.isRetentionEnabled()) {
+            purgeWhenDue();
+        }
+    }
+
+    /** Runs the purge for each customer whose retention time has come today and that hasn't run it today. */
+    public int purgeWhenDue() {
         // T0-1: every line of the run carries jobName and runId (T1-2: and the customer, in multi mode).
-        customerJobs.forEachActiveCustomer("login-attempt-retention", () -> {
+        return customerJobs.daily("login-attempt-retention", properties.getRetentionTime(), () -> {
             try {
                 var deleted = purge();
                 if (deleted > 0) {

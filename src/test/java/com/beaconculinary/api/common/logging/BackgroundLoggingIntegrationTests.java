@@ -10,6 +10,7 @@ import com.beaconculinary.api.devices.DeviceAlerts;
 import com.beaconculinary.api.sessions.SessionService;
 import com.beaconculinary.api.sessions.SessionSweepJob;
 import com.beaconculinary.api.support.ClockTestConfig;
+import com.beaconculinary.api.support.MutableClock;
 import com.beaconculinary.api.tenancy.jobs.CustomerJobs;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +22,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,6 +38,7 @@ class BackgroundLoggingIntegrationTests {
     @Autowired private CustomerJobs customerJobs;
     @Autowired private LoginAttemptService loginAttemptService;
     @Autowired private DeviceAlerts deviceAlerts;
+    @Autowired private MutableClock clock;
 
     private final ListAppender<ILoggingEvent> events = new ListAppender<>();
     private final List<Logger> watched = new ArrayList<>();
@@ -69,7 +72,13 @@ class BackgroundLoggingIntegrationTests {
 
     @Test
     void theLoginAttemptRetentionJob_logsWithItsJobNameAndARunId() {
-        retentionJob.scheduledPurge();
+        // T1-6: 04:00 in Johannesburg, after the daily 03:30 (the minute tick is off in tests; run it ourselves).
+        clock.setInstant(Instant.parse("2031-03-01T02:00:00Z"));
+        try {
+            retentionJob.purgeWhenDue();
+        } finally {
+            clock.reset();
+        }
 
         assertThat(forJob("login-attempt-retention")).isNotEmpty().allSatisfy(event -> {
             assertThat(event.getMDCPropertyMap().get("runId")).matches("[0-9a-f]{8}");

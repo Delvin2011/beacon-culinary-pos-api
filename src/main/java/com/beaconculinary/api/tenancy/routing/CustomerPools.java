@@ -31,8 +31,9 @@ import java.util.function.Supplier;
  *   <li>Its first connection checks the database's collation against the expected one (a mismatch closes the pool
  *       and refuses), logs the schema version found, and tells the {@link FirstConnectionListener}s.</li>
  *   <li>T1-4: it also compares that version with the newest one the app contains ({@link AppSchemaVersion}). Behind:
- *       the customer isn't served ({@link CustomerSchemaBehindException}, 503 CUSTOMER_UNAVAILABLE, logged at ERROR),
- *       and its requests are refused without connecting until {@code schema-recheck} has passed; then the next
+ *       the customer isn't served ({@link CustomerSchemaBehindException}, 503 CUSTOMER_UNAVAILABLE, logged at ERROR
+ *       once per version found, T1-6), and its requests are refused without connecting until {@code schema-recheck}
+ *       has passed; then the next
  *       request checks again, so it comes back by itself once the operator's migration command has run. Ahead (a
  *       newer app updated it): served, with a WARN, as migrations stay backward compatible.</li>
  *   <li>Only ACTIVE customers get a connection. {@link #sweep()} (every minute) closes a pool nobody used for
@@ -53,6 +54,11 @@ public class CustomerPools implements AutoCloseable {
     private final MigrationVersion appVersion;
     /** T1-4: customers found behind, by slug: refused without connecting until the recheck time. */
     private final ConcurrentHashMap<String, Behind> behind = new ConcurrentHashMap<>();
+    /**
+     * T1-6: the version each customer was last reported behind at. The ERROR is logged once per version; a recheck that
+     * finds the same version logs at DEBUG (jobs check every minute). Cleared when the customer is served again.
+     */
+    private final ConcurrentHashMap<String, String> reportedBehind = new ConcurrentHashMap<>();
 
     public CustomerPools(CustomerDirectory directory, SecretResolver secrets, CustomerPoolProperties properties,
                          Clock clock, List<FirstConnectionListener> listeners) {
@@ -187,9 +193,13 @@ public class CustomerPools implements AutoCloseable {
     }
 
     private void retire(Pool pool, String reason) {
+        retire(pool, reason, false);
+    }
+
+    private void retire(Pool pool, String reason, boolean quiet) {
         if (pools.remove(pool.slug, pool)) {
             pool.close();
-            log.atInfo().addKeyValue("customer", pool.slug)
+            (quiet ? log.atDebug() : log.atInfo()).addKeyValue("customer", pool.slug)
                     .log("tenancy: customer {} pool closed ({})", pool.slug, reason);
         }
     }
@@ -270,6 +280,7 @@ public class CustomerPools implements AutoCloseable {
             if (checked) {
                 return;
             }
+            var alreadyReported = false;
             try {
                 var collation = query(connection, "SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(DB_NAME(), 'Collation'))");
                 if (collation == null || !collation.equalsIgnoreCase(key.expectedCollation())) {
@@ -281,13 +292,17 @@ public class CustomerPools implements AutoCloseable {
                 if (comparison < 0) {
                     var recheckAt = clock.instant().plus(properties.getSchemaRecheck());
                     behind.put(slug, new Behind(version, recheckAt));
-                    log.atError().addKeyValue("customer", slug).addKeyValue("schemaVersion", version)
+                    // T1-6: once per version found; a recheck finding the same version is DEBUG.
+                    alreadyReported = String.valueOf(version).equals(reportedBehind.put(slug, String.valueOf(version)));
+                    (alreadyReported ? log.atDebug() : log.atError())
+                            .addKeyValue("customer", slug).addKeyValue("schemaVersion", version)
                             .addKeyValue("appSchemaVersion", appVersion.getVersion())
                             .log("tenancy: customer {} database {} is at schema version {}, behind the app's {}: not served "
                                             + "until the migration command updates it (checked again after {})",
                                     slug, key.databaseName(), version, appVersion.getVersion(), properties.getSchemaRecheck());
                     throw new CustomerSchemaBehindException(slug, version, appVersion.getVersion());
                 }
+                reportedBehind.remove(slug);
                 log.atInfo().addKeyValue("customer", slug).addKeyValue("schemaVersion", version)
                         .log("tenancy: customer {} pool opened (database {} on {}), schema at version {}",
                                 slug, key.databaseName(), key.serverHost(), version);
@@ -310,7 +325,8 @@ public class CustomerPools implements AutoCloseable {
                 try {
                     connection.close();
                 } finally {
-                    retire(this, "first connection refused");
+                    // T1-6: quiet (DEBUG) when it's a database still behind at a version already reported.
+                    retire(this, "first connection refused", alreadyReported);
                 }
                 throw e;
             }

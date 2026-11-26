@@ -32,7 +32,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * T1-1: the customer directory on a throwaway platform database. Lookup by host ignores case, the port and a trailing
  * dot; an unknown host finds nothing; a suspended customer is found with its status and left out of the active list;
  * the snapshot is used for the TTL, read again after it, and at once after refresh(); when a read fails, the last good
- * snapshot answers (with one warning) until a read succeeds again. No secret values: only names.
+ * snapshot answers (with one warning) until a read succeeds again. No secret values: only names. T1-6: the time zone
+ * is read as stored, null when not set.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ExtendWith(OutputCaptureExtension.class)
@@ -194,6 +195,14 @@ class CustomerDirectoryIntegrationTests {
             assertThat(c.hosts()).isEmpty();
             assertThat(c.primaryHost()).isNull();
         });
+    }
+
+    @Test
+    void theTimeZone_isReadAsStored_andNullWhenNotSet() {
+        jdbc.update("UPDATE tenants SET time_zone = 'America/New_York' WHERE slug = 'beaconculinary'");
+        var directory = directory();
+        assertThat(directory.findBySlug("beaconculinary")).hasValueSatisfying(c -> assertThat(c.timeZone()).isEqualTo("America/New_York"));
+        assertThat(directory.findBySlug("testcustomer")).hasValueSatisfying(c -> assertThat(c.timeZone()).isNull());
     }
 
     private CustomerDirectory directory() {

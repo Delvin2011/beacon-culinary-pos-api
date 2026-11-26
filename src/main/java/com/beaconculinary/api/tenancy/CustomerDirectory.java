@@ -110,10 +110,11 @@ public class CustomerDirectory {
                     rs.getString("migration_password_secret_name")));
         });
         var customers = new ArrayList<Customer>();
-        jdbc.query("SELECT id, slug, display_name, status FROM tenants ORDER BY slug", rs -> {
+        jdbc.query("SELECT id, slug, display_name, status, time_zone FROM tenants ORDER BY slug", rs -> {
             var id = rs.getLong("id");
             customers.add(new Customer(id, rs.getString("slug"), rs.getString("display_name"),
-                    CustomerStatus.valueOf(rs.getString("status")), hosts.getOrDefault(id, List.of()), databases.get(id)));
+                    CustomerStatus.valueOf(rs.getString("status")), hosts.getOrDefault(id, List.of()), databases.get(id),
+                    rs.getString("time_zone")));
         });
         customers.sort(Comparator.comparing(Customer::slug));
         var byHost = new HashMap<String, Customer>();

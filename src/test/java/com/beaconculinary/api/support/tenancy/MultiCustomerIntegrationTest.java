@@ -1,7 +1,9 @@
 package com.beaconculinary.api.support.tenancy;
 
+import com.beaconculinary.api.support.ClockTestConfig;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ContextConfiguration;
 
 /**
@@ -17,5 +19,7 @@ import org.springframework.test.context.ContextConfiguration;
         "app.tenancy.customer-pool.schema-recheck=2s"})
 @AutoConfigureMockMvc
 @ContextConfiguration(initializers = MultiCustomerFixture.Initializer.class)
+// T1-6: a clock tests can move (the jobs' timing, the schema recheck); the real time unless a test sets it, and reset after.
+@Import(ClockTestConfig.class)
 public abstract class MultiCustomerIntegrationTest {
 }

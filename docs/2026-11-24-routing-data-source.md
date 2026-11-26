@@ -111,12 +111,73 @@ customers, which at worst suppresses one log line).
 
 | Work | Multi mode |
 |---|---|
-| Scheduled jobs: login-attempt retention (daily 03:30), session sweep (every minute) | `tenancy/jobs/CustomerJobs`: once per ACTIVE customer, inside its context, each failure logged as `job <name> failed for customer <slug>; the other customers' runs go on` |
+| Scheduled jobs: login-attempt retention (daily, 03:30 in each customer's own time zone), session sweep (every minute) | `tenancy/jobs/CustomerJobs`: once per customer it can serve, inside its context, each failure logged as `job <name> failed for customer <slug>; the other customers' runs go on`. T1-6: section 6a |
 | Demo-account report | Per customer, on its pool's first connection (not at start-up) |
 | `GET /health` | `database` is the **platform** database probe. It adds `customerPools: {open, failing}`: counts from memory, with no customer named and no customer database touched. Single mode's answer is unchanged |
 | Pool sweep, directory refresh | Platform database only |
 | `@TransactionalEventListener`s (kitchen, bar, board, dashboard and settings caches) | Run on the request's thread after its commit, as its customer |
 | Ops commands (`NewDatabaseCommand`, `FirstAdminCommand`, `TenantRegisterCommand`) | Separate processes with their own connections; not affected |
+
+## 6a. Jobs per customer (T1-6)
+
+**The jobs.** Only the first two touch customer databases; every job that does goes through `CustomerJobs`.
+
+| Job | Kind | When, for each customer | A late run (after a restart) or a missed day (app down) |
+|---|---|---|---|
+| `login-attempt-retention` (`LoginAttemptRetentionJob`) | Daily: `CustomerJobs.daily` | 03:30 (`security.login-protection.retention-time`) in the customer's own time zone, plus its offset; checked by a tick every minute | Harmless: the delete is idempotent, and the next run deletes everything past the retention period |
+| `session-sweep` (`SessionSweepJob`) | Frequent: `CustomerJobs.forEachActiveCustomer` | Every minute | n/a |
+| Customer pool sweep (`MultiCustomerDataConfig`) | Not per customer | Every minute | Memory and the platform database only |
+| SSE keepalive (`SseKeepalive`) | Not per customer | Every 25 s | Writes to open streams; no database |
+
+**A customer's time zone.** `tenants.time_zone` in the platform database (an IANA id such as `America/New_York`), or
+`site.time-zone` when it is empty. A value that isn't a valid zone is logged once (WARN) and the default is used. It
+only times the daily jobs: the reports stay in South Africa Standard Time (`docs/2026-11-19-site-locale.md`, section
+4). Until `TenantRegisterCommand` takes it, set it in the platform database:
+`UPDATE tenants SET time_zone = 'Africa/Johannesburg' WHERE slug = '<slug>'`; the app sees it within the directory's
+cache time.
+
+**The spread.** Each customer has a fixed offset of 0 to 20 minutes, `floorMod(slug.hashCode(), 21)` (Java fixes
+`String.hashCode`, so it never changes), so a 03:30 job runs between 03:30 and 03:50 and customers in one time zone
+don't all start in the same minute. A daily time must be 23:39 or earlier, so a run stays on its own local date.
+
+**Once per local date.** `CustomerJobs` keeps, in memory, the local date each daily job last ran for each customer. A
+run is counted when it starts: a failing run is not retried until the next day. After a restart, a job whose time has
+passed today runs once, late; a day the app is down is missed. So **a daily job must be harmless with both**; one that
+isn't needs a durable record, which isn't built. With several app instances each runs it, as before.
+
+**Daylight saving.** A local time that doesn't exist that day (clocks go forward) is moved forward by the gap, so the
+day still runs; a time that occurs twice (clocks go back) is its first occurrence, and the date is then done, so it
+never runs twice. (The South African zones have no daylight saving; the tests use New York.)
+
+**Customers that can't be served are skipped by every job.**
+
+| The customer is | The jobs |
+|---|---|
+| PROVISIONING, SUSPENDED or MIGRATION_FAILED | Skipped, seen in the directory without connecting |
+| ACTIVE, database behind the app's schema version (T1-4) | Skipped: found by taking one pooled connection before the work (a daily job only when it is due). The pool logs its ERROR once per version found and DEBUG on later rechecks |
+| ARCHIVED | Left out silently |
+| ACTIVE and served | Runs. A real failure stays an ERROR on every run, for that customer only |
+
+One WARN when a customer starts being skipped (or the reason changes):
+`jobs: customer <slug> is skipped by every job, as it is SUSPENDED (logged once; INFO when it is served again)`; one
+INFO when it is served again: `jobs: customer <slug> is served again; its jobs run`. The record is in memory, so a
+restart logs the WARN once more.
+
+**Cost at 50 customers.** The session sweep runs 50 small updates one after another, about 0.25 to 1 s a minute, on
+Spring's scheduler thread (one thread, shared with the pool sweep and the SSE keepalive). Each customer keeps about one
+warm connection (50 across 50 databases), so `evict-after` doesn't apply to customers whose sweep runs every minute.
+The daily ticks work in memory and connect only for a customer that is due. No change is needed; an unreachable
+customer database costs up to `connection-timeout` (10 s) per run. Revisit (a larger scheduler pool, or running
+customers in parallel) if the sweep's time grows towards the minute.
+
+**Adding a job.** Always through `CustomerJobs`; a database access with no customer fails
+(`NoCurrentCustomerException`).
+- A frequent job: `@Scheduled(fixedDelay = ...)` calling `customerJobs.forEachActiveCustomer("<name>", work)`.
+- A daily job: a minute tick, `@Scheduled(initialDelay = 60_000, fixedDelay = 60_000)`, calling
+  `customerJobs.daily("<name>", <a LocalTime setting>, work)`, and a setting to turn the tick off in the test suite
+  (`LoginProtectionTestDefaults`), where tests run it with `MutableClock` set. State in its Javadoc why a late run and
+  a missed day are harmless.
+- Skipping, the spread, time zones and failure isolation then come with it; don't add a scheduler, table or library.
 
 ## 7. Settings
 
@@ -151,7 +212,7 @@ the shared multi-mode context. The local stack runs in multi mode by default.
 | **T1-3** (done) | The customer from the request's address, the exceptions mapped to responses, `tenantId` on every request, the local stack in multi mode: `docs/2026-11-25-customer-from-address.md` |
 | **T1-5** (done) | Tokens bound to their customer: `docs/2026-11-25-customer-bound-credentials.md` |
 | **T1-4** (done) | Customer database migrations by an operator command, two logins per database, the version check: `docs/2026-11-26-customer-migrations.md` |
-| **T1-6** | Background work completed: per-customer time zones for the daily jobs, spreading runs, other jobs as they come |
+| **T1-6** (done) | Background work: daily jobs in each customer's own time zone, the spread, skipping customers that can't be served (section 6a); `docs/2026-11-26-t1-6-customer-jobs-change-report.md` |
 
 ## 10. Tests
 
@@ -162,5 +223,6 @@ the shared multi-mode context. The local stack runs in multi mode by default.
 | `MultiModeStartupIntegrationTests` (1) | Starts with every customer database offline, no pool made, Hibernate at version 12; no customer is an error; (T1-3) the backend's own address serves `/health` only |
 | `CustomerScopedStateTest` (3) | Streams, settings and dashboard cache per customer |
 | `MultiCustomerIsolationIntegrationTests` (10) | Written as alpha, never visible as bravo, through JPA, JdbcTemplate, a native query, AppLock, REQUIRES_NEW (`LoginProtectionStore`, `AdminAuthorizationService`), a REQUIRES_NEW `TransactionTemplate` (`AlwaysOnMenuService`) and the dashboard's read-only template; no customer writes nothing anywhere; a request uses the customer it was given |
-| `CustomerJobsIntegrationTests` (5) | Once per active customer, suspended left out, failures isolated and logged with the slug, the real jobs per customer, `/health` in multi mode |
+| `CustomerJobsIntegrationTests` (8) | Once per active customer, failures isolated and logged with the slug, the real jobs per customer, `/health` in multi mode. T1-6: a suspended customer and one whose database is behind skipped with one WARN (and one pool ERROR) over several runs and resumed with one INFO; a daily job at 03:30 local in Johannesburg and New York, once per local date, over two days; a daily failure for one customer not stopping the other nor retried that day; an invalid zone logged once |
+| `DailyScheduleTest` (6) | T1-6: two zones at 03:30 local plus the offset, once per local day; the spread (fixed per slug, 0 to 20, different minutes in one zone); clocks going forward (a time in the gap still runs) and back (a time occurring twice runs once); a late run after a restart; a time after 23:39 refused |
 | `TenancyModeIntegrationTests` (4, updated) | Multi mode's data source is the routing one; no Hikari pool at start-up |
