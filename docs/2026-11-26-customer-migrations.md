@@ -100,7 +100,7 @@ with the newest one it contains: the highest `V…` or `B…` file in `db/migrat
 | The database is | What happens |
 |---|---|
 | **The same** | Served (INFO: `pool opened …, schema at version 116`) |
-| **Behind**, or has no history | **Not served:** **503 `CUSTOMER_UNAVAILABLE`**, the same answer as MIGRATION_FAILED, and an ERROR: `tenancy: customer <slug> database <name> is at schema version 115, behind the app's 116: not served until the migration command updates it`. For `app.tenancy.customer-pool.schema-recheck` (default **30 s**) its requests are refused **without connecting**; after that the next request checks again. So the customer comes back by itself once the command has run, with no restart. Other customers are unaffected |
+| **Behind**, or has no history | **Not served:** **503 `CUSTOMER_UNAVAILABLE`**, the same answer as MIGRATION_FAILED, and an ERROR: `tenancy: customer <slug> database <name> is at schema version 115, behind the app's 116: not served until the migration command updates it`. T1-6: the ERROR is logged once per version found; a recheck that finds the same version logs at DEBUG (the jobs check every minute), and the jobs skip the customer with one WARN. For `app.tenancy.customer-pool.schema-recheck` (default **30 s**) its requests are refused **without connecting**; after that the next request checks again. So the customer comes back by itself once the command has run, with no restart. Other customers are unaffected |
 | **Ahead** (a newer app version updated it) | **Served**, with a WARN: `… ahead of the app's …: served (migrations stay backward compatible)` |
 
 At a customer whose database is behind, `/health` reports that customer's database as down.

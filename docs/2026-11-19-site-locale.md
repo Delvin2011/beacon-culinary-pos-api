@@ -40,9 +40,9 @@ SQL queries filter on.
 **`site.time-zone`**
 
 - The `Clock` bean (`ClockConfig`): `Clock.system(siteLocale.zone())`.
-- The login-attempt retention job's cron zone (`LoginAttemptRetentionJob`):
-  `zone = "${site.time-zone:Africa/Johannesburg}"`. An annotation needs a constant, so this is a
-  property placeholder; its default must stay equal to the property default.
+- The daily jobs' default time zone (`CustomerJobs.daily`, T1-6): a customer with no
+  `tenants.time_zone` (and single mode) runs them in `site.time-zone`. Until T1-6 the retention
+  job's cron took this zone through a property placeholder; the cron is gone.
 - Trading days and day windows: `TradingCalendar`, `ReportRange` and the `DashboardFacts`,
   `ReportFacts`, `EndOfDayFacts`, `ItemSalesFacts` and `AccountFacts` range parameters;
   `ReportParamParser` (default dates), `DayCloseRules` (today, and the offline till's "last

@@ -146,7 +146,8 @@ All under `security.login-protection`. Invalid values stop the app at startup.
 | `burst.warn-interval` | 1m | At most one burst WARN per address per interval |
 | `retention-days` | 90 | `login_attempts` rows older than this are deleted (D5) |
 | `retention-batch-size` | 5000 | Rows per delete statement |
-| `retention-cron` | `0 30 3 * * *` | Daily at 03:30, Africa/Johannesburg |
+| `retention-time` | `03:30` | T1-6: daily at this local time in each customer's own time zone, plus its 0-20 minute spread (`docs/2026-11-24-routing-data-source.md`, section 6a); 23:39 at the latest. Replaces `retention-cron` |
+| `retention-enabled` | `true` | T1-6: the retention job's minute tick; the test suite sets `false` and runs the job itself |
 
 Phase 1's `block-duration` is gone: blocks now last as long as their window requires.
 
