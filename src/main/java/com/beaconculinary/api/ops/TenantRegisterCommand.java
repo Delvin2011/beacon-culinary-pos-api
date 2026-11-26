@@ -31,11 +31,11 @@ import java.util.regex.Pattern;
  *      org.springframework.boot.loader.launch.PropertiesLauncher &lt;action&gt; [options]
  *
  *   migrate
- *   register --slug beaconculinary --name "Beacon Culinary" --host beaconculinary.pos.optimumscs.com [--host ...]
- *            --db-server sql-beacon.database.windows.net [--db-port 1433] --db-name pos [--db-options "encrypt=true"]
- *            --login-secret beaconculinary-db-login --password-secret beaconculinary-db-password
+ *   register --slug acme --name "Acme Foods" --host acme.pos.optimumscs.com [--host ...]
+ *            --db-server sql-pos.database.windows.net [--db-port 1433] --db-name pos [--db-options "encrypt=true"]
+ *            --login-secret acme-db-login --password-secret acme-db-password
  *            --built-from-baseline true|false [--collation SQL_Latin1_General_CP1_CI_AS] [--status ACTIVE]
- *            [--migration-login-secret beaconculinary-db-migration-login --migration-password-secret beaconculinary-db-migration-password]
+ *            [--migration-login-secret acme-db-migration-login --migration-password-secret acme-db-migration-password]
  *   suspend --slug S          activate --slug S
  *   add-host --slug S --host H [--primary]          remove-host --slug S --host H
  *   show [--slug S]
@@ -61,7 +61,7 @@ public final class TenantRegisterCommand {
     private static final Pattern SERVER = Pattern.compile("[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?");
     private static final Pattern COLLATION = Pattern.compile("[A-Za-z0-9_]{1,128}");
     private static final Pattern CREDENTIALS = Pattern.compile("(?i)password|pwd|user|uid\\s*=|secret");
-    private static final String LOCK = "beacon-platform-register";
+    private static final String LOCK = "pos-platform-register";
     private static final String USAGE_TEXT = """
             Usage: TenantRegisterCommand <action> [options]
               migrate

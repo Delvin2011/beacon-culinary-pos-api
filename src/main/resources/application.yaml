@@ -1,6 +1,6 @@
 spring:
   application:
-    name: beacon-culinary-api
+    name: pos-api
   jwt:
     secret: ${JWT_SECRET}
     accessTokenExpiration: 900 # 15m

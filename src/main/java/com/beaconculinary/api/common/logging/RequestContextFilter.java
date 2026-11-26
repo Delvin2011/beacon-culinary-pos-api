@@ -44,7 +44,7 @@ public class RequestContextFilter extends OncePerRequestFilter {
     static final Pattern SAFE_HOST = Pattern.compile("[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?");
     static final String FORWARDED_HOST = "X-Forwarded-Host";
     /** T1-3: the request's customer slug, left by the customer filter for the request line's tenantId. */
-    public static final String TENANT_ATTRIBUTE = "beacon.tenantId";
+    public static final String TENANT_ATTRIBUTE = "pos.tenantId";
 
     private static final Logger log = LoggerFactory.getLogger(RequestContextFilter.class);
     private static final AntPathMatcher MATCHER = new AntPathMatcher();

@@ -168,7 +168,7 @@ public final class FirstAdminCommand {
 
     private static boolean lock(Connection connection) throws SQLException {
         try (var call = connection.prepareStatement(
-                "DECLARE @r INT; EXEC @r = sp_getapplock @Resource = 'beacon-first-admin', @LockMode = 'Exclusive', "
+                "DECLARE @r INT; EXEC @r = sp_getapplock @Resource = 'pos-first-admin', @LockMode = 'Exclusive', "
                         + "@LockOwner = 'Session', @LockTimeout = 10000; SELECT @r AS [result]");
              var rs = call.executeQuery()) {
             return rs.next() && rs.getInt(1) >= 0;
@@ -177,7 +177,7 @@ public final class FirstAdminCommand {
 
     private static void unlock(Connection connection) throws SQLException {
         try (var call = connection.prepareStatement(
-                "EXEC sp_releaseapplock @Resource = 'beacon-first-admin', @LockOwner = 'Session'")) {
+                "EXEC sp_releaseapplock @Resource = 'pos-first-admin', @LockOwner = 'Session'")) {
             call.execute();
         }
     }
