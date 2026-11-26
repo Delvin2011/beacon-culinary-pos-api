@@ -112,7 +112,7 @@ class BaselineSmokeIntegrationTests {
 
         // First admin (T0-6a), through the operator command.
         var out = new ByteArrayOutputStream();
-        var firstAdmin = new FirstAdminCommand(dataSource::getConnection, Map.of(), new PrintStream(out, true, StandardCharsets.UTF_8),
+        var firstAdmin = new FirstAdminCommand(dataSource::getConnection, new PrintStream(out, true, StandardCharsets.UTF_8),
                 new PrintStream(new ByteArrayOutputStream()), Clock.systemUTC());
         assertThat(firstAdmin.run(new String[]{"--name", "T07 Smoke Admin", "--email", "t07-smoke@example.test",
                 "--base-url", "https://pos.example.test"})).isEqualTo(FirstAdminCommand.OK);

@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
  * </pre>
  *
  * <p>Database: SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD from the
- * environment (never printed). Base URL: --base-url, else APP_PUBLIC_BASE_URL, else no link (the
+ * environment (never printed). Base URL: --base-url (the customer's own address), else no link (the
  * token is printed with how to build the link).
  *
  * <p>Refuses when an active, non-demo ADMIN who has set a password exists, unless --force with a
@@ -62,15 +62,13 @@ public final class FirstAdminCommand {
     }
 
     private final ConnectionSource connections;
-    private final Map<String, String> environment;
     private final PrintStream out;
     private final PrintStream err;
     private final Clock clock;
 
-    public FirstAdminCommand(ConnectionSource connections, Map<String, String> environment, PrintStream out,
+    public FirstAdminCommand(ConnectionSource connections, PrintStream out,
                              PrintStream err, Clock clock) {
         this.connections = connections;
-        this.environment = environment;
         this.out = out;
         this.err = err;
         this.clock = clock;
@@ -84,7 +82,7 @@ public final class FirstAdminCommand {
         }
         ConnectionSource source = () -> DriverManager.getConnection(env.get("SPRING_DATASOURCE_URL"),
                 env.get("SPRING_DATASOURCE_USERNAME"), env.get("SPRING_DATASOURCE_PASSWORD"));
-        var code = new FirstAdminCommand(source, env, System.out, System.err, Clock.systemUTC()).run(args);
+        var code = new FirstAdminCommand(source, System.out, System.err, Clock.systemUTC()).run(args);
         System.exit(code);
     }
 
@@ -116,8 +114,8 @@ public final class FirstAdminCommand {
         }
         String baseUrl;
         try {
-            var given = options.containsKey("base-url") ? options.get("base-url") : environment.get("APP_PUBLIC_BASE_URL");
-            baseUrl = InviteLinks.normalizeBase(given, "--base-url / APP_PUBLIC_BASE_URL");
+            var given = options.get("base-url");
+            baseUrl = InviteLinks.normalizeBase(given, "--base-url");
         } catch (IllegalStateException e) {
             return usage(e.getMessage());
         }
@@ -267,7 +265,7 @@ public final class FirstAdminCommand {
             out.println("Send this link to " + email + " over a private channel. It works once:");
             out.println(link);
         } else {
-            out.println("No base URL set: the link is <frontend address>/invite#t=<token>. Token (works once):");
+            out.println("No --base-url given: the link is <frontend address>/invite#t=<token>. Token (works once):");
             out.println(token);
         }
         out.println("This is the only time the link is shown. Lost it? Run this again for the same email.");

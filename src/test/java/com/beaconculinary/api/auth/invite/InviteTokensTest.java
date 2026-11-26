@@ -42,20 +42,19 @@ class InviteTokensTest {
 
     @Test
     void theLinkPutsTheTokenAfterTheHash_soNoServerReceivesIt() {
-        var links = new InviteLinks("https://pos.example.com/");
-        assertThat(links.configured()).isTrue();
-        assertThat(links.link("TOKEN")).isEqualTo("https://pos.example.com/invite#t=TOKEN");
-        assertThat(new InviteLinks("").link("TOKEN")).isNull();
-        assertThat(new InviteLinks("  ").configured()).isFalse();
+        var base = InviteLinks.normalizeBase("https://pos.example.com/", "--base-url");
+        assertThat(InviteLinks.link(base, "TOKEN")).isEqualTo("https://pos.example.com/invite#t=TOKEN");
+        assertThat(InviteLinks.normalizeBase("  ", "--base-url")).isNull();
+        assertThat(InviteLinks.link(null, "TOKEN")).isNull();
     }
 
     @Test
-    void aBadBaseUrlStopsStartup() {
-        assertThatThrownBy(() -> new InviteLinks("pos.example.com")).isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("app.public-base-url");
-        assertThatThrownBy(() -> new InviteLinks("ftp://pos.example.com")).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> new InviteLinks("https://pos.example.com/?x=1")).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> new InviteLinks("https://pos.example.com/#a")).isInstanceOf(IllegalStateException.class);
+    void aBadBaseUrlIsRefused() {
+        assertThatThrownBy(() -> InviteLinks.normalizeBase("pos.example.com", "--base-url"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("--base-url");
+        assertThatThrownBy(() -> InviteLinks.normalizeBase("ftp://pos.example.com", "--base-url")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> InviteLinks.normalizeBase("https://pos.example.com/?x=1", "--base-url")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> InviteLinks.normalizeBase("https://pos.example.com/#a", "--base-url")).isInstanceOf(IllegalStateException.class);
     }
 
     @Test

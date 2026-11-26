@@ -71,8 +71,6 @@ services:
       # Single mode: the active customer's address. Multi mode: every customer's (https://*.pos.localhost, set by the
       # scripts): the browser sends its Origin even on its own site, and behind Caddy the backend can't tell it's the same.
       CORS_ALLOWED_ORIGINS: "${STACK_CORS_ALLOWED_ORIGINS:-https://${ACTIVE_CUSTOMER}.pos.localhost${PUBLIC_PORT_SUFFIX:-}}"
-      # Invite links: the active customer's address in single mode; empty in multi mode (the frontend builds them).
-      APP_PUBLIC_BASE_URL: ${STACK_PUBLIC_BASE_URL:-}
       # T1-1: the platform database (docs/2026-11-24-platform-database.md). T1-3: multi (the default) serves every
       # customer at its own address; single (up.ps1 -TenancyMode single) serves ACTIVE_CUSTOMER only.
       APP_TENANCY_MODE: ${APP_TENANCY_MODE:-single}

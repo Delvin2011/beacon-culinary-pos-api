@@ -156,16 +156,14 @@ function Set-ComposeEnvironment($Config, [string] $FrontendUpstream) {
     if ($FrontendUpstream) { $env:FRONTEND_UPSTREAM = $FrontendUpstream }
     $env:PLATFORM_DATABASE = $Config.PlatformDatabase
     $env:APP_TENANCY_MODE = $Config.TenancyMode
-    # T1-3: in multi mode Caddy serves every *.pos.localhost (its single-mode guard matches nothing), and invite links
-    # are built by the frontend from its own address (one backend, many customers).
+    # T1-3: in multi mode Caddy serves every *.pos.localhost (its single-mode guard matches nothing). T1-7: invite links
+    # are on each customer's primary host, from the platform database (no base URL is set).
     if ($Config.TenancyMode -eq 'multi') {
         $env:CADDY_ACTIVE_HOST = '*.pos.localhost'
-        $env:STACK_PUBLIC_BASE_URL = ''
         # Every customer's address may call the API (the browser's Origin, even on its own site).
         $env:STACK_CORS_ALLOWED_ORIGINS = "https://*.pos.localhost$($Config.PortSuffix)"
     } else {
         $env:CADDY_ACTIVE_HOST = "$($Config.ActiveCustomer).pos.localhost"
-        $env:STACK_PUBLIC_BASE_URL = Get-CustomerUrl $Config $Config.ActiveCustomer
         $env:STACK_CORS_ALLOWED_ORIGINS = Get-CustomerUrl $Config $Config.ActiveCustomer
     }
 }

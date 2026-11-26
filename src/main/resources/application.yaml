@@ -107,9 +107,6 @@ vat:
 app:
   business:
     name: ${APP_BUSINESS_NAME:}
-  # T0-6a: the address staff open the frontend at, for invite links ({base}/invite#t=<token>). Blank:
-  # the API returns no link and the frontend builds it from its own address. Per customer in T1.
-  public-base-url: ${APP_PUBLIC_BASE_URL:}
   # T0-7: true adds classpath:db/baseline to Flyway's locations (FlywayBaselineLocation): an empty database
   # starts from the B116 baseline without demo data, and a database built from it validates. Off here, so an
   # empty dev or test database replays every migration; on in the prod profile. Needs Flyway enabled (the dev

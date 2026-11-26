@@ -18,8 +18,9 @@ public final class InviteAdminDtos {
     }
 
     /**
-     * Returned once, when the invite is issued: the token is never shown again. link is null when
-     * app.public-base-url isn't set (the frontend builds {its address}/invite#t={token}).
+     * Returned once, when the invite is issued: the token is never shown again. link is on the
+     * customer's primary host (T1-7); null with no customer or host (the frontend builds
+     * {its address}/invite#t={token}).
      * toString never shows the token.
      */
     public record IssuedInvite(long inviteId, InvitePurpose purpose, InviteCredentials credentials, String token,

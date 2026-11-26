@@ -83,15 +83,11 @@ class FirstAdminCommandIntegrationTests {
         parked.forEach(id -> jdbc.update("UPDATE [users] SET [active] = 0 WHERE [id] = ?", id));
     }
 
-    private int run(Map<String, String> env, String... args) {
+    private int run(String... args) {
         out.reset();
         err.reset();
-        return new FirstAdminCommand(dataSource::getConnection, env, new PrintStream(out, true, StandardCharsets.UTF_8),
+        return new FirstAdminCommand(dataSource::getConnection, new PrintStream(out, true, StandardCharsets.UTF_8),
                 new PrintStream(err, true, StandardCharsets.UTF_8), Clock.systemUTC()).run(args);
-    }
-
-    private int run(String... args) {
-        return run(Map.of(), args);
     }
 
     private String stdout() {
@@ -192,7 +188,7 @@ class FirstAdminCommandIntegrationTests {
         assertThat(stdout()).isEmpty();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM [users] WHERE [email] = ?", Integer.class, email)).isZero();
 
-        assertThat(run(Map.of("APP_PUBLIC_BASE_URL", "https://pos.example.test"),
+        assertThat(run("--base-url", "https://pos.example.test",
                 "--name", name(), "--email", email, "--force", "--reason", "Only admin locked out; ticket 42"))
                 .isEqualTo(FirstAdminCommand.OK);
         linkToken();
