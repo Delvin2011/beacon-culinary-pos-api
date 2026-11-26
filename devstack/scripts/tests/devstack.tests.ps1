@@ -115,12 +115,23 @@ try {
     # --- T1-1: the customers' login secrets and the platform settings ---
     $made = 'Made-Up-Pw1!'
     Write-StackEnv ($validEnv + @('SECRET_BEACONCULINARY_DB_LOGIN=pos_beaconculinary', "SECRET_BEACONCULINARY_DB_PASSWORD=$made",
-        'SECRET_TESTCUSTOMER_DB_LOGIN=sa', 'SECRET_TESTCUSTOMER_DB_PASSWORD=weak'))
+        'SECRET_BEACONCULINARY_DB_MIGRATION_LOGIN=pos_beaconculinary_migrate', 'SECRET_BEACONCULINARY_DB_MIGRATION_PASSWORD=Made-Up-Pw6!',
+        'SECRET_TESTCUSTOMER_DB_LOGIN=sa', 'SECRET_TESTCUSTOMER_DB_PASSWORD=weak',
+        'SECRET_THIRDCAFE_DB_LOGIN=pos_thirdcafe', 'SECRET_THIRDCAFE_DB_PASSWORD=Made-Up-Pw7!',
+        'SECRET_FOURTHCAFE_DB_LOGIN=pos_fourthcafe', 'SECRET_FOURTHCAFE_DB_PASSWORD=Made-Up-Pw8!',
+        'SECRET_FOURTHCAFE_DB_MIGRATION_LOGIN=pos_fourthcafe', 'SECRET_FOURTHCAFE_DB_MIGRATION_PASSWORD=Made-Up-Pw9!'))
     $config = Get-StackConfig
     $secrets = Get-CustomerSecretValues $config 'beaconculinary'
     Assert-Case 'a customer''s login and password come from SECRET_<NAME>_DB_*' ($secrets.Login -eq 'pos_beaconculinary' -and
         $secrets.Password -eq $made -and $secrets.LoginSecret -eq 'beaconculinary-db-login' -and
         $secrets.PasswordSecret -eq 'beaconculinary-db-password') 'wrong values'
+    Assert-Case 'T1-4: its migration login comes from SECRET_<NAME>_DB_MIGRATION_*' ($secrets.MigrationLogin -eq 'pos_beaconculinary_migrate' -and
+        $secrets.MigrationPassword -eq 'Made-Up-Pw6!' -and $secrets.MigrationLoginSecret -eq 'beaconculinary-db-migration-login' -and
+        $secrets.MigrationPasswordSecret -eq 'beaconculinary-db-migration-password') 'wrong values'
+    $message = ''; try { $null = Get-CustomerSecretValues $config 'thirdcafe' } catch { $message = $_.Exception.Message }
+    Assert-Case 'T1-4: a missing migration login names the setting' ($message -like '*SECRET_THIRDCAFE_DB_MIGRATION_LOGIN is not set*') $message
+    $message = ''; try { $null = Get-CustomerSecretValues $config 'fourthcafe' } catch { $message = $_.Exception.Message }
+    Assert-Case 'T1-4: the migration login is not the app login' ($message -like '*SECRET_FOURTHCAFE_DB_MIGRATION_LOGIN must be a login of its own*') $message
     $message = ''; try { $null = Get-CustomerSecretValues $config 'testcustomer' } catch { $message = $_.Exception.Message }
     Assert-Case 'sa is refused as a customer login' ($message -like '*SECRET_TESTCUSTOMER_DB_LOGIN must be a login of its own*') $message
     $message = ''; try { $null = Get-CustomerSecretValues $config 'secondcafe' } catch { $message = $_.Exception.Message }
@@ -150,6 +161,40 @@ try {
     Assert-Case 'a login''s password never appears on a docker command line' (-not $calls.Contains($made) -and
         $calls.Contains('-e DEVSTACK_LOGIN_PASSWORD') -and $calls.Contains('$(DEVSTACK_LOGIN_PASSWORD)')) 'the password or the variable is wrong'
     Assert-Case 'the login''s password is not left in the environment' ($null -eq [Environment]::GetEnvironmentVariable('DEVSTACK_LOGIN_PASSWORD')) 'still set'
+    Assert-Case 'T1-4: an owner login is made db_owner' ($calls.Contains('ALTER ROLE db_owner ADD MEMBER [pos_beaconculinary]')) 'not db_owner'
+    $global:DevstackDockerCalls.Clear()
+    Set-DatabaseLogin $config 'pos_beaconculinary' $made 'beaconculinary' 'app'
+    $calls = $global:DevstackDockerCalls -join "`n"
+    Assert-Case 'T1-4: the app login reads, writes and executes, and is taken out of db_owner' (
+        $calls.Contains('ALTER ROLE db_owner DROP MEMBER [pos_beaconculinary]') -and $calls.Contains('ALTER ROLE db_datareader ADD MEMBER') -and
+        $calls.Contains('ALTER ROLE db_datawriter ADD MEMBER') -and $calls.Contains('GRANT EXECUTE TO [pos_beaconculinary]') -and
+        -not $calls.Contains('db_owner ADD MEMBER') -and -not $calls.Contains($made)) 'wrong rights'
+
+    # T1-4: the migration command runs in a Java container on the stack network; passwords only as -e NAME.
+    Write-StackEnv ($validEnv + @('PLATFORM_DB_PASSWORD=Made-Up-Pw2!', 'SECRET_BEACONCULINARY_DB_LOGIN=pos_beaconculinary',
+        'SECRET_BEACONCULINARY_DB_PASSWORD=Made-Up-Pw3!', 'SECRET_BEACONCULINARY_DB_MIGRATION_LOGIN=pos_beaconculinary_migrate',
+        'SECRET_BEACONCULINARY_DB_MIGRATION_PASSWORD=Made-Up-Pw6!', 'SECRET_TESTCUSTOMER_DB_LOGIN=pos_testcustomer',
+        'SECRET_TESTCUSTOMER_DB_PASSWORD=Made-Up-Pw4!', 'SECRET_TESTCUSTOMER_DB_MIGRATION_LOGIN=pos_testcustomer_migrate',
+        'SECRET_TESTCUSTOMER_DB_MIGRATION_PASSWORD=Made-Up-Pw10!', 'SECRET_SECONDCAFE_DB_LOGIN=pos_secondcafe',
+        'SECRET_SECONDCAFE_DB_PASSWORD=Made-Up-Pw5!', 'SECRET_SECONDCAFE_DB_MIGRATION_LOGIN=pos_secondcafe_migrate',
+        'SECRET_SECONDCAFE_DB_MIGRATION_PASSWORD=Made-Up-Pw11!'))
+    $config = Get-StackConfig
+    $savedJar = $script:Jar
+    $script:Jar = Join-Path $work "stand-in.jar"
+    Set-Content -LiteralPath $script:Jar -Value "stand-in"
+    try {
+        $global:DevstackDockerCalls.Clear()
+        $code = Invoke-MigrateCustomers $config @('--customer', 'testcustomer')
+        $call = $global:DevstackDockerCalls -join "`n"
+        Assert-Case 'T1-4: the migration command runs in the Java container on the stack network, secrets by name only' ($code -eq 0 -and
+            $call -like "run --rm *-e APP_TENANCY_PLATFORM_PASSWORD*-e SECRET_TESTCUSTOMER_DB_MIGRATION_PASSWORD*--network*eclipse-temurin:17-jre-jammy java*MigrateCustomersCommand*--customer testcustomer" -and
+            -not $call.Contains("Made-Up-Pw")) $call
+        Assert-Case 'T1-4: no secret is left in the environment after the command' (
+            $null -eq [Environment]::GetEnvironmentVariable('APP_TENANCY_PLATFORM_PASSWORD') -and
+            $null -eq [Environment]::GetEnvironmentVariable('SECRET_TESTCUSTOMER_DB_MIGRATION_PASSWORD')) 'still set'
+    } finally {
+        $script:Jar = $savedJar
+    }
 
     # --- check-all.ps1 with every step skipped: passes, reports each step, keeps a log folder ---
     $checkAll = Join-Path $work 'scripts\check-all.ps1'
@@ -162,11 +207,8 @@ try {
         ($lines -join "`n") -match 'Overall: PASS' -and $logs.Count -eq 1) "exit $code, $skips skipped rows, $($logs.Count) log folder(s)"
 
     # --- reset.ps1, run as a script from the copy ---
-    # T1-1: reset checks the platform and login secrets before it asks; made-up values let it get that far.
-    Write-StackEnv ($validEnv + @('PLATFORM_DB_PASSWORD=Made-Up-Pw2!', 'SECRET_BEACONCULINARY_DB_LOGIN=pos_beaconculinary',
-        'SECRET_BEACONCULINARY_DB_PASSWORD=Made-Up-Pw3!', 'SECRET_TESTCUSTOMER_DB_LOGIN=pos_testcustomer',
-        'SECRET_TESTCUSTOMER_DB_PASSWORD=Made-Up-Pw4!', 'SECRET_SECONDCAFE_DB_LOGIN=pos_secondcafe',
-        'SECRET_SECONDCAFE_DB_PASSWORD=Made-Up-Pw5!'))
+    # T1-1: reset checks the platform and login secrets before it asks; made-up values let it get that far (the
+    # T1-4 migration logins' are still in stack.env from the case above).
     $reset = Join-Path $work 'scripts\reset.ps1'
     $global:DevstackDockerCalls.Clear()
     $threw = $false

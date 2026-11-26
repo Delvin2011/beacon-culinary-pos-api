@@ -52,6 +52,7 @@ notepad devstack\stack.env
 | `PLATFORM_DB_PASSWORD` | (T1-1) A new password for the platform database's own login, `pos_platform` |
 | `SECRET_BEACONCULINARY_DB_LOGIN`, `SECRET_BEACONCULINARY_DB_PASSWORD` | (T1-1) beaconculinary's own database login: a name such as `pos_beaconculinary` (never `sa`) and a new password |
 | `SECRET_TESTCUSTOMER_DB_LOGIN`, `SECRET_TESTCUSTOMER_DB_PASSWORD` | (T1-1) The same for testcustomer, e.g. `pos_testcustomer` |
+| `SECRET_<NAME>_DB_MIGRATION_LOGIN`, `SECRET_<NAME>_DB_MIGRATION_PASSWORD` | (T1-4) For beaconculinary and testcustomer: each database's migration login, a name of its own such as `pos_beaconculinary_migrate` (not its app login, never `sa`), and a new password. Only the migration command uses it |
 
 Every T1-1 password: 8+ characters, 3 of upper case, lower case, digits and symbols, no single quote, each one
 different. Leave the rest blank for the defaults (written next to each setting). `stack.env` is git-ignored: never commit it,
@@ -116,10 +117,10 @@ Then open `https://beaconculinary.pos.localhost/` (with the frontend) or `https:
 |---|---|
 | `up.ps1` | Builds the jar, starts everything, waits until healthy. `-SkipBuild` reuses the last jar |
 | `down.ps1` | Stops everything; databases and the certificate authority are kept |
-| `status.ps1` | Containers, databases (collation, Flyway version, row counts), the platform database and its customers, health, hosts file, certificate |
+| `status.ps1` | Containers, databases (collation, Flyway version, row counts), the platform database and its customers (T1-4: each one's schema version and last update), health, hosts file, certificate |
 | `smoke.ps1` | The end-to-end check (section 6) |
 | `reset.ps1` | Drops and recreates the stack's databases in their starting state, the platform database included, and registers the customers again; you type `RESET`. `-Customer <name>` for one |
-| `new-customer.ps1 <name>` | A new clean customer database, as a real new customer gets, registered in the platform database; needs `SECRET_<NAME>_DB_LOGIN` and `_PASSWORD` in `stack.env` (section 4) |
+| `new-customer.ps1 <name>` | A new clean customer database, as a real new customer gets, registered in the platform database; needs `SECRET_<NAME>_DB_LOGIN`, `_PASSWORD`, `_DB_MIGRATION_LOGIN` and `_DB_MIGRATION_PASSWORD` in `stack.env` (section 4) |
 | `plan-today.ps1` | Makes today's demo meals sellable in the active customer's database, to ring up a sale by hand (below) |
 | `down.ps1 -Volumes` | Deletes everything, including the SQL data and the certificate authority; you type `DELETE` |
 | `secret-scan.ps1` | Looks for secrets in what this branch commits |
@@ -202,7 +203,7 @@ The frontend image is the same for every customer, so switching reuses it. The d
 
 | Database | Built by | Contents |
 |---|---|---|
-| `beaconculinary` | Every migration in `db/migration` (the Flyway container, the application's Flyway version) | As today's dev database: the demo menu, stock and accounts |
+| `beaconculinary` | Created empty, then every migration in `db/migration` by the migration command (T1-4) | As today's dev database: the demo menu, stock and accounts |
 | `testcustomer` | `scripts/new-customer-database.ps1` (T0-7): `NewDatabaseCommand --starter`, then `FirstAdminCommand` | The baseline, the required data, the starter template, one admin (invite only) |
 | `new-customer.ps1 <name>` | The same as `testcustomer` | The same, first admin `admin@<name>.test` |
 
@@ -211,8 +212,14 @@ T0-7 database needs it, so both validate. Every database exists before the backe
 builds one itself.
 
 **The platform database (T1-1).** `up.ps1` also creates `pos_platform`, gives each customer database its own
-login and registers every customer as `<name>.pos.localhost`; `status.ps1` lists them, and in multi mode the
+logins and registers every customer as `<name>.pos.localhost`; `status.ps1` lists them, and in multi mode the
 customers the backend has served. Details: `docs/2026-11-24-platform-database.md`.
+
+**Customer migrations (T1-4).** Each customer database has two logins: the backend's app login (read, write and
+execute only) and a migration login (`db_owner`). Before the backend starts, `up.ps1` runs `MigrateCustomersCommand`
+in a Java container on the stack network; it updates every customer database and prints a table (from, to, result).
+A customer it couldn't update answers 503 `CUSTOMER_UNAVAILABLE` until fixed; `status.ps1` shows each schema version
+and last update. How to prove a failure by hand: `docs/2026-11-26-customer-migrations.md`, section 7.
 
 **Smoke accounts (T1-3).** Each customer other than beaconculinary gets `smoke@<name>.test` with `SMOKE_PASSWORD`,
 made by `up.ps1` and `new-customer.ps1` when its database is, and again after `reset.ps1`. The invite link is
@@ -318,6 +325,8 @@ authentication allowed. The containers reach it as `host.docker.internal`. The d
 | Smoke: sign-in fails | `SMOKE_EMAIL` / `SMOKE_PASSWORD` don't match an ADMIN in the active customer's database |
 | Smoke: "no light-meals category to add one to" | The active customer has no active light-meals category to put the smoke item in: run it against `beaconculinary` |
 | "PLATFORM_DB_PASSWORD is not set" or "SECRET_..._DB_LOGIN is not set" | T1-1 settings missing from `stack.env` (section 2). The scripts check them before changing anything |
+| "SECRET_..._DB_MIGRATION_LOGIN is not set" | T1-4 settings missing from `stack.env` (section 2) |
+| 503 `CUSTOMER_UNAVAILABLE` | The customer is MIGRATION_FAILED, or its database is behind the backend's schema: read `up.ps1`'s migration table or `status.ps1`, fix the cause, run `up.ps1` again |
 
 ## 10. Files
 

@@ -70,7 +70,7 @@ class TenantRegisterCommandIntegrationTests {
     @Test
     void migrate_bringsAnEmptyDatabaseToTheCurrentVersion() {
         assertThat(run("migrate")).isZero();
-        assertThat(out()).contains("Platform database at version 1");
+        assertThat(out()).contains("Platform database at version 2");
     }
 
     @Test
@@ -118,6 +118,32 @@ class TenantRegisterCommandIntegrationTests {
         assertThat(jdbc.queryForObject("SELECT host FROM tenant_hosts WHERE is_primary = 1", String.class)).isEqualTo("pos.beaconculinary.example");
         assertThat(jdbc.queryForObject("SELECT password_secret_name FROM tenant_databases", String.class)).isEqualTo("beaconculinary-db-password-2");
         assertThat(runs()).containsExactly("beaconculinary:REGISTER:SUCCEEDED", "beaconculinary:UPDATE:SUCCEEDED");
+    }
+
+    /** T1-4: the migration login's secret names: stored, kept when left out, changed when given, both or neither. */
+    @Test
+    void register_storesTheMigrationSecretNames_keepsThemWhenLeftOut_andWantsBoth() {
+        assertThat(run(withMigrationSecrets(beacon(), "beaconculinary-db-migration-login", "beaconculinary-db-migration-password"))).isZero();
+        assertThat(migrationSecrets()).isEqualTo("beaconculinary-db-migration-login/beaconculinary-db-migration-password");
+
+        assertThat(run(beacon())).isZero();
+        assertThat(out()).contains("Unchanged: beaconculinary is already registered with these values");
+        assertThat(migrationSecrets()).isEqualTo("beaconculinary-db-migration-login/beaconculinary-db-migration-password");
+
+        assertThat(run(withMigrationSecrets(beacon(), "beaconculinary-db-migration-login", "beaconculinary-db-migration-password-2"))).isZero();
+        assertThat(out()).contains("Done: updated beaconculinary: database");
+        assertThat(migrationSecrets()).isEqualTo("beaconculinary-db-migration-login/beaconculinary-db-migration-password-2");
+
+        var onlyOne = java.util.Arrays.copyOf(beacon(), beacon().length + 2);
+        onlyOne[onlyOne.length - 2] = "--migration-login-secret";
+        onlyOne[onlyOne.length - 1] = "beaconculinary-db-migration-login";
+        assertThat(run(onlyOne)).isEqualTo(TenantRegisterCommand.USAGE);
+        assertThat(err()).contains("--migration-login-secret and --migration-password-secret go together.");
+        assertThat(run(withMigrationSecrets(beacon(), "beaconculinary-db-migration-login", "Not-A-Name!"))).isEqualTo(TenantRegisterCommand.USAGE);
+        assertThat(err()).contains("--migration-password-secret must be a secret NAME");
+
+        assertThat(run("show", "--slug", "beaconculinary")).isZero();
+        assertThat(out()).contains("migration login beaconculinary-db-migration-login, password beaconculinary-db-migration-password-2  (names only)");
     }
 
     @Test
@@ -234,6 +260,20 @@ class TenantRegisterCommandIntegrationTests {
                 "--db-server", "sql", "--db-name", "beaconculinary", "--db-options", "encrypt=true;trustServerCertificate=true",
                 "--login-secret", "beaconculinary-db-login", "--password-secret", "beaconculinary-db-password",
                 "--built-from-baseline", "false"};
+    }
+
+    private static String[] withMigrationSecrets(String[] args, String login, String password) {
+        var all = java.util.Arrays.copyOf(args, args.length + 4);
+        all[args.length] = "--migration-login-secret";
+        all[args.length + 1] = login;
+        all[args.length + 2] = "--migration-password-secret";
+        all[args.length + 3] = password;
+        return all;
+    }
+
+    private String migrationSecrets() {
+        return jdbc.queryForObject("SELECT CONCAT(migration_login_secret_name, '/', migration_password_secret_name) FROM tenant_databases",
+                String.class);
     }
 
     private List<String> runs() {

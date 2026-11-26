@@ -57,8 +57,8 @@ class PlatformMigrationIntegrationTests {
         try (var c = db.connect()) {
             assertThat(strings(c, "SELECT name FROM sys.tables ORDER BY name"))
                     .containsExactly("flyway_schema_history", "provisioning_runs", "tenant_databases", "tenant_hosts", "tenants");
-            assertThat(strings(c, "SELECT CONCAT(version, ':', type, ':', success) FROM flyway_schema_history"))
-                    .containsExactly("1:SQL:1");
+            assertThat(strings(c, "SELECT CONCAT(version, ':', type, ':', success) FROM flyway_schema_history ORDER BY installed_rank"))
+                    .containsExactly("1:SQL:1", "2:SQL:1");
         }
     }
 
@@ -162,6 +162,28 @@ class PlatformMigrationIntegrationTests {
                         .as("password secret name [" + bad + "]").hasMessageContaining("CK_tenant_databases_password_secret_name");
                 assertThatThrownBy(() -> insertDatabase(c, tenant, "s" + SEQUENCE.incrementAndGet(), null, bad, "good-password"))
                         .as("login secret name [" + bad + "]").hasMessageContaining("CK_tenant_databases_login_secret_name");
+            }
+        }
+    }
+
+    /** T1-4 (V2): the migration login's secret names: optional, both or neither, Key Vault's rule. */
+    @Test
+    void migrationSecretNames_areOptional_givenTogether_andFollowKeyVaultsRule() throws SQLException {
+        try (var c = db.connect()) {
+            var tenant = insertTenant(c, uniqueSlug());
+            var name = "s" + SEQUENCE.incrementAndGet();
+            insertDatabase(c, tenant, name, null, "good-login", "good-password");
+            execute(c, "UPDATE tenant_databases SET migration_login_secret_name = 'm-login', migration_password_secret_name = 'm-password' "
+                    + "WHERE database_name = '" + name + "'");
+            assertThatThrownBy(() -> execute(c, "UPDATE tenant_databases SET migration_password_secret_name = NULL WHERE database_name = '"
+                    + name + "'")).hasMessageContaining("CK_tenant_databases_migration_secrets_together");
+            for (var bad : List.of("M-login", "m_login", "-m", "m-", "m--login", "m login", "")) {
+                assertThatThrownBy(() -> execute(c, "UPDATE tenant_databases SET migration_login_secret_name = '" + bad
+                        + "' WHERE database_name = '" + name + "'")).as("migration login secret name [" + bad + "]")
+                        .hasMessageContaining("CK_tenant_databases_migration_login_secret_name");
+                assertThatThrownBy(() -> execute(c, "UPDATE tenant_databases SET migration_password_secret_name = '" + bad
+                        + "' WHERE database_name = '" + name + "'")).as("migration password secret name [" + bad + "]")
+                        .hasMessageContaining("CK_tenant_databases_migration_password_secret_name");
             }
         }
     }

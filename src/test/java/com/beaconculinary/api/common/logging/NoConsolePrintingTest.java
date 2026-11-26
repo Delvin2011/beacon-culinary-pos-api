@@ -27,7 +27,8 @@ class NoConsolePrintingTest {
     private static final Path ROOT = Path.of("src", "main", "java");
     private static final Path OPS = Path.of("com", "beaconculinary", "api", "ops");
     /** The operator commands: the only files allowed to print to the console. */
-    private static final List<String> COMMANDS = List.of("FirstAdminCommand", "NewDatabaseCommand", "TenantRegisterCommand");
+    private static final List<String> COMMANDS = List.of("FirstAdminCommand", "NewDatabaseCommand", "TenantRegisterCommand",
+            "MigrateCustomersCommand");
     private static final Set<Path> ALLOWED = COMMANDS.stream().map(c -> OPS.resolve(c + ".java")).collect(Collectors.toSet());
 
     @Test

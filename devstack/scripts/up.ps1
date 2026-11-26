@@ -5,8 +5,9 @@
 .DESCRIPTION
     1. Checks Docker, devstack/stack.env and the ports.
     2. Builds the backend jar (skip with -SkipBuild) and starts SQL Server (container mode).
-    3. Creates any missing customer database: beaconculinary (every migration, demo data) and testcustomer
-       (T0-7: baseline, starter template, first admin, whose invite link is printed here only).
+    3. Creates any missing customer database: beaconculinary (empty; the migration command gives it every migration
+       and the demo data) and testcustomer (T0-7: baseline, starter template, first admin, whose invite link is
+       printed here only).
     4. Starts the backend (single-customer mode, the database named by ACTIVE_CUSTOMER or -Customer), Caddy and the
        frontend, and waits until the backend is healthy.
     5. Checks the address from this machine (hosts file and certificate) and says what to fix if it doesn't work.
@@ -14,6 +15,9 @@
     and every customer registered in it with its <name>.pos.localhost host and its secret names (idempotent).
     T1-3: multi mode (the default) serves every customer at its own address; after 4, each served customer other than
     beaconculinary gets its smoke account (smoke@<name>.test, SMOKE_PASSWORD) if it has none.
+    T1-4: each customer has two database logins (the backend's app login: read, write, execute; the migration login:
+    db_owner). After registering them, MigrateCustomersCommand updates every customer's database, and the backend starts
+    after it. A customer it couldn't update is reported here and answers 503 until fixed (docs/2026-11-26-customer-migrations.md).
 
 .PARAMETER Customer
     Serve this customer's database for this run, instead of ACTIVE_CUSTOMER in stack.env.
@@ -106,6 +110,14 @@ Write-Step "Platform database ($($config.PlatformDatabase)) and the customers' l
 Initialize-PlatformDatabase $config
 foreach ($name in Get-ManagedCustomers) { Register-StackCustomer $config $name }
 Write-Ok "registered: $((Get-ManagedCustomers) -join ', ') (tenancy $($config.TenancyMode))"
+
+Write-Step 'Customer databases (MigrateCustomersCommand, before the backend starts)'
+$code = Invoke-MigrateCustomers $config
+if ($code -eq 0) {
+    Write-Ok 'every customer database at the current schema'
+} else {
+    Write-Problem "Not every customer database was updated (exit code $code, above). The stack starts; a customer that failed answers 503 until its cause is fixed and up.ps1 runs again."
+}
 
 Write-Step "Backend (serving $((Get-ServedCustomers $config) -join ', ')), gateway$(if ($config.FrontendMode -eq 'container') { ' and frontend' })"
 $services = @('backend', 'caddy')

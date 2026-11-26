@@ -18,6 +18,8 @@ public class CustomerPoolProperties {
     private Duration evictAfter = Duration.ofMinutes(30);
     /** How long a request waits for a connection before it fails. */
     private Duration connectionTimeout = Duration.ofSeconds(10);
+    /** T1-4: a customer whose database was behind the app is refused this long before its version is checked again. */
+    private Duration schemaRecheck = Duration.ofSeconds(30);
 
     public int getMaximumSize() {
         return maximumSize;
@@ -51,6 +53,14 @@ public class CustomerPoolProperties {
         this.connectionTimeout = connectionTimeout;
     }
 
+    public Duration getSchemaRecheck() {
+        return schemaRecheck;
+    }
+
+    public void setSchemaRecheck(Duration schemaRecheck) {
+        this.schemaRecheck = schemaRecheck;
+    }
+
     /** Refuses values Hikari or this design can't work with, naming the setting. */
     public void validate() {
         if (maximumSize < 1 || maximumSize > 50) {
@@ -64,6 +74,9 @@ public class CustomerPoolProperties {
         }
         if (connectionTimeout == null || connectionTimeout.compareTo(Duration.ofMillis(250)) < 0) {
             throw new IllegalStateException("app.tenancy.customer-pool.connection-timeout must be at least 250ms");
+        }
+        if (schemaRecheck == null || schemaRecheck.compareTo(Duration.ofSeconds(1)) < 0) {
+            throw new IllegalStateException("app.tenancy.customer-pool.schema-recheck must be at least 1s");
         }
     }
 }

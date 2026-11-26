@@ -27,8 +27,8 @@ import java.time.Clock;
  *   <li>Hibernate reads no database metadata at start-up ({@code hibernate.boot.allow_jdbc_metadata_access=false}):
  *       there is no customer at start-up, so it can't connect. The dialect is the explicit one in application.yaml;
  *       the version it assumes is {@code app.tenancy.database-major-version} (12: what Azure SQL Database reports).</li>
- *   <li>Spring Boot's Flyway run at start-up does nothing: customer databases are migrated per customer (T1-4; until
- *       then by whoever provisions them, the local stack's up.ps1).</li>
+ *   <li>Spring Boot's Flyway run at start-up does nothing: customer databases are updated by the operator's migration
+ *       command before the app starts (T1-4); a customer whose database is behind isn't served ({@link CustomerPools}).</li>
  *   <li>Idle and unserved customers' pools are closed by a sweep every minute.</li>
  * </ul>
  */
@@ -65,7 +65,7 @@ public class MultiCustomerDataConfig {
     @Bean
     public FlywayMigrationStrategy customerMigrationsNotAtStartup() {
         return flyway -> log.info("tenancy multi: customer database migrations are not run at start-up "
-                + "(per customer from T1-4; the local stack migrates them before the backend starts)");
+                + "(the operator's migration command updates them; a customer whose database is behind isn't served)");
     }
 
     @Bean

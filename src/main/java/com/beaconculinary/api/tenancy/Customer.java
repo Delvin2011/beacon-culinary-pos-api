@@ -23,9 +23,14 @@ public record Customer(long id, String slug, String displayName, CustomerStatus 
         return status == CustomerStatus.ACTIVE;
     }
 
-    /** Where a customer's database is. Null fields mean not registered yet (a customer being provisioned). */
+    /**
+     * Where a customer's database is. Null fields mean not registered yet (a customer being provisioned). The login and
+     * password secrets are the app login's; the migration ones (T1-4) are resolved only by the operator's migration
+     * command, never by the app.
+     */
     public record DatabaseLocation(String serverHost, int serverPort, String databaseName, String connectionOptions,
                                    String loginSecretName, String passwordSecretName, boolean builtFromBaseline,
-                                   String expectedCollation, String lastMigratedVersion) {
+                                   String expectedCollation, String lastMigratedVersion, String migrationLoginSecretName,
+                                   String migrationPasswordSecretName) {
     }
 }

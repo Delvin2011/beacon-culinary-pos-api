@@ -35,6 +35,7 @@ import java.util.regex.Pattern;
  *            --db-server sql-beacon.database.windows.net [--db-port 1433] --db-name pos [--db-options "encrypt=true"]
  *            --login-secret beaconculinary-db-login --password-secret beaconculinary-db-password
  *            --built-from-baseline true|false [--collation SQL_Latin1_General_CP1_CI_AS] [--status ACTIVE]
+ *            [--migration-login-secret beaconculinary-db-migration-login --migration-password-secret beaconculinary-db-migration-password]
  *   suspend --slug S          activate --slug S
  *   add-host --slug S --host H [--primary]          remove-host --slug S --host H
  *   show [--slug S]
@@ -45,7 +46,8 @@ import java.util.regex.Pattern;
  * migrations. register is declarative and idempotent: the hosts given are the customer's hosts (the first is the
  * primary), the same values again change nothing (UNCHANGED). A host or a database that belongs to another customer is
  * refused. Each change is one transaction under an application lock and records a provisioning_runs row; nothing
- * secret is printed or stored (only secret NAMES).
+ * secret is printed or stored (only secret NAMES). T1-4: the migration login's secret names (used only by
+ * MigrateCustomersCommand) are given together or not at all; left out, the stored ones are kept.
  *
  * <p>Exit codes: 0 done (or unchanged), 2 usage, 3 refused, 4 failed.
  */
@@ -66,6 +68,7 @@ public final class TenantRegisterCommand {
               register --slug S --name "Name" --host H [--host H ...] --db-server S [--db-port 1433] --db-name D
                        [--db-options "encrypt=true"] --login-secret NAME --password-secret NAME
                        --built-from-baseline true|false [--collation C] [--status ACTIVE]
+                       [--migration-login-secret NAME --migration-password-secret NAME]
               suspend --slug S | activate --slug S
               add-host --slug S --host H [--primary] | remove-host --slug S --host H
               show [--slug S]
@@ -237,18 +240,25 @@ public final class TenantRegisterCommand {
             changes.add("hosts");
         }
         var database = queryRow(c, "SELECT server_host, CAST(server_port AS varchar(10)), database_name, connection_options, login_secret_name, "
-                + "password_secret_name, CAST(CAST(built_from_baseline AS int) AS varchar(1)), expected_collation FROM tenant_databases WHERE tenant_id = ?", existing);
-        var wanted = java.util.Arrays.asList(r.dbServer(), String.valueOf(r.dbPort()), r.dbName(), r.dbOptions(), r.loginSecret(),
-                r.passwordSecret(), r.builtFromBaseline() ? "1" : "0", r.collation());
+                + "password_secret_name, CAST(CAST(built_from_baseline AS int) AS varchar(1)), expected_collation, "
+                + "migration_login_secret_name, migration_password_secret_name FROM tenant_databases WHERE tenant_id = ?", existing);
         if (database == null) {
             insertDatabase(c, existing, r, now);
             changes.add("database");
-        } else if (!database.equals(wanted)) {
-            update(c, "UPDATE tenant_databases SET server_host = ?, server_port = ?, database_name = ?, connection_options = ?, "
-                    + "login_secret_name = ?, password_secret_name = ?, built_from_baseline = ?, expected_collation = ?, updated_at = ? "
-                    + "WHERE tenant_id = ?", r.dbServer(), r.dbPort(), r.dbName(), r.dbOptions(), r.loginSecret(), r.passwordSecret(),
-                    r.builtFromBaseline(), r.collation(), now, existing);
-            changes.add("database");
+        } else {
+            // T1-4: the migration secrets left out keep the stored ones.
+            var migrationLogin = r.migrationLoginSecret() == null ? database.get(8) : r.migrationLoginSecret();
+            var migrationPassword = r.migrationLoginSecret() == null ? database.get(9) : r.migrationPasswordSecret();
+            var wanted = java.util.Arrays.asList(r.dbServer(), String.valueOf(r.dbPort()), r.dbName(), r.dbOptions(), r.loginSecret(),
+                    r.passwordSecret(), r.builtFromBaseline() ? "1" : "0", r.collation(), migrationLogin, migrationPassword);
+            if (!database.equals(wanted)) {
+                update(c, "UPDATE tenant_databases SET server_host = ?, server_port = ?, database_name = ?, connection_options = ?, "
+                        + "login_secret_name = ?, password_secret_name = ?, built_from_baseline = ?, expected_collation = ?, "
+                        + "migration_login_secret_name = ?, migration_password_secret_name = ?, updated_at = ? "
+                        + "WHERE tenant_id = ?", r.dbServer(), r.dbPort(), r.dbName(), r.dbOptions(), r.loginSecret(), r.passwordSecret(),
+                        r.builtFromBaseline(), r.collation(), migrationLogin, migrationPassword, now, existing);
+                changes.add("database");
+            }
         }
         if (changes.isEmpty()) {
             return Outcome.unchanged(existing, r.slug() + " is already registered with these values");
@@ -349,12 +359,15 @@ public final class TenantRegisterCommand {
                 }
                 var d = queryRow(c, "SELECT server_host, CAST(server_port AS varchar(10)), database_name, ISNULL(connection_options, ''), "
                         + "login_secret_name, password_secret_name, CAST(CAST(built_from_baseline AS int) AS varchar(1)), expected_collation, "
-                        + "ISNULL(last_migrated_version, '-') FROM tenant_databases WHERE tenant_id = ?", id);
+                        + "ISNULL(last_migrated_version, '-'), ISNULL(migration_login_secret_name, ''), ISNULL(migration_password_secret_name, '') "
+                        + "FROM tenant_databases WHERE tenant_id = ?", id);
                 if (d == null) {
                     out.println("  database  (none registered)");
                 } else {
                     out.println("  database  " + d.get(0) + ":" + d.get(1) + "/" + d.get(2) + (d.get(3).isEmpty() ? "" : "  options " + d.get(3)));
                     out.println("  secrets   login " + d.get(4) + ", password " + d.get(5) + "  (names only)");
+                    out.println("  migration " + (d.get(9).isEmpty() ? "(no migration login registered)"
+                            : "login " + d.get(9) + ", password " + d.get(10) + "  (names only)"));
                     out.println("  built     " + ("1".equals(d.get(6)) ? "from the baseline" : "with full history")
                             + ", collation " + d.get(7) + ", last migrated " + d.get(8));
                 }
@@ -440,9 +453,10 @@ public final class TenantRegisterCommand {
 
     private void insertDatabase(Connection c, long tenant, Registration r, Timestamp now) throws SQLException {
         update(c, "INSERT INTO tenant_databases (tenant_id, server_host, server_port, database_name, connection_options, login_secret_name, "
-                        + "password_secret_name, built_from_baseline, expected_collation, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "password_secret_name, built_from_baseline, expected_collation, migration_login_secret_name, "
+                        + "migration_password_secret_name, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 tenant, r.dbServer(), r.dbPort(), r.dbName(), r.dbOptions(), r.loginSecret(), r.passwordSecret(),
-                r.builtFromBaseline(), r.collation(), now);
+                r.builtFromBaseline(), r.collation(), r.migrationLoginSecret(), r.migrationPasswordSecret(), now);
     }
 
     private static Long tenantId(Connection c, String slug) throws SQLException {
@@ -618,11 +632,12 @@ public final class TenantRegisterCommand {
     /** register's values, checked before anything connects. */
     private record Registration(String slug, String name, List<String> hosts, String dbServer, int dbPort, String dbName,
                                 String dbOptions, String loginSecret, String passwordSecret, boolean builtFromBaseline,
-                                String collation, CustomerStatus status) {
+                                String collation, CustomerStatus status, String migrationLoginSecret,
+                                String migrationPasswordSecret) {
 
         static Registration from(Options o) {
             o.allow("slug", "name", "host", "db-server", "db-port", "db-name", "db-options", "login-secret", "password-secret",
-                    "built-from-baseline", "collation", "status");
+                    "built-from-baseline", "collation", "status", "migration-login-secret", "migration-password-secret");
             var slug = o.slug();
             var name = o.one("name");
             if (name.length() > 200) {
@@ -661,6 +676,13 @@ public final class TenantRegisterCommand {
             }
             var loginSecret = secretName(o.one("login-secret"), "--login-secret");
             var passwordSecret = secretName(o.one("password-secret"), "--password-secret");
+            if (o.has("migration-login-secret") != o.has("migration-password-secret")) {
+                throw new IllegalArgumentException("--migration-login-secret and --migration-password-secret go together.");
+            }
+            var migrationLoginSecret = o.has("migration-login-secret")
+                    ? secretName(o.one("migration-login-secret"), "--migration-login-secret") : null;
+            var migrationPasswordSecret = o.has("migration-password-secret")
+                    ? secretName(o.one("migration-password-secret"), "--migration-password-secret") : null;
             var baseline = o.one("built-from-baseline").toLowerCase(Locale.ROOT);
             if (!baseline.equals("true") && !baseline.equals("false")) {
                 throw new IllegalArgumentException("--built-from-baseline must be true or false.");
@@ -676,7 +698,7 @@ public final class TenantRegisterCommand {
                 throw new IllegalArgumentException("--status must be one of PROVISIONING, ACTIVE, SUSPENDED, MIGRATION_FAILED, ARCHIVED.");
             }
             return new Registration(slug, name, List.copyOf(hosts), server, port, dbName, options, loginSecret, passwordSecret,
-                    baseline.equals("true"), collation, status);
+                    baseline.equals("true"), collation, status, migrationLoginSecret, migrationPasswordSecret);
         }
 
         private static String secretName(String name, String option) {

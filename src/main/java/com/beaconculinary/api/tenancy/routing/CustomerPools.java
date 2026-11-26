@@ -6,6 +6,7 @@ import com.beaconculinary.api.tenancy.context.CurrentCustomer;
 import com.beaconculinary.api.tenancy.secrets.SecretResolver;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.flywaydb.core.api.MigrationVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +30,11 @@ import java.util.function.Supplier;
  *       holds credentials). Making it opens no connection.</li>
  *   <li>Its first connection checks the database's collation against the expected one (a mismatch closes the pool
  *       and refuses), logs the schema version found, and tells the {@link FirstConnectionListener}s.</li>
+ *   <li>T1-4: it also compares that version with the newest one the app contains ({@link AppSchemaVersion}). Behind:
+ *       the customer isn't served ({@link CustomerSchemaBehindException}, 503 CUSTOMER_UNAVAILABLE, logged at ERROR),
+ *       and its requests are refused without connecting until {@code schema-recheck} has passed; then the next
+ *       request checks again, so it comes back by itself once the operator's migration command has run. Ahead (a
+ *       newer app updated it): served, with a WARN, as migrations stay backward compatible.</li>
  *   <li>Only ACTIVE customers get a connection. {@link #sweep()} (every minute) closes a pool nobody used for
  *       {@code evict-after}, and at once when the directory shows its customer no longer ACTIVE or its database moved;
  *       a connection request notices those changes too.</li>
@@ -44,6 +50,9 @@ public class CustomerPools implements AutoCloseable {
     private final Supplier<List<FirstConnectionListener>> listeners;
     private final ConcurrentHashMap<String, Pool> pools = new ConcurrentHashMap<>();
     private final AtomicLong created = new AtomicLong();
+    private final MigrationVersion appVersion;
+    /** T1-4: customers found behind, by slug: refused without connecting until the recheck time. */
+    private final ConcurrentHashMap<String, Behind> behind = new ConcurrentHashMap<>();
 
     public CustomerPools(CustomerDirectory directory, SecretResolver secrets, CustomerPoolProperties properties,
                          Clock clock, List<FirstConnectionListener> listeners) {
@@ -59,11 +68,19 @@ public class CustomerPools implements AutoCloseable {
         this.properties = properties;
         this.clock = clock;
         this.listeners = listeners;
+        this.appVersion = AppSchemaVersion.latest();
     }
 
     /** A connection to this customer's database, from its pool (made now if it has none). */
     public Connection connection(CurrentCustomer current) throws SQLException {
         var customer = served(current);
+        var found = behind.get(current.slug());
+        if (found != null) {
+            if (clock.instant().isBefore(found.recheckAt())) {
+                throw new CustomerSchemaBehindException(current.slug(), found.version(), appVersion.getVersion());
+            }
+            behind.remove(current.slug(), found);
+        }
         var key = Key.of(customer.database());
         while (true) {
             var pool = pools.computeIfAbsent(current.slug(), slug -> open(customer, key));
@@ -121,6 +138,9 @@ public class CustomerPools implements AutoCloseable {
     }
 
     public record State(int open, int failing) {
+    }
+
+    private record Behind(String version, Instant recheckAt) {
     }
 
     private Customer served(CurrentCustomer current) {
@@ -257,9 +277,26 @@ public class CustomerPools implements AutoCloseable {
                             + " has collation " + collation + ", expected " + key.expectedCollation() + "; not used");
                 }
                 var version = schemaVersion(connection);
+                var comparison = AppSchemaVersion.compare(version);
+                if (comparison < 0) {
+                    var recheckAt = clock.instant().plus(properties.getSchemaRecheck());
+                    behind.put(slug, new Behind(version, recheckAt));
+                    log.atError().addKeyValue("customer", slug).addKeyValue("schemaVersion", version)
+                            .addKeyValue("appSchemaVersion", appVersion.getVersion())
+                            .log("tenancy: customer {} database {} is at schema version {}, behind the app's {}: not served "
+                                            + "until the migration command updates it (checked again after {})",
+                                    slug, key.databaseName(), version, appVersion.getVersion(), properties.getSchemaRecheck());
+                    throw new CustomerSchemaBehindException(slug, version, appVersion.getVersion());
+                }
                 log.atInfo().addKeyValue("customer", slug).addKeyValue("schemaVersion", version)
                         .log("tenancy: customer {} pool opened (database {} on {}), schema at version {}",
                                 slug, key.databaseName(), key.serverHost(), version);
+                if (comparison > 0) {
+                    log.atWarn().addKeyValue("customer", slug).addKeyValue("schemaVersion", version)
+                            .addKeyValue("appSchemaVersion", appVersion.getVersion())
+                            .log("tenancy: customer {} database is at schema version {}, ahead of the app's {}: served "
+                                    + "(migrations stay backward compatible)", slug, version, appVersion.getVersion());
+                }
                 for (var listener : listeners.get()) {
                     try {
                         listener.onFirstConnection(current, connection);

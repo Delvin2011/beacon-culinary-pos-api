@@ -15,12 +15,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
  * T1-2, TESTS ONLY: two customers for multi-mode tests, made once per test run: a throwaway platform database and two
- * throwaway customer databases (alpha, bravo) built the T0-7 way (the B116 baseline), both registered ACTIVE. The
- * customers log in with the suite's own login (their secrets point at it). Dropped when the test JVM ends.
+ * throwaway customer databases (alpha, bravo) built the T0-7 way (the B116 baseline), both registered ACTIVE. T1-4: the
+ * app logs in to them with an app login made here (read, write and execute only: db_datareader, db_datawriter, GRANT
+ * EXECUTE), as it does in production, so every multi-mode test runs with those rights; the tests' own direct access
+ * ({@link #direct}) uses the suite's login. Dropped when the test JVM ends (the login after the databases).
  *
  * <p>{@link Initializer} adds the multi-mode settings (platform database, secrets) to a test context; with the suite's
  * database URL known only once the environment is ready, an initializer is the place for it.
@@ -32,10 +35,14 @@ public final class MultiCustomerFixture {
     private final ThrowawayDatabase platform;
     private final Map<String, ThrowawayDatabase> customers = new HashMap<>();
     private final Map<String, CurrentCustomer> registered = new HashMap<>();
+    private final String suiteUrl;
     private final String username;
     private final String password;
+    private final String appLogin = "t14app" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+    private final String appPassword = "T14a-" + UUID.randomUUID().toString().replace("-", "") + "!";
 
     private MultiCustomerFixture(String url, String username, String password) throws SQLException {
+        this.suiteUrl = url;
         this.username = username;
         this.password = password;
         var server = SERVER.matcher(url);
@@ -51,10 +58,12 @@ public final class MultiCustomerFixture {
             made.add(platform);
             platform.flyway(PlatformDatabase.LOCATION).migrate();
             var platformJdbc = jdbc(platform);
+            platformJdbc.execute("CREATE LOGIN [" + appLogin + "] WITH PASSWORD = N'" + appPassword + "'");
             for (var slug : List.of("alpha", "bravo")) {
                 var db = ThrowawayDatabase.create(url, username, password, "Multi" + slug, "SQL_Latin1_General_CP1_CI_AS");
                 made.add(db);
                 db.flyway("classpath:db/migration", "classpath:db/baseline").migrate();
+                allowAppLogin(jdbc(db));
                 customers.put(slug, db);
                 var id = platformJdbc.queryForObject(
                         "INSERT INTO tenants (slug, display_name, status) OUTPUT INSERTED.id VALUES (?, ?, 'ACTIVE')",
@@ -74,6 +83,7 @@ public final class MultiCustomerFixture {
                     // best effort
                 }
             }
+            dropAppLogin();
             throw e;
         }
         Runtime.getRuntime().addShutdownHook(new Thread(this::drop, "multi-customer-fixture-drop"));
@@ -114,6 +124,24 @@ public final class MultiCustomerFixture {
         return jdbc(platform);
     }
 
+    /** T1-4: the name of the login the app uses for alpha and bravo (not a secret value in tests). */
+    public String appLogin() {
+        return appLogin;
+    }
+
+    /** T1-4: a customer's database as the app login sees it (read, write and execute only). */
+    public JdbcTemplate asApp(String slug) {
+        return new JdbcTemplate(new DriverManagerDataSource(customers.get(slug).url(), appLogin, appPassword));
+    }
+
+    /** T1-4: gives the app login the app's rights in a database (given through the suite's login). */
+    public void allowAppLogin(JdbcTemplate database) {
+        database.execute("CREATE USER [" + appLogin + "] FOR LOGIN [" + appLogin + "]; "
+                + "ALTER ROLE db_datareader ADD MEMBER [" + appLogin + "]; "
+                + "ALTER ROLE db_datawriter ADD MEMBER [" + appLogin + "]; "
+                + "GRANT EXECUTE TO [" + appLogin + "];");
+    }
+
     Map<String, Object> settings() {
         var settings = new HashMap<String, Object>();
         settings.put("app.tenancy.mode", "multi");
@@ -122,8 +150,8 @@ public final class MultiCustomerFixture {
         settings.put("app.tenancy.platform.password", platform.password());
         for (var slug : customers.keySet()) {
             var name = slug.toUpperCase();
-            settings.put("SECRET_" + name + "_DB_LOGIN", username);
-            settings.put("SECRET_" + name + "_DB_PASSWORD", password);
+            settings.put("SECRET_" + name + "_DB_LOGIN", appLogin);
+            settings.put("SECRET_" + name + "_DB_PASSWORD", appPassword);
         }
         return settings;
     }
@@ -138,6 +166,17 @@ public final class MultiCustomerFixture {
         }
         try {
             platform.close();
+        } catch (SQLException ignored) {
+            // best effort at JVM exit
+        }
+        dropAppLogin();
+    }
+
+    /** After the databases: dropping them ended the login's sessions. Best effort. */
+    private void dropAppLogin() {
+        try (var connection = java.sql.DriverManager.getConnection(suiteUrl, username, password);
+             var st = connection.createStatement()) {
+            st.execute("IF SUSER_ID(N'" + appLogin + "') IS NOT NULL DROP LOGIN [" + appLogin + "]");
         } catch (SQLException ignored) {
             // best effort at JVM exit
         }

@@ -66,6 +66,9 @@ thread that carries the customer.
     `CustomerDatabaseMismatchException`;
   - the schema version found is logged:
     `tenancy: customer alpha pool opened (database … on …), schema at version 116`;
+  - T1-4: it is compared with the newest version the app contains. Behind: the customer isn't served (503
+    `CUSTOMER_UNAVAILABLE`, an ERROR) and is checked again after `schema-recheck` (30 s). Ahead: served with a WARN
+    (`docs/2026-11-26-customer-migrations.md`);
   - the first-connection listeners run (the demo-account report).
 - **Closed:**
   - by a sweep every minute, when nobody has used the pool for `evict-after`;
@@ -83,7 +86,7 @@ with every customer database unreachable.
 | Hibernate dialect | `org.hibernate.dialect.SQLServerDialect`, explicit in `application.yaml` (both modes) | No connection to detect it |
 | Hibernate metadata at boot | `hibernate.boot.allow_jdbc_metadata_access=false` (Hibernate 6.6's `JdbcSettings.ALLOW_METADATA_ON_BOOT`) | Hibernate would otherwise open a connection at start-up to read the database's metadata and version |
 | Database version Hibernate assumes | `app.tenancy.database-major-version` (default **12**, which is what Azure SQL Database reports) | Without metadata Hibernate can't detect it; 12 is what production gets today, and every multi-mode test runs its SQL against the local SQL Server |
-| Spring Boot's Flyway run | A no-op migration strategy; it logs `tenancy multi: customer database migrations are not run at start-up` | Customer databases are migrated per customer: T1-4. Until then, whoever provisions them does it (the local stack's `up.ps1` migrates every customer database before the backend starts) |
+| Spring Boot's Flyway run | A no-op migration strategy; it logs `tenancy multi: customer database migrations are not run at start-up` | T1-4: the operator's `MigrateCustomersCommand` updates every customer database before the app starts (the local stack's `up.ps1` runs it); a customer whose database is behind isn't served |
 | `spring.datasource.*` | Not used | Every connection is a customer's |
 
 Spring Boot 3.4 reads no database type at boot unless `spring.jpa.database` is set, and `ddl-auto: none` is
@@ -130,8 +133,9 @@ customers, which at worst suppresses one log line).
   Check it against the pool tier's session and worker limits, which are per database and per pool.
 - **Quiet customers:** idle eviction brings them to zero connections, and the minimum idle is 0, so they cost nothing.
 - **If connections run short:** lower `maximum-size` before adding instances.
-- **Per-customer logins:** each customer database's login is its own, `db_owner` of that database only. The secrets
-  are named `<slug>-db-login` and `<slug>-db-password` (Key Vault from T1-0b).
+- **Per-customer logins:** each customer database's logins are its own. T1-4: the app uses the **app login** (read,
+  write and execute only), secrets `<slug>-db-login` and `<slug>-db-password`; the migration login (`db_owner`) is
+  used only by the migration command (Key Vault from T1-0b).
 
 ## 8. How requests get their customer
 
@@ -146,7 +150,7 @@ the shared multi-mode context. The local stack runs in multi mode by default.
 |---|---|
 | **T1-3** (done) | The customer from the request's address, the exceptions mapped to responses, `tenantId` on every request, the local stack in multi mode: `docs/2026-11-25-customer-from-address.md` |
 | **T1-5** (done) | Tokens bound to their customer: `docs/2026-11-25-customer-bound-credentials.md` |
-| **T1-4** | Customer database migrations per customer (provisioning), and `tenant_databases.last_migrated_version` |
+| **T1-4** (done) | Customer database migrations by an operator command, two logins per database, the version check: `docs/2026-11-26-customer-migrations.md` |
 | **T1-6** | Background work completed: per-customer time zones for the daily jobs, spreading runs, other jobs as they come |
 
 ## 10. Tests
