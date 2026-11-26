@@ -70,7 +70,7 @@ class TenantRegisterCommandIntegrationTests {
     @Test
     void migrate_bringsAnEmptyDatabaseToTheCurrentVersion() {
         assertThat(run("migrate")).isZero();
-        assertThat(out()).contains("Platform database at version 2");
+        assertThat(out()).contains("Platform database at version 3");
     }
 
     @Test

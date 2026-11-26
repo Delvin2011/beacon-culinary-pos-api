@@ -29,7 +29,8 @@ now is in `docs/2026-11-24-routing-data-source.md`, section 6a; this report says
 | 1 | `c88ea33` | `tenants.time_zone` (platform `V3`), read by the directory into `Customer` | +13 -3 / +12 -3 |
 | 2 | `1ee12e0` | Skipping in `CustomerJobs`; the pool's "behind" ERROR once per version; the multi-mode tests get `MutableClock` | +85 -10 / +94 -5 |
 | 3 | `e54b860` | `DailySchedule` and `CustomerJobs.daily`; retention on a minute tick | +161 -5 / +204 -3 |
-| 4 | (this commit) | Docs | see below |
+| 4 | `a90f2d7` | Docs | docs +162 -10 |
+| 5 | (this commit) | Two tests expecting platform version 2 now expect 3 | tests +3 -3 |
 
 ## Decisions (approved)
 
@@ -49,6 +50,8 @@ now is in `docs/2026-11-24-routing-data-source.md`, section 6a; this report says
 | No per-customer time zone existed (`SiteLocale` is app-wide; `SastViewGuard` allows SAST zones only) | Asked; option A chosen (above) |
 | The retention job's new minute tick would run in every test context about a minute after start-up (the old 03:30 cron practically never fired during a run), deleting rows tests insert on purpose | Added `security.login-protection.retention-enabled` (default `true`), set `false` in `LoginProtectionTestDefaults`, like `pos.session.sweep-enabled`; approved with step 3 |
 | The pool's "behind" ERROR was logged at every recheck (30 s) | Once per version (D2, approved) |
+| Two tests hard-coded platform version 2 (`TenancyModeIntegrationTests`, `TenantRegisterCommandIntegrationTests`); step 1 updated only the history list. Found by the full suite | Fixed in step 5: version 3 |
+| A full suite run and `check-all.ps1` ran at the same time on the shared test database (and `target/`), so both backend runs failed in cascade (duplicate till codes, shifts already open) | Neither counts; `check-all.ps1` is run again on the final commit with nothing else using the test database |
 
 ## Files
 
@@ -60,7 +63,8 @@ Modified, main: `tenancy/Customer.java`, `tenancy/CustomerDirectory.java`, `tena
 `auth/protection/LoginProtectionProperties.java`.
 
 Modified, tests: `tenancy/CustomerDirectoryIntegrationTests.java`, `tenancy/PlatformMigrationIntegrationTests.java`,
-`tenancy/web/CustomerResolutionFilterTest.java`, `tenancy/CustomerJobsIntegrationTests.java`,
+`tenancy/web/CustomerResolutionFilterTest.java`, `tenancy/TenancyModeIntegrationTests.java`,
+`ops/TenantRegisterCommandIntegrationTests.java`, `tenancy/CustomerJobsIntegrationTests.java`,
 `support/tenancy/MultiCustomerIntegrationTest.java`, `support/LoginProtectionTestDefaults.java`,
 `common/logging/BackgroundLoggingIntegrationTests.java`.
 
