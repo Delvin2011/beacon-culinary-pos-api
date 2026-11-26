@@ -11,7 +11,12 @@ public class CustomerNotServedException extends IllegalStateException {
     private final CustomerStatus status;
 
     public CustomerNotServedException(String slug, CustomerStatus status) {
-        super("Customer " + slug + " is " + status + ", not served");
+        this(slug, status, "Customer " + slug + " is " + status + ", not served");
+    }
+
+    /** T1-4: with its own message (an ACTIVE customer whose database is behind the app). */
+    protected CustomerNotServedException(String slug, CustomerStatus status, String message) {
+        super(message);
         this.slug = slug;
         this.status = status;
     }

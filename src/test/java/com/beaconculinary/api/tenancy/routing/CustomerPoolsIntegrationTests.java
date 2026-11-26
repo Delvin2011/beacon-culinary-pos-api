@@ -10,6 +10,7 @@ import com.beaconculinary.api.tenancy.context.CustomerContext;
 import com.beaconculinary.api.tenancy.context.NoCurrentCustomerException;
 import com.beaconculinary.api.tenancy.secrets.MissingSecretException;
 import com.beaconculinary.api.tenancy.secrets.SecretResolver;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -49,7 +50,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * T1-2: customer pools and the routing data source on throwaway databases: a platform database and customer databases
  * a and b (the right collation), c (the wrong one). Each connection goes to the current customer's database; pools
  * are made lazily, once under concurrent first use, closed when idle, suspended or moved; credentials come from the
- * SecretResolver and never appear in the output.
+ * SecretResolver and never appear in the output. T1-4: a and b are at the app's schema version; d is behind (V115) and
+ * isn't served until it is updated and the recheck time has passed; e is ahead (a test-only V117) and is served.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ExtendWith(OutputCaptureExtension.class)
@@ -70,6 +72,7 @@ class CustomerPoolsIntegrationTests {
     private final Map<String, String> secrets = new HashMap<>();
     private final Map<String, String> databaseNames = new HashMap<>();
     private MutableClock clock;
+    private ThrowawayDatabase behindDatabase;
     private CustomerPools pools;
     private CustomerRoutingDataSource routing;
     private final AtomicInteger firstConnections = new AtomicInteger();
@@ -91,11 +94,22 @@ class CustomerPoolsIntegrationTests {
         platform.flyway(PlatformDatabase.LOCATION).migrate();
         platformJdbc = new JdbcTemplate(new DriverManagerDataSource(platform.url(), platform.username(), platform.password()));
 
-        for (var slug : List.of("customera", "customerb", "customerc")) {
+        for (var slug : List.of("customera", "customerb", "customerc", "customerd", "customere")) {
             var collation = slug.equals("customerc") ? "Latin1_General_CI_AS" : "SQL_Latin1_General_CP1_CI_AS";
             var db = ThrowawayDatabase.create(url, username, password, "Pool", collation);
             databases.add(db);
             databaseNames.put(slug, db.name());
+            // T1-4: a schema history the version check reads (c is refused for its collation before that).
+            switch (slug) {
+                case "customerd" -> {
+                    Flyway.configure().dataSource(db.url(), username, password).locations("classpath:db/migration")
+                            .target("115").cleanDisabled(true).load().migrate();
+                    behindDatabase = db;
+                }
+                case "customere" -> db.flyway("classpath:db/migration", "classpath:db/baseline", "classpath:db/t1-4-probe").migrate();
+                case "customerc" -> { }
+                default -> db.flyway("classpath:db/migration", "classpath:db/baseline").migrate();
+            }
             try (var connection = db.connect(); var st = connection.createStatement()) {
                 st.execute("CREATE TABLE marker (owner NVARCHAR(40) NOT NULL)");
                 st.execute("INSERT INTO marker (owner) VALUES ('" + slug + "')");
@@ -121,6 +135,8 @@ class CustomerPoolsIntegrationTests {
         register("customera", "ACTIVE", databaseNames.get("customera"), "customera");
         register("customerb", "ACTIVE", databaseNames.get("customerb"), "customerb");
         register("customerc", "ACTIVE", databaseNames.get("customerc"), "customerc");
+        register("customerd", "ACTIVE", databaseNames.get("customerd"), "customerd");
+        register("customere", "ACTIVE", databaseNames.get("customere"), "customere");
         register("suspended", "SUSPENDED", "T07NowhereSuspendedTest", "suspended");
         register("archived", "ARCHIVED", "T07NowhereArchivedTest", "archived");
         register("nosecrets", "ACTIVE", "T07NowhereNoSecretsTest", "nosecrets");
@@ -265,9 +281,40 @@ class CustomerPoolsIntegrationTests {
 
         as("customera", this::owner);
         assertThat(output.getAll()).contains("tenancy: customer customera pool opened")
-                .contains("schema at version none (no flyway_schema_history)");
+                .contains("schema at version " + AppSchemaVersion.latest().getVersion());
         var password = environment.getRequiredProperty("spring.datasource.password");
         assertThat(output.getAll().contains(password)).as("the database password appears in the output").isFalse();
+    }
+
+    @Test
+    void aDatabaseBehindTheApp_isRefusedWithoutConnectingUntilTheRecheck_thenServedOnceUpdated(CapturedOutput output) {
+        var latest = AppSchemaVersion.latest().getVersion();
+        var current = customer("customerd");
+        assertThatThrownBy(() -> CustomerContext.callAs(current, this::rawConnection))
+                .isInstanceOf(CustomerSchemaBehindException.class).isInstanceOf(CustomerNotServedException.class)
+                .hasMessageContaining("database at schema version 115, the app needs " + latest);
+        assertThat(output.getAll()).contains("tenancy: customer customerd database " + databaseNames.get("customerd")
+                + " is at schema version 115, behind the app's " + latest + ": not served");
+        assertThat(pools.hasPool("customerd")).isFalse();
+        assertThat(firstConnections.get()).as("listeners not told").isZero();
+
+        // Updated, as the migration command would; still refused, without a connection, until the recheck time.
+        behindDatabase.flyway("classpath:db/migration").migrate();
+        var made = pools.poolsCreated();
+        assertThatThrownBy(() -> CustomerContext.callAs(current, this::rawConnection)).isInstanceOf(CustomerSchemaBehindException.class);
+        assertThat(pools.poolsCreated()).as("no pool made before the recheck").isEqualTo(made);
+        assertThat(as("customera", this::owner)).as("the others are served meanwhile").isEqualTo("customera");
+
+        clock.setInstant(clock.instant().plus(new CustomerPoolProperties().getSchemaRecheck()));
+        assertThat(as("customerd", this::owner)).isEqualTo("customerd");
+        assertThat(output.getAll()).contains("tenancy: customer customerd pool opened").contains("schema at version " + latest);
+    }
+
+    @Test
+    void aDatabaseAheadOfTheApp_isServed_withAWarning(CapturedOutput output) {
+        assertThat(as("customere", this::owner)).isEqualTo("customere");
+        assertThat(output.getAll()).contains("tenancy: customer customere database is at schema version 117, ahead of the app's "
+                + AppSchemaVersion.latest().getVersion() + ": served");
     }
 
     @Test
