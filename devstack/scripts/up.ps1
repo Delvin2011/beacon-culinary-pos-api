@@ -48,6 +48,7 @@ $config = Get-StackConfig -Customer $Customer -FrontendMode $Frontend
 if ($TenancyMode) { $config.TenancyMode = $TenancyMode }
 # T1-1: the platform and customer logins' secrets are checked before anything starts.
 Assert-PlatformSettings $config
+Assert-OfflineGrantKey $config
 foreach ($name in Get-ManagedCustomers) { $null = Get-CustomerSecretValues $config $name }
 Assert-Docker
 

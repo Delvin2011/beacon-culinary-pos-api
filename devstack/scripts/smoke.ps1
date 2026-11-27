@@ -9,6 +9,7 @@
       1. /api/health is UP through the proxy, with an X-Request-Id header. T1-7: /api/public/branding answers 200
          without sign-in, logoUrl null, Cache-Control public, max-age=300, and in multi mode the customer's own name
          (its name in the platform database: Beacon Culinary, Test Customer).
+         T1-10: /api/pos/till-status reports offlineEnabled true (the stack turns offline selling on).
       2. Password sign-in (beaconculinary: SMOKE_EMAIL; the others: their smoke account smoke@<name>.test, made by up.ps1;
          SMOKE_PASSWORD) sets the refresh cookie Secure, HttpOnly, SameSite=Lax (T1-5), Path=/api/auth/refresh, and
          /api/auth/refresh with that cookie works.
@@ -188,6 +189,12 @@ try {
         $brandingName = if ($branding.Json) { [string]$branding.Json.name } else { '' }
         if ($multi) { $brandingOk = $brandingOk -and $brandingName -ceq (Get-StackDisplayName $name) }
         Add-Result "${label}branding" $brandingOk "$(Describe $branding), name '$brandingName', Cache-Control $cache"
+
+        # T1-10: the stack turns offline selling on (compose.yaml); the till's public status says so.
+        $tillStatus = Invoke-Api 'GET' '/api/pos/till-status'
+        $offlineOn = $tillStatus.Status -eq 200 -and $tillStatus.Json -and $tillStatus.Json.offlineEnabled -eq $true
+        $reported = if ($tillStatus.Json) { "$($tillStatus.Json.offlineEnabled)" } else { '(none)' }
+        Add-Result "${label}offline selling on" $offlineOn "$(Describe $tillStatus), offlineEnabled $reported"
 
         $requestId = 'smoke-' + [Guid]::NewGuid().ToString('N').Substring(0, 20)
         $since = (Get-Date).ToUniversalTime().AddSeconds(-5).ToString('yyyy-MM-ddTHH:mm:ssZ')

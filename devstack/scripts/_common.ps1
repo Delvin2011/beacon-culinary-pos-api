@@ -509,6 +509,16 @@ function Assert-PlatformSettings($Config) {
     Assert-LoginPassword 'PLATFORM_DB_PASSWORD' $Config.PlatformPassword
 }
 
+<# T1-10: the stack turns offline selling on, and the backend needs its grant key (Base64, 32+ bytes). Errors name the setting, never the value. #>
+function Assert-OfflineGrantKey($Config) {
+    $key = Get-Setting $Config.Values 'OFFLINE_GRANT_SIGNING_KEY' ''
+    if (-not $key) { throw 'OFFLINE_GRANT_SIGNING_KEY is not set in devstack/stack.env (offline selling''s grant key: Base64 of 32+ random bytes; stack.env.example says how to make one).' }
+    $bytes = $null
+    try { $bytes = [Convert]::FromBase64String($key) } catch { throw 'OFFLINE_GRANT_SIGNING_KEY in devstack/stack.env is not valid Base64.' }
+    if ($bytes.Length -lt 32) { throw 'OFFLINE_GRANT_SIGNING_KEY in devstack/stack.env must decode to at least 32 bytes.' }
+    if ($key -ceq $Config.JwtSecret) { throw 'OFFLINE_GRANT_SIGNING_KEY must be a value of its own, not JWT_SECRET''s.' }
+}
+
 <#
     A customer's two database logins (T1-4), errors naming the setting, never a value:
       the app login (the backend): SECRET_<NAME>_DB_LOGIN and _DB_PASSWORD, the secrets <name>-db-login and -db-password;
