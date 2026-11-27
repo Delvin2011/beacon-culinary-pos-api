@@ -2,6 +2,7 @@ package com.beaconculinary.api.tenancy.routing;
 
 import com.beaconculinary.api.support.MutableClock;
 import com.beaconculinary.api.support.baseline.ThrowawayDatabase;
+import com.beaconculinary.api.support.tenancy.MultiCustomerIntegrationTest;
 import com.beaconculinary.api.tenancy.CustomerDirectory;
 import com.beaconculinary.api.tenancy.CustomerStatus;
 import com.beaconculinary.api.tenancy.PlatformDatabase;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,6 +56,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * isn't served until it is updated and the recheck time has passed; e is ahead (a test-only V117) and is served.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@Tag(MultiCustomerIntegrationTest.TAG) // T1-10: the cross-customer suite
 @ExtendWith(OutputCaptureExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CustomerPoolsIntegrationTests {

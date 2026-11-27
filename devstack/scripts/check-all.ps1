@@ -5,6 +5,8 @@
 
 .DESCRIPTION
     Every step runs, whatever happened before it, and each is reported:
+      0. cross-customer tests  mvnw test -Dgroups=cross-customer (T1-10: the tests proving no customer sees, changes
+                            or receives another's; first, for fast feedback, and again in the full suite)
       1. backend tests      mvnw test (the full suite)
       2. frontend lint      npm run lint                 (in FRONTEND_REPO from devstack/stack.env)
       3. frontend types     npx tsc --noEmit
@@ -25,7 +27,7 @@
     the path is printed. Invite links are masked in the logs, and no password is ever passed on a command line.
 
 .PARAMETER SkipBackend
-    Skip the backend tests.
+    Skip the backend tests (the cross-customer tests too).
 .PARAMETER SkipFrontend
     Skip every frontend step (2 to 7).
 .PARAMETER SkipE2E
@@ -121,21 +123,30 @@ if ($config -and -not $SkipStack -and -not $SkipBackend) {
     }
 }
 
+# Totals from the Surefire reports written since $Since.
+function Get-SurefireCounts([datetime] $Since) {
+    $reports = Join-Path $script:RepoRoot 'target\surefire-reports'
+    $t = 0; $f = 0; $e = 0; $s = 0
+    foreach ($xml in Get-ChildItem -LiteralPath $reports -Filter 'TEST-*.xml' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $Since }) {
+        $suite = ([xml](Get-Content -LiteralPath $xml.FullName -Raw)).testsuite
+        $t += [int]$suite.tests; $f += [int]$suite.failures; $e += [int]$suite.errors; $s += [int]$suite.skipped
+    }
+    "$t tests, $f failures, $e errors, $s skipped"
+}
+
+# --- 0. cross-customer tests (T1-10): fails when none ran, so a lost tag can't pass silently ---
+$crossStart = Get-Date
+Invoke-Step 'cross-customer tests' 'cross-customer-tests' {
+    Push-Location $script:RepoRoot
+    try { & .\mvnw.cmd test '-Dgroups=cross-customer' '-DfailIfNoTests=true' } finally { Pop-Location }
+} { param($text) Get-SurefireCounts $crossStart } $(if ($SkipBackend) { '-SkipBackend' })
+
 # --- 1. backend ---
 $backendStart = Get-Date
 Invoke-Step 'backend tests' 'backend-tests' {
     Push-Location $script:RepoRoot
     try { & .\mvnw.cmd test } finally { Pop-Location }
-} {
-    param($text)
-    $reports = Join-Path $script:RepoRoot 'target\surefire-reports'
-    $t = 0; $f = 0; $e = 0; $s = 0
-    foreach ($xml in Get-ChildItem -LiteralPath $reports -Filter 'TEST-*.xml' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $backendStart }) {
-        $suite = ([xml](Get-Content -LiteralPath $xml.FullName -Raw)).testsuite
-        $t += [int]$suite.tests; $f += [int]$suite.failures; $e += [int]$suite.errors; $s += [int]$suite.skipped
-    }
-    "$t tests, $f failures, $e errors, $s skipped"
-} $(if ($SkipBackend) { '-SkipBackend' })
+} { param($text) Get-SurefireCounts $backendStart } $(if ($SkipBackend) { '-SkipBackend' })
 
 # --- 2-7. frontend ---
 $frontendSkip = if ($SkipFrontend) { '-SkipFrontend' } else { $null }
