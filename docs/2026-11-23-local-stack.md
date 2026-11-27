@@ -47,6 +47,7 @@ notepad devstack\stack.env
 |---|---|
 | `SQL_PASSWORD` | A new password for the SQL container's `sa` (8+ characters with upper and lower case, a digit and a symbol). Used nowhere else |
 | `JWT_SECRET` | 32+ random characters, for this stack only: `[Convert]::ToBase64String((1..48 \| % { Get-Random -Max 256 }))` |
+| `OFFLINE_GRANT_SIGNING_KEY` | (T1-10) Offline selling's grant key: Base64 of 32+ random bytes, a value of its own (never `JWT_SECRET`'s). The stack turns offline selling on, and `up.ps1` stops without it. `stack.env.example` has a one-liner that adds one without showing it |
 | `SMOKE_EMAIL`, `SMOKE_PASSWORD` | An ADMIN account in `beaconculinary` that signs in with a password. The demo admin from the migrations is fine locally (the tests use the same account) |
 | `FRONTEND_REPO` | Only if the frontend repository isn't in the folder next to this one, e.g. `C:\Users\you\Documents\Dev\Beacon\POS_FE\beacon-culinary-pos-front-end` |
 | `PLATFORM_DB_PASSWORD` | (T1-1) A new password for the platform database's own login, `pos_platform` |
@@ -147,8 +148,11 @@ which meals a database doesn't have (a new customer's starts without them). A re
 **Frontend.** Three modes (`FRONTEND_MODE` in `stack.env`, or `up.ps1 -Frontend <mode>`):
 
 - `container` (default): built from the frontend repository's `Dockerfile` (T1-L0-FE provides it). Since T1-0d the
-  app calls `/api` on its own origin and no API address is built in, so it takes **no build argument**: one image,
-  `beacon-devstack/frontend`, for every customer, and switching customer reuses it. Its build runs
+  app calls `/api` on its own origin and no API address is built in: one image,
+  `beacon-devstack/frontend`, for every customer, and switching customer reuses it. (T1-10) Its one build argument,
+  `POS_APP_BUILD_ID`, names the commit it was built from: `up.ps1` works it out from `FRONTEND_REPO`'s git
+  (`<version>-<short commit>[-dirty]-<time>`; the image can't see `.git`, so without it the id says `nogit`), and
+  check-all compares it with the frontend's HEAD. Its build runs
   `npm run check:build`, which fails if a backend address got into the build. If the repository has no
   `Dockerfile` yet, `up.ps1` says so and starts without it (the API works; pages answer 502).
 - `host`: hot reload. Run `npm run dev` yourself in the frontend repository, with no API setting (remove any old
@@ -159,7 +163,7 @@ which meals a database doesn't have (a new customer's starts without them). A re
 - `none`: the API only.
 
 **What the frontend container must do (T1-L0-FE, T1-0d):** a `Dockerfile` at the repository root; no API address
-built in (no build argument); serves on port 3000 on all interfaces (`PORT`, `HOSTNAME=0.0.0.0`); Next's
+built in (its only build argument is `POS_APP_BUILD_ID`); serves on port 3000 on all interfaces (`PORT`, `HOSTNAME=0.0.0.0`); Next's
 `output: 'standalone'` server.
 
 **Before merging a slice: run `check-all.ps1`.** Until the GitHub pipelines exist, this is the gate:
@@ -175,7 +179,10 @@ test suite;
 in the frontend repository (`FRONTEND_REPO`): lint, `tsc --noEmit`, Vitest, the production build, `npm run
 check:build` (no backend address in that build; it runs with `-Quick` and `-SkipE2E` too) and the Playwright e2e
 tests; then `up.ps1` (always: it is idempotent and rebuilds the backend, so the smoke check tests the code being
-merged), `status.ps1` and `smoke.ps1`. It ends with a table (PASS, FAIL or SKIP, counts, duration) and one overall
+merged), `status.ps1` and `smoke.ps1`; then (T1-10) a check that the stack serves the frontend commit under test (the
+build id in `/sw.js` against `FRONTEND_REPO`'s HEAD, nothing uncommitted on either side; otherwise it fails with
+"rebuild the stack"), and the frontend's stack e2e: two customers in a real browser (`npm run test:e2e:stack`, its
+settings in that step's environment only; a skip fails; `-Quick` and `-SkipE2E` skip it). It ends with a table (PASS, FAIL or SKIP, counts, duration) and one overall
 result; the exit code is 1 if anything failed. Each step's full output is in `devstack/.logs/check-<time>/`
 (git-ignored; the path is printed), with invite links masked. Skip parts with `-SkipBackend`, `-SkipFrontend`,
 `-SkipE2E` or `-SkipStack`. The frontend needs its `node_modules` (`npm ci` once).
@@ -254,6 +261,7 @@ the other customer's kitchen stream receives nothing, and `nobody.pos.localhost`
 answers 404 with an empty body on `/api/health` and `/api/public/board/today`. And (T1-5) beaconculinary's token
 presented at testcustomer answers 401 `TENANT_MISMATCH`; (T1-10) so does its refresh cookie, and its order asked for
 by id at testcustomer is never its own.
+(T1-10) At each customer, `/api/pos/till-status` reports `offlineEnabled: true`: the stack turns offline selling on.
 
 1. `GET /api/health` is `UP`, with an `X-Request-Id` header.
 2. Password sign-in sets the `refreshToken` cookie `Secure; HttpOnly; SameSite=Lax; Path=/api/auth/refresh` (T1-5), and
