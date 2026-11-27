@@ -19,6 +19,10 @@
                             code being merged)
       9. stack status       status.ps1
      10. smoke              smoke.ps1
+     11. stack frontend build  the build id in the stack's /sw.js names FRONTEND_REPO's HEAD, with no uncommitted
+                            changes on either side; otherwise "rebuild the stack" (T1-10)
+     12. frontend stack e2e npm run test:e2e:stack: two customers in a real browser against the stack (T1-10;
+                            STACK_E2E_* set for that step only; a skip fails). Skipped when step 11 failed.
     T1-3: it notes the commit it runs on (and fails if HEAD moves during the run), and stops the stack's containers
     before the backend tests (the suite uses its own SQL Server; step 8 starts them again), so the machine doesn't run
     out of memory. Run it from a terminal, not as a Claude Code background command (which is stopped when memory runs low).
@@ -31,9 +35,9 @@
 .PARAMETER SkipFrontend
     Skip every frontend step (2 to 7).
 .PARAMETER SkipE2E
-    Skip only the Playwright e2e tests.
+    Skip only the Playwright e2e tests (the stack e2e too).
 .PARAMETER SkipStack
-    Skip the local stack (8 to 10).
+    Skip the local stack (8 to 12).
 .PARAMETER Quick
     No e2e tests, and the smoke check holds its stream for 5 seconds instead of 2 minutes.
 
@@ -220,6 +224,65 @@ Invoke-Step 'smoke' 'stack-smoke' { Invoke-StackScript 'smoke.ps1' $smokeArgs } 
     if ($m.Success) { "$($m.Groups[1].Value) of $($m.Groups[1].Value) checks" }
     else { $m = [regex]::Match($text, 'FAILED: (\d+) of (\d+)'); if ($m.Success) { "$($m.Groups[1].Value) of $($m.Groups[2].Value) checks failed" } else { '' } }
 } $stackSkip
+
+# --- 11. the frontend the stack serves is the one under test (T1-10): its service worker's build id names the commit ---
+Invoke-Step 'stack frontend build' 'stack-frontend-build' {
+    if ($configProblem) { throw $configProblem }
+    $url = (Get-CustomerUrl $config @(Get-ServedCustomers $config)[0]) + '/sw.js'
+    $sw = (Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 30).Content
+    $version = [regex]::Match($sw, 'const SW_VERSION = "([^"]+)"')
+    if (-not $version.Success) { throw "rebuild the stack: $url has no SW_VERSION." }
+    $served = $version.Groups[1].Value
+    $head = & git -C $config.FrontendRepo rev-parse HEAD
+    $repoDirty = @(& git -C $config.FrontendRepo status --porcelain).Count -gt 0
+    Write-Output "stack serves $served; FRONTEND_REPO at $head$(if ($repoDirty) { ' with uncommitted changes' })"
+    $id = [regex]::Match($served, '^.+?-([0-9a-f]{7,40}|nogit)(-dirty)?-[0-9a-z]+$')
+    if (-not $id.Success -or $id.Groups[1].Value -eq 'nogit') { throw "rebuild the stack: it serves $served, which names no commit (up.ps1 passes the build id)." }
+    if (-not $head.StartsWith($id.Groups[1].Value)) { throw "rebuild the stack: it serves $served, built from $($id.Groups[1].Value), but FRONTEND_REPO is at $head." }
+    if ($id.Groups[2].Success) { throw "rebuild the stack: it serves $served, built from uncommitted changes." }
+    if ($repoDirty) { throw "rebuild the stack: FRONTEND_REPO has uncommitted changes, so the stack can't be shown to serve them; commit them, then run check-all again." }
+} {
+    param($text)
+    $m = [regex]::Match($text, 'stack serves (\S+);'); if ($m.Success) { $m.Groups[1].Value } else { '' }
+} $stackSkip
+
+# --- 12. two customers in a real browser, against the stack (T1-10; the frontend's e2e/stack-cross-customer.spec.ts) ---
+$stackE2eSkip = $stackSkip
+if (-not $stackE2eSkip -and $SkipFrontend) { $stackE2eSkip = '-SkipFrontend' }
+if (-not $stackE2eSkip -and $SkipE2E) { $stackE2eSkip = '-SkipE2E' }
+if (-not $stackE2eSkip -and $Quick) { $stackE2eSkip = '-Quick' }
+if (-not $stackE2eSkip -and @($results | Where-Object { $_.Step -eq 'stack frontend build' -and $_.Result -ne 'PASS' }).Count) {
+    $stackE2eSkip = 'the stack serves another frontend build'
+}
+Invoke-Step 'frontend stack e2e' 'frontend-stack-e2e' {
+    $customers = @(Get-ServedCustomers $config)
+    if ($customers.Count -lt 2) { throw 'The stack e2e needs multi mode (two customers at their own addresses).' }
+    # The settings live in this step's environment only, and the password is never printed or on a command line.
+    $settings = [ordered]@{
+        STACK_E2E = '1'
+        STACK_E2E_A_URL = Get-CustomerUrl $config $customers[0]; STACK_E2E_B_URL = Get-CustomerUrl $config $customers[1]
+        STACK_E2E_A_EMAIL = Get-SmokeEmail $config $customers[0]; STACK_E2E_B_EMAIL = Get-SmokeEmail $config $customers[1]
+        STACK_E2E_PASSWORD = $config.SmokePassword
+    }
+    try {
+        foreach ($name in $settings.Keys) { Set-Item -Path "Env:$name" -Value $settings[$name] }
+        $output = @(Invoke-Frontend { & npm run test:e2e:stack } 2>&1 | ForEach-Object { "$_" })
+        $code = $LASTEXITCODE
+        $output
+        $text = Remove-Ansi ($output -join "`n")
+        if ($code -eq 0 -and ($text -match '(?m)^\s*\d+ skipped' -or $text -notmatch '(?m)^\s*\d+ passed')) {
+            Write-Output 'check-all: a skipped or empty stack e2e run counts as a failure.'
+            $code = 1
+        }
+        $global:LASTEXITCODE = $code
+    } finally {
+        foreach ($name in $settings.Keys) { Remove-Item -Path "Env:$name" -ErrorAction SilentlyContinue }
+    }
+} {
+    param($text)
+    $parts = [regex]::Matches($text, '(?m)^\s*(\d+) (passed|failed|flaky|skipped|did not run)') | ForEach-Object { "$($_.Groups[1].Value) $($_.Groups[2].Value)" }
+    $parts -join ', '
+} $stackE2eSkip
 
 # --- the result ---
 $endCommit = (& git -C $script:RepoRoot rev-parse HEAD 2>$null | Select-Object -First 1)
