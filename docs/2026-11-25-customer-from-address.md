@@ -128,6 +128,8 @@ trusted proxy. T1-0c must set the following:
   - at each: health, branding with its own name (T1-7), sign-in, refresh, request id, log line host, a sale and the
     kitchen stream;
   - while each customer's order is placed, the other customer's kitchen stream receives nothing;
+  - T1-10: beaconculinary's refresh cookie is refused at testcustomer (401 `TENANT_MISMATCH`), and its order asked
+    for by id at testcustomer is never its own (docs/2026-11-27-cross-customer-tests.md);
   - `nobody.pos.localhost` (a forged Host through Caddy) answers 404 with an empty body on `/api/health` and
     `/api/public/board/today`.
 - **`status.ps1`** shows the mode and, in multi mode, the customers whose pools are open.

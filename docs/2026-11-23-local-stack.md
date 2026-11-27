@@ -169,7 +169,9 @@ built in (no build argument); serves on port 3000 on all interfaces (`PORT`, `HO
 .\devstack\scripts\check-all.ps1 -Quick     # no e2e tests, a 5-second stream hold (check:build still runs)
 ```
 
-It runs, in order, and carries on after a failure so you see everything at once: the backend's full test suite;
+It runs, in order, and carries on after a failure so you see everything at once: the cross-customer tests (T1-10;
+`mvnw test -Dgroups=cross-customer`, with their count, docs/2026-11-27-cross-customer-tests.md); the backend's full
+test suite;
 in the frontend repository (`FRONTEND_REPO`): lint, `tsc --noEmit`, Vitest, the production build, `npm run
 check:build` (no backend address in that build; it runs with `-Quick` and `-SkipE2E` too) and the Playwright e2e
 tests; then `up.ps1` (always: it is idempotent and rebuilds the backend, so the smoke check tests the code being
@@ -250,7 +252,8 @@ testcustomer in one run (beaconculinary with `SMOKE_EMAIL`, testcustomer with it
 address; the 2-minute hold is at the first customer only. Also in multi mode: while one customer's order is placed,
 the other customer's kitchen stream receives nothing, and `nobody.pos.localhost` (a forged Host through Caddy)
 answers 404 with an empty body on `/api/health` and `/api/public/board/today`. And (T1-5) beaconculinary's token
-presented at testcustomer answers 401 `TENANT_MISMATCH`.
+presented at testcustomer answers 401 `TENANT_MISMATCH`; (T1-10) so does its refresh cookie, and its order asked for
+by id at testcustomer is never its own.
 
 1. `GET /api/health` is `UP`, with an `X-Request-Id` header.
 2. Password sign-in sets the `refreshToken` cookie `Secure; HttpOnly; SameSite=Lax; Path=/api/auth/refresh` (T1-5), and
