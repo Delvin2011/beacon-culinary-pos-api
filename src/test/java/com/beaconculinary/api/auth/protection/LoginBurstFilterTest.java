@@ -3,9 +3,13 @@ package com.beaconculinary.api.auth.protection;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.beaconculinary.api.support.tenancy.MultiCustomerIntegrationTest;
+import com.beaconculinary.api.tenancy.context.CurrentCustomer;
+import com.beaconculinary.api.tenancy.context.CustomerContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.mock.web.MockFilterChain;
@@ -122,5 +126,26 @@ class LoginBurstFilterTest {
             send(filter, "/auth/login", "10.9.0." + i);
         }
         assertThat(filter.trackedClients()).isLessThanOrEqualTo(3);
+    }
+
+    /** T1-10: each customer has its own buckets: one address emptying alpha's leaves bravo's full. */
+    @Test
+    @Tag(MultiCustomerIntegrationTest.TAG)
+    void enforce_eachCustomerHasItsOwnBucket_forTheSameAddress() throws Exception {
+        var filter = filter(LoginProtectionMode.ENFORCE, 1, 100);
+        var alpha = new CurrentCustomer(1, "alpha");
+        var bravo = new CurrentCustomer(2, "bravo");
+        var ip = "203.0.113.30";
+        assertThat(CustomerContext.callAs(alpha, () -> status(filter, ip))).isEqualTo(200);
+        assertThat(CustomerContext.callAs(alpha, () -> status(filter, ip))).as("alpha's bucket is empty").isEqualTo(429);
+        assertThat(CustomerContext.callAs(bravo, () -> status(filter, ip))).as("bravo's is its own").isEqualTo(200);
+    }
+
+    private int status(LoginBurstFilter filter, String ip) {
+        try {
+            return send(filter, "/auth/login", ip).getStatus();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 }
