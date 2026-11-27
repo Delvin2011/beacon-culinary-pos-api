@@ -103,6 +103,9 @@ services:
     profiles: [frontend]
     build:
       context: ${FRONTEND_REPO:-../../beacon-culinary-pos-front-end}
+      # T1-10: the build id (up.ps1 works it out from FRONTEND_REPO's git; empty: the image makes a "nogit" one).
+      args:
+        POS_APP_BUILD_ID: ${POS_APP_BUILD_ID:-}
     image: beacon-devstack/frontend
     environment:
       PORT: "3000"

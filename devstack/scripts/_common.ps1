@@ -129,6 +129,25 @@ function Get-CustomerUrl($Config, [string] $Customer) {
 }
 
 <#
+    T1-10: the frontend image's build id, as the frontend's next.config.mjs makes it, from FRONTEND_REPO's git (the
+    image's build context has no .git, so without this the image reports "nogit"): <version>-<short HEAD>-<time>,
+    "-dirty" after the hash when the working tree has changes. Clean: the commit's time, so the same commit gives the
+    same id and Docker reuses its build. Dirty: now, since the files can change without a new commit. $null when
+    FRONTEND_REPO isn't a git repository.
+#>
+function Get-FrontendBuildId($Config) {
+    $ErrorActionPreference = 'Continue'   # git's standard error (not a repository) must not stop the script
+    $sha = & git -C $Config.FrontendRepo rev-parse --short HEAD 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $sha) { return $null }
+    $version = (Get-Content -LiteralPath (Join-Path $Config.FrontendRepo 'package.json') -Raw | ConvertFrom-Json).version
+    $dirty = @(& git -C $Config.FrontendRepo status --porcelain 2>$null).Count -gt 0
+    $ms = if ($dirty) { [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() } else { [long](& git -C $Config.FrontendRepo log -1 --format=%ct) * 1000 }
+    $digits = '0123456789abcdefghijklmnopqrstuvwxyz'; $time = ''
+    do { $time = $digits[[int]($ms % 36)] + $time; $ms = [long][math]::Floor($ms / 36) } while ($ms -gt 0)
+    return "$version-$sha$(if ($dirty) { '-dirty' })-$time"
+}
+
+<#
     The environment compose reads on top of stack.env (this process's variables win over --env-file): the values
     worked out here, and the frontend upstream for the chosen frontend mode.
 #>

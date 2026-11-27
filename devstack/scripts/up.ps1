@@ -75,6 +75,13 @@ if ($config.FrontendMode -eq 'container') {
         $config.FrontendMode = 'none'
     }
 }
+# T1-10: the image reports the frontend commit it was built from (check-all compares it with FRONTEND_REPO's HEAD).
+$env:POS_APP_BUILD_ID = ''
+if ($config.FrontendMode -eq 'container') {
+    $env:POS_APP_BUILD_ID = Get-FrontendBuildId $config
+    if ($env:POS_APP_BUILD_ID) { Write-Ok "frontend build $($env:POS_APP_BUILD_ID)" }
+    else { Write-Problem "$($config.FrontendRepo) isn't a git repository: the frontend image reports ""nogit"", and check-all's build check fails." }
+}
 if ($config.FrontendMode -eq 'host') { $frontendUpstream = 'host.docker.internal:3000' }
 if ($config.FrontendMode -eq 'none') { $frontendUpstream = 'no-frontend.invalid:3000' }
 Set-ComposeEnvironment $config $frontendUpstream
