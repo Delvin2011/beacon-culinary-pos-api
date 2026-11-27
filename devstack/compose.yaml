@@ -68,6 +68,11 @@ services:
       # The only proxy is Caddy, on the stack network: its X-Forwarded-For and X-Forwarded-Host are believed.
       SECURITY_LOGINPROTECTION_TRUSTEDPROXIES: 172.30.0.0/24
       LOGIN_PROTECTION_MODE: ${LOGIN_PROTECTION_MODE:-monitor}
+      # T1-10: offline selling on, so the stack's browser tests can sell offline. The grant key is a secret of its own
+      # (Base64, 32+ random bytes), never the JWT key; the backend refuses to start without a valid one.
+      POS_OFFLINE_ENABLED: "true"
+      # Empty here so compose's stop, down and status work without it; up.ps1 (and the backend) refuse to start without it.
+      POS_OFFLINE_GRANTSIGNINGKEY: ${OFFLINE_GRANT_SIGNING_KEY:-}
       # Single mode: the active customer's address. Multi mode: every customer's (https://*.pos.localhost, set by the
       # scripts): the browser sends its Origin even on its own site, and behind Caddy the backend can't tell it's the same.
       CORS_ALLOWED_ORIGINS: "${STACK_CORS_ALLOWED_ORIGINS:-https://${ACTIVE_CUSTOMER}.pos.localhost${PUBLIC_PORT_SUFFIX:-}}"
@@ -99,6 +104,9 @@ services:
     profiles: [frontend]
     build:
       context: ${FRONTEND_REPO:-../../beacon-culinary-pos-front-end}
+      # T1-10: the build id (up.ps1 works it out from FRONTEND_REPO's git; empty: the image makes a "nogit" one).
+      args:
+        POS_APP_BUILD_ID: ${POS_APP_BUILD_ID:-}
     image: beacon-devstack/frontend
     environment:
       PORT: "3000"

@@ -32,7 +32,7 @@ How to write one:
 |---|---|
 | The suite alone | `./mvnw test -Dgroups=cross-customer` (add `-DfailIfNoTests=true` so a lost tag can't pass) |
 | One class | `./mvnw test -Dtest=CrossCustomerAreasIntegrationTests` |
-| Everything | `devstack/scripts/check-all.ps1`: step 0 "cross-customer tests" (with its count), then the full suite, the frontend and the local stack's smoke check |
+| Everything | `devstack/scripts/check-all.ps1`: step 0 "cross-customer tests" (with its count), then the full suite, the frontend, the local stack's smoke check and the frontend's stack e2e (below) |
 
 The suite shares the test database with the full suite: run one at a time. It ran 60 tests before T1-10 and 81 after.
 
@@ -106,6 +106,11 @@ At beaconculinary and testcustomer through Caddy: each customer's own name from 
 customer's access token (`TENANT_MISMATCH`) and, from T1-10, its refresh cookie refused at the other; a sale's kitchen
 event never reaching the other customer's stream; from T1-10, the first customer's order asked for by id at the
 second never being its own; an unknown address answering an empty 404.
+
+**In a real browser (check-all steps 11 and 12).** check-all first checks that the stack serves the frontend commit
+under test, then runs the frontend's `e2e/stack-cross-customer.spec.ts` against it in multi mode. Each address shows
+its own name, kitchen, device storage and sessions, and an offline sale syncs only into its own customer. The
+frontend's docs/2026-11-25-customer-responses.md, section 8, has the details. Offline selling is on in the stack for it.
 
 ## 5. Leaks found by T1-10
 

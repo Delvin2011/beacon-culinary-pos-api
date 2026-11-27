@@ -48,6 +48,7 @@ $config = Get-StackConfig -Customer $Customer -FrontendMode $Frontend
 if ($TenancyMode) { $config.TenancyMode = $TenancyMode }
 # T1-1: the platform and customer logins' secrets are checked before anything starts.
 Assert-PlatformSettings $config
+Assert-OfflineGrantKey $config
 foreach ($name in Get-ManagedCustomers) { $null = Get-CustomerSecretValues $config $name }
 Assert-Docker
 
@@ -73,6 +74,13 @@ if ($config.FrontendMode -eq 'container') {
         Write-Problem "No Dockerfile in $($config.FrontendRepo) (FRONTEND_REPO). Starting without the frontend: /api works, pages answer 502. Use -Frontend host for npm run dev."
         $config.FrontendMode = 'none'
     }
+}
+# T1-10: the image reports the frontend commit it was built from (check-all compares it with FRONTEND_REPO's HEAD).
+$env:POS_APP_BUILD_ID = ''
+if ($config.FrontendMode -eq 'container') {
+    $env:POS_APP_BUILD_ID = Get-FrontendBuildId $config
+    if ($env:POS_APP_BUILD_ID) { Write-Ok "frontend build $($env:POS_APP_BUILD_ID)" }
+    else { Write-Problem "$($config.FrontendRepo) isn't a git repository: the frontend image reports ""nogit"", and check-all's build check fails." }
 }
 if ($config.FrontendMode -eq 'host') { $frontendUpstream = 'host.docker.internal:3000' }
 if ($config.FrontendMode -eq 'none') { $frontendUpstream = 'no-frontend.invalid:3000' }

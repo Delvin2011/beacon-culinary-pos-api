@@ -94,3 +94,17 @@ Docs: `2026-11-27-cross-customer-tests.md` (new), this report (new), `2026-11-25
 - The suite runs twice in check-all (step 0, then inside the full suite): a few minutes. If that grows, the full suite
   could exclude the tag (`-DexcludedGroups=cross-customer`).
 - Scenario 4 doesn't run the migration command itself (see Decisions); a fixture with migration logins would let it.
+
+## 9. Follow-ups (branch `feature/t1-10-stack-follow-ups`)
+
+The frontend's stack e2e (its docs/2026-11-25-customer-responses.md, section 8) asked for two things in the stack.
+
+| Step | Commit | What |
+|---|---|---|
+| 1 | `840c81c` | Offline selling on in the stack: `POS_OFFLINE_ENABLED`, and the grant key from `stack.env` (`OFFLINE_GRANT_SIGNING_KEY`; only its name is in the example; `up.ps1` checks it is Base64 of 32+ bytes and not `JWT_SECRET`'s); smoke checks `offlineEnabled` at each customer (25 checks in multi mode) |
+| 2 | `ea8ae9e` | The frontend image reports its commit: `up.ps1` passes `POS_APP_BUILD_ID` (the commit's time when clean, so Docker reuses the build) |
+| 3 | `0ed5796` | check-all steps 11 "stack frontend build" ("rebuild the stack" when the served build isn't `FRONTEND_REPO`'s HEAD, or either side has uncommitted changes) and 12 "frontend stack e2e" (a skip fails; skipped when step 11 failed): 13 steps |
+| 4 | `7b63f85` | Docs |
+| 1 fix | this commit | compose takes the grant key with an empty default (`:-`, not `:?`): with `:?`, a `stack.env` without the key made every compose command fail, so check-all couldn't stop the stack before the backend tests and the machine ran short of memory. `up.ps1` and the backend still refuse to start without a valid key |
+
+Lines: devstack +122 −4; docs +31 −5 (step 4) and this commit's. No main or test code changed.
