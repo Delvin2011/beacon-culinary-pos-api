@@ -1,6 +1,7 @@
 package com.beaconculinary.api.devices;
 
 import com.beaconculinary.api.common.logging.LogMarkers;
+import com.beaconculinary.api.tenancy.context.CustomerContext;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
@@ -12,7 +13,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * LOGIN_PROTECTION_ALERT lines for device trust. Repeated events from one address (invalid tokens,
  * DEVICE_NOT_REGISTERED refusals) raise one alert per address per window once a threshold is
- * reached; counters live in a bounded, expiring cache. The device token is never logged.
+ * reached; counters live in a bounded, expiring cache. T1-10: counted per address at each customer, so an alert logged
+ * for one customer counts only that customer's events. The device token is never logged.
  */
 @Slf4j
 @Component
@@ -44,7 +46,7 @@ public class DeviceAlerts {
 
     private void repeated(Cache<String, AtomicInteger> cache, String type, String clientIp) {
         var key = clientIp == null ? "unknown" : clientIp;
-        var count = cache.get(key, k -> new AtomicInteger()).incrementAndGet();
+        var count = cache.get(CustomerContext.scopeKey() + "|" + key, k -> new AtomicInteger()).incrementAndGet();
         if (count == REPEAT_THRESHOLD) {
             alert(type, "ip=" + key + " count=" + count + " window=" + REPEAT_WINDOW);
         }

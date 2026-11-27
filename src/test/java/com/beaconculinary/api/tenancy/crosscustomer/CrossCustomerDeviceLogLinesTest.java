@@ -1,5 +1,6 @@
 package com.beaconculinary.api.tenancy.crosscustomer;
 
+import com.beaconculinary.api.devices.DeviceAlerts;
 import com.beaconculinary.api.devices.DeviceTrustMode;
 import com.beaconculinary.api.devices.DeviceTrustProperties;
 import com.beaconculinary.api.devices.DeviceUnboundRequestFilter;
@@ -56,6 +57,33 @@ class CrossCustomerDeviceLogLinesTest {
 
         assertThat(output.getOut().lines().filter(line -> line.contains("DEVICE_UNBOUND_TILL_REQUEST user=" + CASHIER)))
                 .as("alpha's line (once in 5 minutes) and bravo's own").hasSize(2);
+    }
+
+    /**
+     * L2: repeated refusals and invalid till tokens from one address raise an alert at the threshold (5 in 10 minutes):
+     * counted AT EACH CUSTOMER, so an alert logged for bravo counts only bravo's events.
+     */
+    @Test
+    void repeatedDeviceEvents_fromOneAddress_areCountedAtEachCustomer(CapturedOutput output) {
+        var alerts = new DeviceAlerts();
+        var ip = "203.0.113.9";
+        CustomerContext.runAs(ALPHA, () -> repeat(3, () -> { alerts.refusal(ip); alerts.invalidToken(ip); }));
+        CustomerContext.runAs(BRAVO, () -> repeat(2, () -> { alerts.refusal(ip); alerts.invalidToken(ip); }));
+        assertThat(alertLines(output)).as("3 at alpha and 2 at bravo: neither reached 5").isEmpty();
+
+        CustomerContext.runAs(BRAVO, () -> repeat(3, () -> { alerts.refusal(ip); alerts.invalidToken(ip); }));
+        assertThat(alertLines(output)).as("bravo's own 5th of each").hasSize(2)
+                .allMatch(line -> line.contains("ip=" + ip + " count=5"));
+    }
+
+    private static List<String> alertLines(CapturedOutput output) {
+        return output.getOut().lines().filter(line -> line.contains("LOGIN_PROTECTION_ALERT type=DEVICE_")).toList();
+    }
+
+    private static void repeat(int times, Runnable action) {
+        for (int i = 0; i < times; i++) {
+            action.run();
+        }
     }
 
     private static void cashierPostsAnOrder(DeviceUnboundRequestFilter filter) {
