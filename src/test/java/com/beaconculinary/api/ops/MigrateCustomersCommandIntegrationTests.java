@@ -1,6 +1,7 @@
 package com.beaconculinary.api.ops;
 
 import com.beaconculinary.api.support.baseline.ThrowawayDatabase;
+import com.beaconculinary.api.support.tenancy.MultiCustomerIntegrationTest;
 import com.beaconculinary.api.tenancy.PlatformDatabase;
 import com.beaconculinary.api.tenancy.secrets.MissingSecretException;
 import org.junit.jupiter.api.AfterAll;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * statuses are taken, the collation check, two copies at once, and nothing secret in the output.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@Tag(MultiCustomerIntegrationTest.TAG) // T1-10: the cross-customer suite
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MigrateCustomersCommandIntegrationTests {
     private static final String PROBE = "classpath:db/t1-4-probe";
