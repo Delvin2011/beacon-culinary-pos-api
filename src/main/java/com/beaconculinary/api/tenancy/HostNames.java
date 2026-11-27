@@ -18,7 +18,7 @@ public final class HostNames {
     private HostNames() {
     }
 
-    /** E.g. "BeaconCulinary.POS.optimumscs.com.:443" is "beaconculinary.pos.optimumscs.com"; "[::1]:443" is empty. */
+    /** E.g. "Acme.POS.optimumscs.com.:443" is "acme.pos.optimumscs.com"; "[::1]:443" is empty. */
     public static Optional<String> normalise(String raw) {
         if (raw == null) {
             return Optional.empty();

@@ -157,7 +157,7 @@ class InviteIntegrationTests {
         assertThat(token).hasSize(43);
         assertThat(issued.get("purpose").asText()).isEqualTo("STAFF_SETUP");
         assertThat(issued.get("credentials").asText()).isEqualTo("PIN");
-        assertThat(issued.get("link").isNull()).as("no app.public-base-url in the tests").isTrue();
+        assertThat(issued.get("link").isNull()).as("single mode: no customer, so no link (T1-7)").isTrue();
 
         // The database holds the SHA-256 only.
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM [user_invites] WHERE [token_hash] = ?", Integer.class, token)).isZero();

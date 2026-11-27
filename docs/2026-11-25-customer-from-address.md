@@ -117,14 +117,16 @@ trusted proxy. T1-0c must set the following:
 
 - **Mode:** multi is the default (`TENANCY_MODE`), and `up.ps1 -TenancyMode single` still works.
 - **Caddy:** its single-mode 503 guard matches nothing in multi mode.
-- **Invite links:** in multi mode the frontend builds them from its own address.
+- **Invite links:** T1-7: on the customer's primary host, `https://<name>.pos.localhost/invite#t=...` (section 11).
+  With an HTTPS port other than 443 the link has no port; open it with the port added.
 - **Smoke accounts:** each customer other than beaconculinary has `smoke@<name>.test` with `SMOKE_PASSWORD`.
   - It's made when its database is: by `up.ps1` and `new-customer.ps1`, and again after `reset.ps1`.
   - `FirstAdminCommand`'s link is captured and never shown, and the invite is accepted through the gateway. An ADMIN
     also needs a PIN, so it gets a random one that is never stored.
   - It's made only for `*.pos.localhost` addresses.
 - **`smoke.ps1`** checks beaconculinary and testcustomer in one run:
-  - at each: health, sign-in, refresh, request id, log line host, a sale and the kitchen stream;
+  - at each: health, branding with its own name (T1-7), sign-in, refresh, request id, log line host, a sale and the
+    kitchen stream;
   - while each customer's order is placed, the other customer's kitchen stream receives nothing;
   - `nobody.pos.localhost` (a forged Host through Caddy) answers 404 with an empty body on `/api/health` and
     `/api/public/board/today`.
@@ -146,3 +148,41 @@ trusted proxy. T1-0c must set the following:
 | `MultiCustomerOfflineSyncIntegrationTests` (2) | A full offline sale (grant, snapshot) lands only at its customer; the same sale at bravo is bravo's own; alpha's grant means nothing at bravo |
 | `SignInUnavailableIntegrationTests` (3, single mode) | 503 `DATABASE_UNAVAILABLE`, an ERROR line with the request id, nothing recorded, no lockout or burst; wrong password and PIN unchanged |
 | `MultiModeStartupIntegrationTests` (updated) | The backend's own address serves `/health` only; the start-up WARN |
+| `CustomerBrandingIntegrationTests` (2, T1-7) | Two customers, two names (one from its receipt settings, one from the customer directory), no sign-in, `logoUrl` null, the cache header; suspended, unavailable and unknown answer as in section 2 |
+| `CustomerLinksIntegrationTests` (1, T1-7) | An invite issued at alpha links to `https://alpha.pos.localhost`, at bravo to `https://bravo.pos.localhost` |
+| `NoBeaconInMainTest` (2, T1-7) | No customer's name in `src/main` (the package and main class excepted) |
+
+## 11. The customer's details and its links (T1-7)
+
+Each customer's public details come from that customer, and every link the backend builds is on that customer's own
+address. Nothing in the app names a customer: `NoBeaconInMainTest` fails on "beacon" anywhere in `src/main` except
+the package `com.beaconculinary` (and its `COM_BEACONCULINARY` form) and `BeaconCulinaryApiApplication`, whose rename
+is a separate change, and the applied migrations' demo data.
+
+**`GET /api/public/branding`** (backend path `/public/branding`; `PublicBrandingController`), no sign-in:
+
+```
+200  Cache-Control: public, max-age=300
+{ "name": "Acme Foods", "logoUrl": null }
+```
+
+- **`name`** (`BusinessName`, the same name the X, Z and Cashier readings print):
+  1. the customer's own receipt settings' `businessName` (`receipt_settings.business_name`, set in `/admin/receipt-settings`);
+  2. while that's empty, its name in the customer directory (`tenants.display_name`, given at `register --name`);
+  3. otherwise `""`. In single mode there is no directory, so it's the receipt settings' name or `""`.
+
+  Browsers and caches may keep an answer for 5 minutes (the cache header), so a saved change can take that long to
+  show; a directory change also waits for the directory's 30 s snapshot.
+- **`logoUrl`** is always `null` for now (no logo upload yet).
+- **Suspended, unavailable and unknown addresses** never reach it: they get section 2's answers (503
+  `CUSTOMER_SUSPENDED`, 503 `CUSTOMER_UNAVAILABLE`, an empty 404), with `Cache-Control: no-store`.
+- There is no platform-wide name: `app.business.name` (`APP_BUSINESS_NAME`) is gone, so one customer's name is never
+  shown for another.
+
+**Links** (`InviteLinks`): `https://<the customer's primary host>/invite#t=<token>`, the primary host from the
+customer directory (`tenant_hosts.is_primary`; change it with `add-host --primary`). The staff screen's
+`issuedInvite.link` is this link. In single mode there is no customer directory, so `link` is `null` and the frontend
+builds the link from its own address. `app.public-base-url` (`APP_PUBLIC_BASE_URL`) is gone; `FirstAdminCommand`
+takes `--base-url`, or prints the bare token without it. Invite links are the only links built from settings; the
+`Location` headers of new orders and shifts are built from the request itself, so they are already on the
+customer's address.

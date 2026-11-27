@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(ClockTestConfig.class)
-@TestPropertySource(properties = {"reports.close-day.first-trading-day=2026-10-05", "app.business.name=Beacon Culinary"})
+@TestPropertySource(properties = "reports.close-day.first-trading-day=2026-10-05")
 class EndOfDayIntegrationTests {
     private static final String MON = "2026-10-05";
     private static final String TUE = "2026-10-06";
@@ -63,6 +63,8 @@ class EndOfDayIntegrationTests {
     @BeforeEach
     void setUp() throws Exception {
         clock.setInstant(TUESDAY.atTime(13, 0).atZone(TestLocale.ZONE).toInstant());
+        // T1-7: the name its expected outputs carry, in the receipt settings (there is no app.business.name).
+        jdbc.update("UPDATE [receipt_settings] SET [business_name] = 'Beacon Culinary' WHERE [id] = 1");
         adminToken = AuthTestHelper.loginAsAdmin(mockMvc);
         ReportFixture.clear(jdbc);
         fixture = ReportFixture.seed(jdbc, AuthTestHelper.cashierAId(mockMvc), AuthTestHelper.cashierBId(mockMvc),
@@ -72,6 +74,7 @@ class EndOfDayIntegrationTests {
     @AfterEach
     void tearDown() {
         clock.reset();
+        jdbc.update("UPDATE [receipt_settings] SET [business_name] = NULL WHERE [id] = 1");
         ReportFixture.clear(jdbc);
     }
 

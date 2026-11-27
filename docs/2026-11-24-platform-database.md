@@ -111,7 +111,7 @@ from the environment (never a command-line option), and applies the platform mig
 | `show [--slug S]` | Lists customers, hosts and database locations (secret names only) |
 
 A host or database that already belongs to another customer is refused. Each change runs in one transaction under
-an application lock (`beacon-platform-register`) and records a `provisioning_runs` row, refusals included. Nothing
+an application lock (`pos-platform-register`) and records a `provisioning_runs` row, refusals included. Nothing
 secret is printed or stored. Exit codes: 0 done or unchanged, 2 usage, 3 refused, 4 failed.
 
 ## 6. On the local stack

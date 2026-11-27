@@ -1,7 +1,7 @@
 package com.beaconculinary.api.tenancy.secrets;
 
 /**
- * T1-1: turns a secret's NAME (as the platform database stores it, e.g. "beaconculinary-db-password") into its value.
+ * T1-1: turns a secret's NAME (as the platform database stores it, e.g. "acme-db-password") into its value.
  * The platform database never holds a value. Today's implementation reads the environment
  * ({@link EnvironmentSecretResolver}); T1-0b adds Azure Key Vault behind this same interface, with the same names.
  *

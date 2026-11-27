@@ -26,7 +26,7 @@ public final class TenantBinding {
     public static final String CLAIM = "tid";
     public static final String CODE = "TENANT_MISMATCH";
     /** Set by the JWT filter on a refused bearer token, for the 401 entry point. */
-    static final String MISMATCH_ATTRIBUTE = "beacon.tenantMismatch";
+    static final String MISMATCH_ATTRIBUTE = "pos.tenantMismatch";
     private static final String MESSAGE = "This sign-in is for another address. Sign in again.";
     private static final Logger log = LoggerFactory.getLogger(TenantBinding.class);
 

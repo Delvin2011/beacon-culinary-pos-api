@@ -17,8 +17,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * T0-4a (contract section 6): app.business.name is blank by default. With no name in the receipt
- * settings either, statement reports print no business name: meta.business and the "Business" header
+ * T0-4a (contract section 6): with no name in the receipt settings (and, T1-7, no customer directory:
+ * single mode), statement reports print no business name: meta.business and the "Business" header
  * item are left out. A name saved in the receipt settings is printed as before.
  */
 @SpringBootTest

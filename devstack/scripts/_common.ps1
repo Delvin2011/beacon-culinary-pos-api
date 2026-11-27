@@ -156,16 +156,14 @@ function Set-ComposeEnvironment($Config, [string] $FrontendUpstream) {
     if ($FrontendUpstream) { $env:FRONTEND_UPSTREAM = $FrontendUpstream }
     $env:PLATFORM_DATABASE = $Config.PlatformDatabase
     $env:APP_TENANCY_MODE = $Config.TenancyMode
-    # T1-3: in multi mode Caddy serves every *.pos.localhost (its single-mode guard matches nothing), and invite links
-    # are built by the frontend from its own address (one backend, many customers).
+    # T1-3: in multi mode Caddy serves every *.pos.localhost (its single-mode guard matches nothing). T1-7: invite links
+    # are on each customer's primary host, from the platform database (no base URL is set).
     if ($Config.TenancyMode -eq 'multi') {
         $env:CADDY_ACTIVE_HOST = '*.pos.localhost'
-        $env:STACK_PUBLIC_BASE_URL = ''
         # Every customer's address may call the API (the browser's Origin, even on its own site).
         $env:STACK_CORS_ALLOWED_ORIGINS = "https://*.pos.localhost$($Config.PortSuffix)"
     } else {
         $env:CADDY_ACTIVE_HOST = "$($Config.ActiveCustomer).pos.localhost"
-        $env:STACK_PUBLIC_BASE_URL = Get-CustomerUrl $Config $Config.ActiveCustomer
         $env:STACK_CORS_ALLOWED_ORIGINS = Get-CustomerUrl $Config $Config.ActiveCustomer
     }
 }
@@ -612,6 +610,11 @@ function Initialize-PlatformDatabase($Config) {
     if ($code -ne 0) { throw "Migrating the platform database failed (exit code $code)." }
 }
 
+<# A stack customer's name in the platform database (tenants.display_name); T1-7: smoke.ps1 expects it from /api/public/branding. #>
+function Get-StackDisplayName([string] $Name) {
+    switch ($Name) { 'beaconculinary' { return 'Beacon Culinary' } 'testcustomer' { return 'Test Customer' } default { return $Name } }
+}
+
 <#
     A customer: its two database logins (T1-4: the app login, read, write and execute; the migration login, db_owner),
     and its registration in the platform database with <name>.pos.localhost and the four secret names. Idempotent
@@ -621,7 +624,7 @@ function Register-StackCustomer($Config, [string] $Name) {
     $secrets = Get-CustomerSecretValues $Config $Name
     Set-DatabaseLogin $Config $secrets.Login $secrets.Password $Name 'app'
     Set-DatabaseLogin $Config $secrets.MigrationLogin $secrets.MigrationPassword $Name 'owner'
-    $displayName = switch ($Name) { 'beaconculinary' { 'Beacon Culinary' } 'testcustomer' { 'Test Customer' } default { $Name } }
+    $displayName = Get-StackDisplayName $Name
     $server = 'sql'; $port = 1433
     if ($Config.SqlMode -eq 'host') { $server = 'host.docker.internal'; $port = $Config.SqlInstancePort }
     $fromBaseline = if ($Name -eq $script:FullHistoryCustomer) { 'false' } else { 'true' }

@@ -16,8 +16,9 @@ Errors use the usual shape `{error, code, details}`. Branch on `code` (and `deta
 
 - `token`: 43 characters, `A–Z a–z 0–9 - _` (256 random bits). Shown once, when issued; never stored (only its
   SHA-256) and never logged.
-- `base`: `app.public-base-url` (env `APP_PUBLIC_BASE_URL`), the address staff open the frontend at. When it isn't
-  set, the API returns `link: null` and the frontend builds the link from its own address.
+- `base`: T1-7: `https://<the customer's primary host>`, from the customer directory (multi mode). In single mode
+  there is none: the API returns `link: null` and the frontend builds the link from its own address.
+  (`app.public-base-url` is gone.)
 - The token is after `#`, so the browser never sends it to any server: not to the frontend host, not to the API in
   a URL. **The invite page reads `location.hash`, removes it from the address bar
   (`history.replaceState`), and sends the token in a request body only.** Never put it in a path or query string:

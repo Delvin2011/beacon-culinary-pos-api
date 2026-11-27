@@ -6,7 +6,9 @@
     T1-3: in multi mode (the stack's default) it checks beaconculinary and testcustomer in one run, each at its own
     https://<customer>.pos.localhost; in single mode the active customer only.
     At each customer:
-      1. /api/health is UP through the proxy, with an X-Request-Id header.
+      1. /api/health is UP through the proxy, with an X-Request-Id header. T1-7: /api/public/branding answers 200
+         without sign-in, logoUrl null, Cache-Control public, max-age=300, and in multi mode the customer's own name
+         (its name in the platform database: Beacon Culinary, Test Customer).
       2. Password sign-in (beaconculinary: SMOKE_EMAIL; the others: their smoke account smoke@<name>.test, made by up.ps1;
          SMOKE_PASSWORD) sets the refresh cookie Secure, HttpOnly, SameSite=Lax (T1-5), Path=/api/auth/refresh, and
          /api/auth/refresh with that cookie works.
@@ -172,6 +174,15 @@ try {
             Add-Result "${label}health" $false "no answer: $($_.Exception.GetBaseException().Message) (status.ps1 checks the hosts file and certificate)"
             throw 'Stopping: the gateway is not reachable.'
         }
+
+        # T1-7: the customer's public details, no sign-in. In multi mode the name is its own: the stack's receipt settings
+        # have none, so it is the customer's name in the platform database.
+        $branding = Invoke-Api 'GET' '/api/public/branding'
+        $cache = if ($branding.Headers.ContainsKey('Cache-Control')) { $branding.Headers['Cache-Control'] -join ', ' } else { '(none)' }
+        $brandingOk = $branding.Status -eq 200 -and $branding.Json -and $null -eq $branding.Json.logoUrl -and $cache -eq 'public, max-age=300'
+        $brandingName = if ($branding.Json) { [string]$branding.Json.name } else { '' }
+        if ($multi) { $brandingOk = $brandingOk -and $brandingName -ceq (Get-StackDisplayName $name) }
+        Add-Result "${label}branding" $brandingOk "$(Describe $branding), name '$brandingName', Cache-Control $cache"
 
         $requestId = 'smoke-' + [Guid]::NewGuid().ToString('N').Substring(0, 20)
         $since = (Get-Date).ToUniversalTime().AddSeconds(-5).ToString('yyyy-MM-ddTHH:mm:ssZ')

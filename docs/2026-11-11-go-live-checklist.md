@@ -212,7 +212,7 @@ Other migrations depend on the seeds: `V58__seed_ingredients.sql:15` looks up `a
 
 ## 15. Customer settings at onboarding
 
-**What.** Since T0-4a the customer's own settings live in their database (docs/2026-11-20-site-settings.md). `app.business.name` is blank by default, so statement reports print no business name until the receipt settings have one.
+**What.** Since T0-4a the customer's own settings live in their database (docs/2026-11-20-site-settings.md). T1-7: there is no platform business name; until the receipt settings have one, statement reports and `GET /api/public/branding` show the customer's name in the customer directory (single mode: none).
 
 **Fix.** At onboarding: set the business name (and VAT number) in the receipt settings; set `reports.close-day.first-trading-day` to the go-live day before the first Z; review the VAT rate and the offline limits in `/admin/settings`.
 
