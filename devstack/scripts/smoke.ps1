@@ -19,6 +19,9 @@
     Multi mode, across customers: while one customer's order is placed, a kitchen stream held open at every other
     customer receives no event at all; and an address no customer has (Host: nobody.pos.localhost, through Caddy)
     answers 404 with an empty body on /api/health and on /api/public/board/today.
+    T1-10, multi mode: the first customer's refresh cookie is refused at the second (401 TENANT_MISMATCH), and the
+    order the check placed at the first customer, asked for by its id at the second, is never the first's (404, or
+    the second customer's own order with that id).
     The order: one kitchen item from today's menu (READY, kitchen station), paid in cash, on the till's open shift
     (opened with a zero float and closed again when the check opened it). When the menu has none, the check adds an
     always-on light meal, "Smoke check item", through the admin API, as an admin would; later runs reuse it. The sale
@@ -157,7 +160,9 @@ function Get-CategoryTree($Nodes) {
 }
 
 $tokens = [ordered]@{}
+$refreshCookies = @{}
 $openedShifts = @{}
+$placed = @{}
 $streams = [System.Collections.Generic.List[object]]::new()
 try {
     # --- 1-3, at each customer: health, sign-in, refresh, request id, log line ---
@@ -208,6 +213,7 @@ try {
             $shown = ($attributes | Where-Object { $_ -notlike 'Expires=*' }) -join '; '
             Add-Result "${label}refresh cookie" ($missing.Count -eq 0) $(if ($missing.Count -eq 0) { $shown } else { "missing $($missing -join ', ') (has: $shown)" })
             # The browser sends the cookie only to its path: prove that path reaches the backend's refresh.
+            $refreshCookies[$name] = $refresh.Split(';')[0]
             $refreshed = Invoke-Api 'POST' '/api/auth/refresh' $null $null @{ Cookie = $refresh.Split(';')[0] }
             Add-Result "${label}refresh via /api/auth/refresh" ($refreshed.Status -eq 200 -and $refreshed.Json -and $refreshed.Json.token) (Describe $refreshed)
         }
@@ -238,6 +244,12 @@ try {
         $foreign = Invoke-Api 'GET' '/api/admin/staff' $null $tokens[$customers[0]]
         $code = if ($foreign.Json -and $foreign.Json.PSObject.Properties.Name -contains 'code') { $foreign.Json.code } else { '' }
         Add-Result "$($customers[0]) token at $($customers[1])" ($foreign.Status -eq 401 -and $code -eq 'TENANT_MISMATCH') "HTTP $($foreign.Status) $code"
+        # T1-10: the refresh cookie is bound to its customer too.
+        if ($refreshCookies[$customers[0]]) {
+            $foreignRefresh = Invoke-Api 'POST' '/api/auth/refresh' $null $null @{ Cookie = $refreshCookies[$customers[0]] }
+            $code = if ($foreignRefresh.Json -and $foreignRefresh.Json.PSObject.Properties.Name -contains 'code') { $foreignRefresh.Json.code } else { '' }
+            Add-Result "$($customers[0]) refresh cookie at $($customers[1])" ($foreignRefresh.Status -eq 401 -and $code -eq 'TENANT_MISMATCH') "HTTP $($foreignRefresh.Status) $code"
+        }
     }
 
     # --- 4, at each customer: a sale on its kitchen stream, never on the others' ---
@@ -300,6 +312,7 @@ try {
         $order = Invoke-Api 'POST' '/api/orders' $orderBody $token
         if ($order.Status -notin 200, 201 -or -not $order.Json) { Add-Result "${label}order" $false (Describe $order); throw 'Stopping.' }
         $orderId = [long]$order.Json.id
+        $placed[$name] = @{ Id = $orderId; Receipt = [string]$order.Json.receiptNumber }
         $took = Wait-StreamEvent $own $orderId 5 $placedAt
         Add-Result "${label}stream event" ($took -ge 0) $(if ($took -ge 0) { "order $orderId ($($item.name)) arrived in {0:N2} s" -f $took } elseif ($took -eq -2) { 'the stream closed' } else { 'no event within 5 s (buffered?)' })
         foreach ($other in $watches.Keys) {
@@ -370,6 +383,14 @@ try {
 
     # --- multi mode: an address no customer has ---
     if ($multi -and -not $Customer) {
+        # T1-10: the first customer's order, by its id, at the second: never the first's.
+        if ($placed[$customers[0]] -and $tokens[$customers[1]]) {
+            $script:base = Get-CustomerUrl $config $customers[1]
+            $mine = $placed[$customers[0]]
+            $byId = Invoke-Api 'GET' "/api/orders/$($mine.Id)" $null $tokens[$customers[1]]
+            $theirs = $byId.Status -eq 200 -and $byId.Json -and [string]$byId.Json.receiptNumber -eq $mine.Receipt
+            Add-Result "$($customers[0]) order $($mine.Id) at $($customers[1])" ($byId.Status -in 200, 404 -and -not $theirs) $(if ($theirs) { "returned $($customers[0])'s order" } elseif ($byId.Status -eq 404) { 'HTTP 404' } else { "HTTP $($byId.Status): $($customers[1])'s own order with that id" })
+        }
         Write-Step 'An unknown address'
         $script:base = Get-CustomerUrl $config $customers[0]
         foreach ($path in '/api/health', '/api/public/board/today') {
@@ -396,6 +417,7 @@ try {
     $streamClient.Dispose()
     $client.Dispose()
     $tokens.Clear()
+    $refreshCookies.Clear()
 }
 
 Write-Host ''
